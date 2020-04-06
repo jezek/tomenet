@@ -704,7 +704,7 @@ extern int weather_elements, weather_element_x[1024], weather_element_y[1024], w
 extern int weather_panel_x, weather_panel_y;
 extern bool weather_panel_changed;
 extern byte panel_map_a[MAX_SCREEN_WID][MAX_SCREEN_HGT];
-extern char panel_map_c[MAX_SCREEN_WID][MAX_SCREEN_HGT];
+extern char32_t panel_map_c[MAX_SCREEN_WID][MAX_SCREEN_HGT];
 extern int cloud_x1[10], cloud_y1[10], cloud_x2[10], cloud_y2[10], cloud_dsum[10];
 extern int cloud_xm100[10], cloud_ym100[10], cloud_xfrac[10], cloud_yfrac[10];
 
@@ -901,6 +901,10 @@ extern char *my_strcasestr_skipcol(const char *big, const char *little, byte str
 extern char *my_strstr_skipcol(const char *big, const char *little, byte strict);
 extern char *roman_suffix(char* cname);
 extern bool wearable_p(object_type *o_ptr);
+extern struct u32b_char_dict_t *u32b_char_dict_set(struct u32b_char_dict_t *start, uint32_t key, char value);
+extern char *u32b_char_dict_get(struct u32b_char_dict_t *start, uint32_t key);
+extern struct u32b_char_dict_t *u32b_char_dict_unset(struct u32b_char_dict_t *start, uint32_t key);
+extern struct u32b_char_dict_t *u32b_char_dict_free(struct u32b_char_dict_t *start);
 
 /* common/files.c */
 extern int local_file_init(int ind, unsigned short fnum, char *fname);
@@ -1028,9 +1032,9 @@ extern int kind_list_tval[MAX_K_IDX], kind_list_sval[MAX_K_IDX], kind_list_rarit
 extern char kind_list_char[MAX_K_IDX], kind_list_attr[MAX_K_IDX];
 
 extern char monster_mapping_org[MAX_R_IDX + 1];
-extern char monster_mapping_mod[256];
+extern struct u32b_char_dict_t *monster_mapping_mod;
 extern char floor_mapping_org[MAX_F_IDX + 1];
-extern char floor_mapping_mod[256];
+extern struct u32b_char_dict_t *floor_mapping_mod;
 
 extern int screen_wid, screen_hgt;
 extern void (*resize_main_window)(int cols, int rows);
@@ -1042,7 +1046,7 @@ extern int rand_term_lamp_ticks;
 
 extern int minimap_posx, minimap_posy, minimap_selx, minimap_sely;
 extern byte minimap_attr, minimap_selattr;
-extern char minimap_char, minimap_selchar;
+extern char32_t minimap_char, minimap_selchar;
 
 extern bool silent_dump;
 extern bool equip_no_weapon;

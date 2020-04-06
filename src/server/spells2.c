@@ -2155,7 +2155,7 @@ bool detect_creatures_xxx(int Ind, u32b match_flag) {
 		    (match_flag == 0x3 && (r_ptr->flags1 & RF1_UNIQUE)) || /* hack: uniques */
 		    (match_flag != 0x3 && (r_ptr->flags3 & (match_flag)))) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->mon_vis[i] = TRUE;
@@ -2229,7 +2229,7 @@ bool detect_creatures_xxx(int Ind, u32b match_flag) {
 		/* Detect all xxx players */
 		if (panel_contains(py, px)) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->play_vis[i] = TRUE;
@@ -2345,7 +2345,7 @@ bool detect_invisible(int Ind) {
 		/* Detect all invisible monsters */
 		if (panel_contains(fy, fx) && (r_ptr->flags2 & RF2_INVISIBLE)) {
 			byte a;
-			char c;
+			char32_t c;
 
 #ifdef OLD_MONSTER_LORE
 			/* Take note that they are invisible */
@@ -2393,7 +2393,7 @@ bool detect_invisible(int Ind) {
 		/* Detect all invisible players */
 		if (panel_contains(py, px) && q_ptr->invis)  {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->play_vis[i] = TRUE;
@@ -2476,7 +2476,7 @@ bool detect_creatures(int Ind) {
 		/* Detect all non-invisible monsters */
 		if (panel_contains(fy, fx) && (!(r_ptr->flags2 & RF2_INVISIBLE))) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->mon_vis[i] = TRUE;
@@ -2519,7 +2519,7 @@ bool detect_creatures(int Ind) {
 		/* Detect all non-invisible players */
 		if (panel_contains(py, px) && !q_ptr->invis) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->play_vis[i] = TRUE;
@@ -2606,7 +2606,7 @@ bool detect_noise(int Ind) {
 		/* Detect all non-invisible monsters */
 		if (panel_contains(fy, fx) && (!(r_ptr->flags2 & RF2_INVISIBLE))) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->mon_vis[i] = TRUE;
@@ -2644,7 +2644,7 @@ bool detect_noise(int Ind) {
 		/* Detect all non-invisible players */
 		if (panel_contains(py, px) && !q_ptr->invis) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->play_vis[i] = TRUE;
@@ -2723,7 +2723,7 @@ bool detect_living(int Ind) {
 		/* Detect all monsters */
 		if (panel_contains(fy, fx)) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->mon_vis[i] = TRUE;
@@ -2761,7 +2761,7 @@ bool detect_living(int Ind) {
 		/* Detect all players */
 		if (panel_contains(py, px)) {
 			byte a;
-			char c;
+			char32_t c;
 
 			/* Hack - Temporarily visible */
 			p_ptr->play_vis[i] = TRUE;

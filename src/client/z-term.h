@@ -31,10 +31,10 @@ struct term_win
 	byte cx, cy;
 
 	byte **a;
-	char **c;
+	char32_t **c;
 
 	byte *va;
-	char *vc;
+	char32_t *vc;
 };
 
 
@@ -165,7 +165,7 @@ struct term
 	bool no_total_erase_on_wipe;
 
 	byte attr_blank;
-	char char_blank;
+	char32_t char_blank;
 
 	key_queue *keys;
 	key_queue *keys_old;
@@ -197,7 +197,7 @@ struct term
 
 	errr (*wipe_hook)(int x, int y, int n);
 
-	errr (*pict_hook)(int x, int y, byte a, char c);
+	errr (*pict_hook)(int x, int y, byte a, char32_t c);
 
 	errr (*text_hook)(int x, int y, int n, byte a, cptr s);
 };
@@ -256,7 +256,7 @@ extern errr Term_xtra(int n, int v);
 extern errr Term_fresh(void);
 extern errr Term_set_cursor(int v);
 extern errr Term_gotoxy(int x, int y);
-extern errr Term_draw(int x, int y, byte a, char c);
+extern errr Term_draw(int x, int y, byte a, char32_t c);
 extern errr Term_addch(byte a, char c);
 extern errr Term_addstr(int n, byte a, cptr s);
 extern errr Term_putch(int x, int y, byte a, char c);
@@ -269,7 +269,7 @@ extern errr Term_redraw_section(int x1, int y1, int x2, int y2);
 extern errr Term_get_cursor(int *v);
 extern errr Term_get_size(int *w, int *h);
 extern errr Term_locate(int *x, int *y);
-extern errr Term_what(int x, int y, byte *a, char *c);
+extern errr Term_what(int x, int y, byte *a, char32_t *c);
 
 extern errr Term_flush(void);
 extern errr Term_keypress_aux(key_queue *keys, int k);
