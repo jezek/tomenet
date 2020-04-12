@@ -116,7 +116,7 @@ static void validate_dir(cptr s) {
  * Note that the "path" must be "Angband:" for the Amiga, and it
  * is ignored for "VM/ESA", so I just combined the two.
  */
-static void init_stuff(void) {
+void init_stuff(void) {
 #if defined(AMIGA) || defined(VM)
 
 	/* Hack -- prepare "path" */

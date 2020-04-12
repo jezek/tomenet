@@ -523,6 +523,7 @@ extern int within_cmd_player_ticks;
 /* c-init.c */
 extern void init_schools(s16b new_size);
 extern void init_spells(s16b new_size);
+extern void init_stuff(void);
 extern void initialize_main_pref_files(void);
 extern void initialize_player_pref_files(void);
 extern void initialize_player_ins_files(void);
