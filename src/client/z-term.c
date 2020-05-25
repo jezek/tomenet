@@ -527,9 +527,9 @@ static errr Term_wipe_hack(int x, int y, int n) {
  * Hack -- fake hook for "Term_pict()"
  * Draw a "special" attr/char pair at "(x,y)".
  */
-static errr Term_pict_hack(int x, int y, byte a, char32_t c) {
+static errr Term_pict_hack(int x, int y, int n, byte a, c32ptr s) {
 	/* XXX XXX XXX */
-	if (x || y || a || c) return(-2);
+	if (x || y || a || s) return (-2);
 
 	/* Oops */
 	return(-1);
@@ -1100,10 +1100,10 @@ void flicker() {
 
 				/* Hack -- use "Term_pict()" always */
 				if (Term->always_pict)
-					(void)((*Term->pict_hook)(x, y, attr, ch));
+					(void)((*Term->pict_hook)(x, y, 1, attr, &ch));
 				/* Hack -- use "Term_pict()" sometimes */
 				else if (Term->higher_pict && ch > MAX_FONT_CHAR)
-					(void)((*Term->pict_hook)(x, y, attr, ch));
+					(void)((*Term->pict_hook)(x, y, 1, attr, &ch));
 				/* Hack -- restore the actual character */
 				else if (attr || Term->always_text) {
 					char buf[2];
@@ -1489,21 +1489,52 @@ static void Term_fresh_row_both_wipe(int y) {
 	int x2 = Term->x2[y];
 
 	/* No chars "pending" in "text" */
-	int n = 0;
+	int fn = 0;
 
 	/* Pending text starts in the first column */
 	int fx = x1;
 
 	/* Pending text color is "blank" */
-	int fa = Term->attr_blank;
-
-	/* The "new" data */
-	int na;
-	char32_t nc;
+	int pa = Term->attr_blank;
 
 	/* Max width is number of columns marked as "modified", plus terminating character '\0' */
 	char text[x2 - x1 + 2];
 
+	/* No chars "pending" in "pict" */
+	int pn = 0;
+
+	/* Pending pict starts in the first column */
+	int px = x1;
+
+	/* Max width is 255 */
+	char32_t pict[256];
+
+	void flush_pending() {
+		/* Flush as needed (see above) */
+		if (fn) {
+			/* Terminate the thread */
+			text[fn] = '\0';
+
+			/* Draw the pending chars */
+			if (pa) (void)((*Term->text_hook)(fx, y, fn, pa, text));
+			/* Hack -- Erase "leading" spaces */
+			else (void)((*Term->wipe_hook)(fx, y, fn));
+
+			/* Forget the pending thread */
+			fn = 0;
+		} else if (pn) {
+			/* Terminate the thread */
+			pict[pn] = 0;
+
+			/* Draw the pending chars */
+			if (pa) (void)((*Term->pict_hook)(px, y, pn, pa, pict));
+			/* Hack -- Erase "leading" spaces */
+			else (void)((*Term->wipe_hook)(px, y, pn));
+
+			/* Forget the pending thread */
+			pn = 0;
+		}
+	}
 
 	/* Scan the columns marked as "modified" */
 	for (x = x1; x <= x2; x++) {
@@ -1512,89 +1543,49 @@ static void Term_fresh_row_both_wipe(int y) {
 		char32_t oc = old_cc[x];
 
 		/* Save and remember the new contents */
-		na = old_aa[x] = scr_aa[x];
-		nc = old_cc[x] = scr_cc[x];
+		int na = old_aa[x] = scr_aa[x];
+		char32_t nc = old_cc[x] = scr_cc[x];
 
 		/* Notice unchanged areas */
 		if ((na == oa) && (nc == oc)) {
-			/* Flush as needed (see above) */
-			if (n) {
-				/* Terminate the thread */
-				text[n] = '\0';
-
-				/* Draw the pending chars */
-				if (fa) (void)((*Term->text_hook)(fx, y, n, fa, text));
-				/* Hack -- Erase "leading" spaces */
-				else (void)((*Term->wipe_hook)(fx, y, n));
-
-				/* Forget the pending thread */
-				n = 0;
-			}
-
-			/* Skip */
-			continue;
-		}
-
-		/* Use "Term_pict" for "special" data */
-		if (nc > MAX_FONT_CHAR) {
-			/* Flush as needed (see above) */
-			if (n) {
-				/* Terminate the thread */
-				text[n] = '\0';
-
-				/* Draw the pending chars */
-				if (fa) (void)((*Term->text_hook)(fx, y, n, fa, text));
-				/* Hack -- Erase "leading" spaces */
-				else (void)((*Term->wipe_hook)(fx, y, n));
-
-				/* Forget the pending thread */
-				n = 0;
-			}
-
-			/* Display this special character */
-			(void)((*Term->pict_hook)(x, y, na, nc));
+			flush_pending();
 
 			/* Skip */
 			continue;
 		}
 
 		/* Notice new color */
-		if (fa != na) {
-			/* Flush as needed (see above) */
-			if (n) {
-				/* Terminate the thread */
-				text[n] = '\0';
-
-				/* Draw the pending chars */
-				if (fa) (void)((*Term->text_hook)(fx, y, n, fa, text));
-				/* Hack -- Erase "leading" spaces */
-				else (void)((*Term->wipe_hook)(fx, y, n));
-
-				/* Forget the pending thread */
-				n = 0;
-			}
+		if (pa != na) {
+			flush_pending();
 
 			/* Save the new color */
-			fa = na;
+			pa = na;
 		}
 
-		/* Start a new thread, if needed */
-		if (!n) fx = x;
+		/* Character is a picture tile. */
+		if (nc > MAX_FONT_CHAR) {
+			flush_pending();
 
-		/* Expand the current thread */
-		text[n++] = (char)nc;
+			/* Start a new thread, if needed */
+			if (!pn) px = x;
+
+			/* Expand the current thread */
+			pict[pn++] = nc;
+
+		}
+		/* Character is a font tile. */
+		else {
+			flush_pending();
+			
+			/* Start a new thread, if needed */
+			if (!fn) fx = x;
+
+			/* Expand the current thread */
+			text[fn++] = (char)nc;
+		}
 	}
 
-	/* Flush the pending thread, if any */
-	if (n) {
-		/* Terminate the thread */
-		text[n] = '\0';
-
-		/* Draw the pending chars */
-		if (fa) (void)((*Term->text_hook)(fx, y, n, fa, text));
-		/* Hack -- Erase fully blank lines */
-		else (void)((*Term->wipe_hook)(fx, y, n));
-	}
+	flush_pending();
 }
 
 
@@ -1678,7 +1669,7 @@ static void Term_fresh_row_both_text(int y) {
 			}
 
 			/* Display this special character */
-			(void)((*Term->pict_hook)(x, y, na, nc));
+			(void)((*Term->pict_hook)(x, y, 1, na, &nc));
 
 			/* Skip */
 			continue;
@@ -1759,7 +1750,7 @@ static void Term_fresh_row_pict(int y) {
 		if ((na == oa) && (nc == oc)) continue;
 
 		/* Display this special character */
-		(void)((*Term->pict_hook)(x, y, na, nc));
+		(void)((*Term->pict_hook)(x, y, 1, na, &nc));
 	}
 }
 
@@ -1855,10 +1846,10 @@ errr Term_fresh(void) {
 
 			/* Hack -- use "Term_pict()" always */
 			if (Term->always_pict)
-				(void)((*Term->pict_hook)(tx, ty, a, c));
+				(void)((*Term->pict_hook)(tx, ty, 1, a, &c));
 			/* Hack -- use "Term_pict()" sometimes */
 			else if (Term->higher_pict && c > MAX_FONT_CHAR)
-				(void)((*Term->pict_hook)(tx, ty, a, c));
+				(void)((*Term->pict_hook)(tx, ty, 1, a, &c));
 			/* Hack -- restore the actual character */
 			else if (a || Term->always_text) {
 				char buf[2];

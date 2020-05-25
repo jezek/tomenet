@@ -189,6 +189,7 @@ typedef vptr	(*func_key)(vptr);
 
 /* Placeholder used to hold the value for visual world character printed on client. */
 typedef u32b char32_t;
+typedef char32_t *c32ptr;
 
 #endif
 

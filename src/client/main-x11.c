@@ -2173,6 +2173,45 @@ if (Term && Term->data == &screen && x >= SCREEN_PAD_LEFT && y >= SCREEN_PAD_TOP
 		  0, 0,
 		  td->fnt->wid, td->fnt->hgt,
 		  x, y);
+// TODO jezek - This was here before grbm after chaching was introduced.
+//	/* Initialize to something different than next currentTileNo to always prepare first tile. */
+//	char32_t preparedTileNo = s[0];
+//
+//	for (int i =0; i < n; i++) {
+//		char32_t currentTileNo = s[i] - MAX_FONT_CHAR - 1;
+//
+//		/* Prepare tile to preparation pixmap if not allready prepared. */
+//		if ( preparedTileNo != currentTileNo ) {
+//			int x1 = (currentTileNo % graphics_image_tpr) * Infofnt->wid;
+//			int y1 = (currentTileNo / graphics_image_tpr) * Infofnt->hgt;
+//			
+//			XCopyPlane(Metadpy->dpy, td->fgmask, td->tilePreparation, Infoclr->gc,
+//					x1, y1,
+//					Infofnt->wid, Infofnt->hgt,
+//					0, 0,
+//					1);
+//			XSetClipMask(Metadpy->dpy, Infoclr->gc, td->bgmask);
+//			XSetClipOrigin(Metadpy->dpy, Infoclr->gc, 0 - x1, 0 - y1);
+//			XPutImage(Metadpy->dpy, td->tilePreparation,
+//					Infoclr->gc,
+//					td->tiles,
+//					x1, y1,
+//					0, 0,
+//					Infofnt->wid, Infofnt->hgt);
+//			XSetClipMask(Metadpy->dpy, Infoclr->gc, None);
+//
+//			preparedTileNo = currentTileNo;
+//		}
+//
+//		/* Copy prepared tile to window. */
+//		XCopyArea(Metadpy->dpy, td->tilePreparation, td->inner->win, Infoclr->gc,
+//				0, 0,
+//				Infofnt->wid, Infofnt->hgt,
+//				x, y);
+//		/* Increase x to next position. We assume, that we never cross the boundaries. */
+//		x += Infofnt->wid;
+//	}
+>>>>>>> 1b5d42c3f (Client draw chunks of pictures to speed up drawing)
 
 	/* Success */
 	return(0);

@@ -193,7 +193,7 @@ struct term
 	errr (*xtra_hook)(int n, int v);
 	errr (*curs_hook)(int x, int y);
 	errr (*wipe_hook)(int x, int y, int n);
-	errr (*pict_hook)(int x, int y, byte a, char32_t c);
+	errr (*pict_hook)(int x, int y, int n, byte a, c32ptr s);
 	errr (*text_hook)(int x, int y, int n, byte a, cptr s);
 };
 
