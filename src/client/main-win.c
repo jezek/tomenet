@@ -2925,6 +2925,8 @@ static void process_menus(WORD wCmd) {
 			/* Toggle "graphics" */
 			use_graphics = !use_graphics;
 
+			//TODO jezek - Check for bitmap loaded, resized, etc...
+
 			/* Access the "graphic" mappings */
 			handle_process_font_file();
 
@@ -2934,8 +2936,9 @@ static void process_menus(WORD wCmd) {
 			/* Hack -- Force redraw */
 			//Term_key_push(KTRL('R'));
 			//if (screen_icky) Term_switch(0);
-			Term_redraw(); /* get rid of map tiles where now status bars go instead */
 			Term_clear();
+			Send_screen_dimensions();
+			cmd_redraw();
 			//if (screen_icky) Term_switch(0);
 
 			break;
