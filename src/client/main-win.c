@@ -68,7 +68,7 @@
 
 #define MNU_SUPPORT
 /* but do we actually create a menu? */
-//#define MNU_USE
+#define MNU_USE
 /* #define USE_GRAPHICS */
 
 #ifdef JP
@@ -2914,7 +2914,6 @@ static void process_menus(WORD wCmd) {
 			/* XXX XXX XXX */
 			break;
 
-/*	Currently no graphics options available. -GP */
 #ifdef USE_GRAPHICS
 		case IDM_OPTIONS_GRAPHICS:
 			/* XXX XXX XXX  */
@@ -2929,17 +2928,19 @@ static void process_menus(WORD wCmd) {
 			/* Access the "graphic" mappings */
 			handle_process_font_file();
 
-#endif		/* GP's USE_GRAPHICS */
-
-#ifdef USE_GRAPHICS	/* no support -GP */
 			/* React to changes */
 			Term_xtra_win_react();
 
 			/* Hack -- Force redraw */
-			Term_key_push(KTRL('R'));
+			//Term_key_push(KTRL('R'));
+			//if (screen_icky) Term_switch(0);
+			Term_redraw(); /* get rid of map tiles where now status bars go instead */
+			Term_clear();
+			//if (screen_icky) Term_switch(0);
 
 			break;
 #endif
+
 		case IDM_OPTIONS_SOUND:
 			use_sound = !use_sound;
 			break;
