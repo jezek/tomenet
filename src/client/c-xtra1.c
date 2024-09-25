@@ -236,10 +236,10 @@ void prt_level(int level, int max_lev, int max_plv, s32b max, s32b cur, s32b adv
 #ifdef EXP_BAR_FINESCALE
 		int got_org = 0;
 #endif
-#ifdef WINDOWS
+#if defined(WINDOWS) && !defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) exp_bar_char = FONT_MAP_SOLID_WIN; /* :-p hack */
 		else
-#elif defined(USE_X11)
+#elif defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) exp_bar_char = FONT_MAP_SOLID_X11; /* :-p hack */
 		else
 ///#else /* command-line client ("-c") doesn't draw either! */
@@ -543,10 +543,10 @@ void prt_hp(int max, int cur, bool bar, bool boosted) {
 				char bar_char;
 
  #ifdef HP_MP_ST_BARS_ALLOWED /* looks too strange with all 3 bars above each other */
-  #ifdef WINDOWS
+  #if defined(WINDOWS) && !defined(USE_SDL2)
 				if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_WIN; /* :-p hack */
 				else
-  #elif defined(USE_X11)
+  #elif defined(USE_X11) || defined(USE_SDL2)
 				if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_X11; /* :-p hack */
 				else
   //#else /* command-line client ("-c") doesn't draw either! */
@@ -647,7 +647,7 @@ void prt_stamina(int max, int cur, bool bar) {
   #ifdef WINDOWS
 		if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_WIN; /* :-p hack */
 		else
-  #elif defined(USE_X11)
+  #elif defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_X11; /* :-p hack */
 		else
   //#else /* command-line client ("-c") doesn't draw either! */
@@ -852,7 +852,7 @@ void prt_mp(int max, int cur, bool bar) {
   #ifdef WINDOWS
 			if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_WIN; /* :-p hack */
 			else
-  #elif defined(USE_X11)
+  #elif defined(USE_X11) || defined(USE_SDL2)
 			if (!force_cui && c_cfg.solid_bars) bar_char = FONT_MAP_SOLID_X11; /* :-p hack */
 			else
   //#else /* command-line client ("-c") doesn't draw either! */
@@ -2945,7 +2945,6 @@ static void fix_player(void) {
 		Term_activate(old);
 	}
 }
-
 
 /*
  * Hack -- display recent messages in sub-windows
@@ -5061,6 +5060,7 @@ void display_player(int hist) {
  * Redraw any necessary windows
  */
 void window_stuff(void) {
+
 	/* Redraw the skills menu if requested */
 	if (redraw_skills)
 		do_redraw_skills();

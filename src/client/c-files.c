@@ -216,6 +216,7 @@ void text_to_ascii(char *buf, cptr str) {
  * Replace "~/" by the home directory of the current user
  */
 static errr path_parse(char *buf, cptr file) {
+#ifndef USE_SDL2
 #ifndef WIN32
 #ifndef AMIGA
 	cptr	    u, s;
@@ -223,6 +224,7 @@ static errr path_parse(char *buf, cptr file) {
 	char	    user[128];
 #endif
 #endif /* WIN32 */
+#endif
 
 
 	/* Assume no result */
@@ -238,6 +240,7 @@ static errr path_parse(char *buf, cptr file) {
 	}
 
 	/* Windows should never have ~ in filename */
+#ifndef USE_SDL2
 #ifndef WIN32
 #ifndef AMIGA
 
@@ -277,6 +280,7 @@ static errr path_parse(char *buf, cptr file) {
 
 #endif
 #endif /* WIN32 */
+#endif
 	/* Success */
 	return(0);
 }
@@ -670,7 +674,7 @@ void init_file_paths(char *path) {
 
  /* On Windows 7 and higher, users should save their data to their designated user folder,
     or write access problems might occur, especially when overwriting a file! */
- #if !defined(WINDOWS) || !defined(WINDOWS_USER_HOME)
+ #if !defined(WINDOWS) || !defined(WINDOWS_USER_HOME) || defined(USE_SDL2)
 	/* Build a path name */
 	strcpy(tail, "scpt");
 	ANGBAND_DIR_SCPT = string_make(path);
@@ -820,6 +824,9 @@ errr process_pref_file_aux_aux(char *buf, byte fmt) {
 	int n1, n2;
 
 	char *zz[16], tmp[1024];
+#if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	uint32_t color;
+#endif
 
 	/* We use our own macro__buf - mikaelh */
 	static char *macro__buf = NULL;
@@ -1147,6 +1154,36 @@ errr process_pref_file_aux_aux(char *buf, byte fmt) {
 			return(0);
 		}
 		break;
+
+#if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	/* Process "m:<num>:<hexRGB>" -- specify mask color for SDL2 graphic tiles. */
+	case 'm':
+		if (tokenize(buf + 2, 2, zz) == 2) {
+			i = (byte)strtol(zz[0], NULL, 0);
+			if (i >= GRAPHICS_MAX_MPT) {
+				c_message_add("\377yInvalid mask color number.");
+				return(1);
+			}
+
+			/* If the format is '#......', parse the color */
+			if (zz[1][0] != '#') {
+					c_message_add("\377yInvalid mask color format.");
+					return(1);
+			}
+
+			/* Read the RGB value and store. */
+			if (sscanf(zz[1] + 1, "%06x", &color) == 1) {
+				/* Convert to RGBA and store. */
+				graphics_image_masks_colors[i] = 0x000000ff | (color << 8);
+			} else {
+				c_message_add("\377yInvalid mask color value.");
+				return(1);
+			}
+
+			return(0);
+		}
+		break;
+#endif
 	}
 
 	/* Failure */
@@ -1277,8 +1314,10 @@ errr load_charspec_macros(cptr cname) {
  *
  * It is given in the "Setup" info sent by the server.
  */
+#ifndef USE_SDL2
 #ifdef WIN32
 extern int usleep(long microSeconds);
+#endif
 #endif
 void show_motd(int delay) {
 	int i;
@@ -2104,6 +2143,18 @@ void xhtml_screenshot(cptr name, byte redux) {
 			silent_dump = FALSE;
 			return;
 		}
+ #elif defined(USE_SDL2)
+		char buf2[1028];
+		strcpy(buf2, buf);
+		buf2[strlen(buf2) - 5] = 0;
+
+		if (sdl2_win_term_main_screenshot(format("%spng", buf2))) {
+			c_msg_format("Error: Failed to save screenshot of main term window to %spng", buf2);
+		} else {
+			if (!silent_dump) c_msg_format("Screenshot saved to %spng", buf2);
+		}
+		silent_dump = FALSE;
+		return;
  #elif defined(WINDOWS)
 		/* On Windows, use the .NET framework if available, via batch file */
 		char buf2[1028];
@@ -2787,36 +2838,187 @@ void load_birth_file(cptr cname) {
 	if (update) save_birth_file(name, TRUE);
 }
 
+#if defined(USE_SDL2) && defined(SDL2_CURL_SSL)
+ #include <curl/curl.h>
+ #include <openssl/evp.h>
+
+/* Memory structure for storing downloaded data */
+typedef struct {
+	char *data;
+	size_t size;
+} Memory;
+
+/* Callback function for libcurl to write received data */
+static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+	size_t realSize = size * nmemb;
+	Memory *mem = (Memory *)userp;
+	char *ptr = realloc(mem->data, mem->size + realSize + 1);
+	if (ptr == NULL) {
+		return 0;  /* out of memory */
+	}
+	mem->data = ptr;
+	memcpy(&(mem->data[mem->size]), contents, realSize);
+	mem->size += realSize;
+	mem->data[mem->size] = '\0';
+	return realSize;
+}
+
+/*
+ * Check if our Guide is outdated by comparing the SHA256 checksums.
+ * This function is executed only on initial client startup or when forced.
+ */
+int check_guide_checksums(bool forced) {
+	FILE *fp;
+	char filepath[MAX_PATH_LENGTH];
+	char localHashHex[EVP_MAX_MD_SIZE * 2 + 1];
+	char remoteHashHex[MAX_CHARS_WIDE];
+	unsigned char localHashBin[EVP_MAX_MD_SIZE];
+	unsigned int hash_len;
+	unsigned char readBuffer[4096];
+	size_t bytesRead;
+	Memory mem;
+	CURL *curl;
+	CURLcode res;
+	EVP_MD_CTX *mdctx;
+	char *space;
+	int i;
+
+	if (!forced)
+		return 0;
+
+	snprintf(filepath, MAX_PATH_LENGTH, "%s%s", SDL2_GAME_PATH, "TomeNET-Guide.txt");
+	fprintf(stderr, "jezek - check_guide_checksums: filepath: %s\n", filepath);
+
+	fp = fopen(filepath, "rb");
+	if (fp == NULL) {
+		c_msg_print("\377yError verifying Guide version: Cannot read 'TomeNET-Guide.txt'.");
+		return 2;
+	}
+
+	mdctx = EVP_MD_CTX_new();
+	if (!mdctx) {
+		c_msg_print("\377yError verifying Guide version: Failed to create EVP context.");
+		fclose(fp);
+		return 6;
+	}
+
+	if (EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
+		c_msg_print("\377yError verifying Guide version: Failed to initialize SHA256.");
+		EVP_MD_CTX_free(mdctx);
+		fclose(fp);
+		return 6;
+	}
+
+	while ((bytesRead = fread(readBuffer, 1, sizeof(readBuffer), fp)) > 0) {
+		if (EVP_DigestUpdate(mdctx, readBuffer, bytesRead) != 1) {
+			c_msg_print("\377yError verifying Guide version: SHA256 update failed.");
+			EVP_MD_CTX_free(mdctx);
+			fclose(fp);
+			return 6;
+		}
+	}
+
+	fclose(fp);
+
+	if (EVP_DigestFinal_ex(mdctx, localHashBin, &hash_len) != 1) {
+		c_msg_print("\377yError verifying Guide version: SHA256 finalization failed.");
+		EVP_MD_CTX_free(mdctx);
+		return 6;
+	}
+
+	EVP_MD_CTX_free(mdctx);
+
+	for (i = 0; i < hash_len; i++) {
+		sprintf(&localHashHex[i * 2], "%02x", localHashBin[i]);
+	}
+	localHashHex[hash_len * 2] = '\0';
+
+	fprintf(stderr, "jezek - check_guide_checksums: localHashHex: %s\n", localHashHex);
+
+	mem.data = malloc(1);
+	mem.size = 0;
+	if (mem.data == NULL) {
+		c_msg_print("\377yError verifying Guide version: Memory allocation failed.");
+		return 7;
+	}
+
+	curl = curl_easy_init();
+	if (!curl) {
+		c_msg_print("\377yError verifying Guide version: Failed to initialize libcurl.");
+		free(mem.data);
+		return 7;
+	}
+
+	curl_easy_setopt(curl, CURLOPT_URL, "https://www.tomenet.eu/TomeNET-Guide.sha256");
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 3L);
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&mem);
+
+	res = curl_easy_perform(curl);
+	curl_easy_cleanup(curl);
+	if (res != CURLE_OK || mem.size == 0) {
+		c_msg_print("\377yError verifying Guide version: Cannot download 'TomeNET-Guide.sha256'.");
+		free(mem.data);
+		return 3;
+	}
+
+	strncpy(remoteHashHex, mem.data, MAX_CHARS_WIDE - 1);
+	remoteHashHex[MAX_CHARS_WIDE - 1] = '\0';
+	free(mem.data);
+
+	space = strchr(remoteHashHex, ' ');
+	if (space) {
+		*space = '\0';
+	}
+	fprintf(stderr, "jezek - check_guide_checksums: remoteHashHex: %s\n", remoteHashHex);
+
+	guide_outdated = (strcmp(localHashHex, remoteHashHex) != 0);
+	fprintf(stderr, "jezek - check_guide_checksums: guide_outdated: %b\n", guide_outdated);
+
+	return 0;
+}
+#elif defined(USE_SDL2)
+int check_guide_checksums(bool forced) {
+    /* If not forced, do not perform the checksum check */
+    if (!forced)
+        return 0;
+
+    plog("This client was built without guide checksum checks.\nYou can check manually a sha256 checksum for TomeNET-Guide.txt against the content of https://www.tomenet.eu/TomeNET-Guide.sha256");
+
+    return 0;
+}
+#else
 /* Check if our Guide is outdated -- only do this once on initial client startup, not on every relog (retry_contact).
    Also do this when explicitely requested (eg via =U or /reinit_guide). */
-#ifdef WINDOWS
- #include <process.h> /* for _spawnl() */
-#endif
+ #ifdef WINDOWS
+  #include <process.h> /* for _spawnl() */
+ #endif
 int check_guide_checksums(bool forced) {
 	FILE *fp;
 	char buf[MAX_CHARS_WIDE], buf2[MAX_CHARS_WIDE], *c;
 
 	/* TODO: Make this a .tomenetrc / tomenet.ini switch */
-#ifdef WINDOWS
- #if 1	/* 1: Don't check guide checksums on client startup. \
+ #ifdef WINDOWS
+  #if 1	/* 1: Don't check guide checksums on client startup. \
 	      Disabled now as nobody has the required sha256sum.exe/bat files in their 'updater' folder anyway. Reenable on next release. */
 	/* (guide_outdated remains FALSE) */
 	if (!forced) return(0);
- #endif
-#else /* Assume POSIX - We assume that sha256sum is probably available on POSIX, so this could be worth using already. */
- #if 1	/* 1: Don't check guide checksums on client startup. We have = C now, so this isn't that important anymore. */
+  #endif
+ #else /* Assume POSIX - We assume that sha256sum is probably available on POSIX, so this could be worth using already. */
+  #if 1	/* 1: Don't check guide checksums on client startup. We have = C now, so this isn't that important anymore. */
 	/* (guide_outdated remains FALSE) */
 	if (!forced) return(0);
+  #endif
  #endif
-#endif
 
 	/* Do we have sha256sum tool? */
-#ifdef WINDOWS
+ #ifdef WINDOWS
 	if (!my_fexists("updater\\sha256sum.bat"))
 	//if (access("updater\\sha256sum.bat", F_OK))
-#else /* assume POSIX */
+ #else /* assume POSIX */
 	if (system("sha256sum --version"))
-#endif
+ #endif
 	{
 		//logprint("Warning: No sha256sum found, cannot auto-check guide for outdatedness.\n"); --could be spammy
 		guide_outdated = FALSE;
@@ -2825,11 +3027,11 @@ int check_guide_checksums(bool forced) {
 	}
 
 	buf2[0] = buf[0] = 0;
-#ifdef WINDOWS
+ #ifdef WINDOWS
 	(void)_spawnl(_P_WAIT, "updater\\sha256sum.bat", "updater\\sha256sum.bat", NULL);
-#else /* assume POSIX */
+ #else /* assume POSIX */
 	(void)system("sha256sum TomeNET-Guide.txt > TomeNET-Guide.sha256.local");
-#endif
+ #endif
 	fp = fopen("TomeNET-Guide.sha256.local", "r");
 	if (fp) {
 		if (fgets(buf2, MAX_CHARS_WIDE - 1, fp) == NULL) {
@@ -2837,7 +3039,7 @@ int check_guide_checksums(bool forced) {
 			fclose(fp);
 			return(4);
 		}
-		buf[MAX_CHARS_WIDE - 1] = 0; //paranoia
+		buf2[MAX_CHARS_WIDE - 1] = 0; //paranoia
 		fclose(fp);
 	} else {
 		c_msg_print("\377yError verifying Guide version: Cannot read 'TomeNET-Guide.sha256.local'.");
@@ -2845,11 +3047,11 @@ int check_guide_checksums(bool forced) {
 	}
 	remove("TomeNET-Guide.sha256.local");
 	if ((c = strchr(buf2, ' '))) *c = 0; //cut off file name, only keep the actual hash
-#ifdef WINDOWS
+ #ifdef WINDOWS
 	(void)_spawnl(_P_WAIT, "updater\\wget.exe", "wget.exe", "--dot-style=mega", "https://www.tomenet.eu/TomeNET-Guide.sha256", NULL);
-#else /* assume POSIX */
+ #else /* assume POSIX */
 	(void)system("wget --timeout=3 https://www.tomenet.eu/TomeNET-Guide.sha256");
-#endif
+ #endif
 	fp = fopen("TomeNET-Guide.sha256", "r");
 	if (fp) {
 		if (fgets(buf, MAX_CHARS_WIDE - 1, fp) == NULL) {
@@ -2873,3 +3075,4 @@ int check_guide_checksums(bool forced) {
 
 	return(0);
 }
+#endif

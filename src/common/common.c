@@ -9,6 +9,11 @@
  #define REGEX_ARRAY_SIZE 1
 #endif
 
+#ifdef USE_SDL2
+ #ifndef __MAKEDEPEND__
+  #include "SDL2/SDL.h"
+ #endif
+#endif
 /*
  * XXX XXX XXX Important note about "colors" XXX XXX XXX
  *
@@ -249,6 +254,11 @@ byte mh_attr(int max) {
 	}
 }
 
+#ifdef USE_SDL2
+char *SDL2_GAME_PATH = NULL, *SDL2_USER_PATH = NULL;
+char SDL2_PATH_SEP[2] = {0};
+#endif
+
 /*
  * Create a new path by appending a file (or directory) to a path
  *
@@ -263,6 +273,10 @@ byte mh_attr(int max) {
  * using the "parse" function above.
  */
 errr path_build(char *buf, int max, cptr path, cptr file) {
+	char *sep= PATH_SEP;
+#ifdef USE_SDL2
+	sep= &SDL2_PATH_SEP[0];
+#endif
 	/* Special file */
 	if (file[0] == '~') {
 		/* Use the file itself */
@@ -270,7 +284,7 @@ errr path_build(char *buf, int max, cptr path, cptr file) {
 	}
 
 	/* Absolute file, on "normal" systems */
-	else if (prefix(file, PATH_SEP) && !streq(PATH_SEP, "")) {
+	else if (prefix(file, sep) && !streq(sep, "")) {
 		/* Use the file itself */
 		strnfmt(buf, max, "%s", file);
 	}
@@ -284,7 +298,7 @@ errr path_build(char *buf, int max, cptr path, cptr file) {
 	/* Path and File */
 	else {
 		/* Build the new path */
-		strnfmt(buf, max, "%s%s%s", path, PATH_SEP, file);
+		strnfmt(buf, max, "%s%s%s", path, sep, file);
 	}
 
 	/* Success */
@@ -297,7 +311,17 @@ char os_temp_path[1024];
 void init_temp_path(void) {
 	char *c;
 
-#ifdef WINDOWS
+#ifdef USE_SDL2
+	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
+	else {
+		strcpy(os_temp_path, SDL2_USER_PATH);
+		strcat(os_temp_path, "temp");
+		strcat(os_temp_path, SDL2_PATH_SEP);
+	}
+#elif defined(WINDOWS)
 	if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
@@ -312,6 +336,7 @@ void init_temp_path(void) {
 #else
 	strcpy(os_temp_path, ".");
 #endif
+	fprintf(stderr, "jezek - os_temp_path: %s\n", os_temp_path);
 	//validate_dir(os_temp_path); - this is a client-side only function atm
 }
 
@@ -347,7 +372,9 @@ void version_build() {
 
 	/* Append the date of build */
 	strcat(temp, format(" %s (Compiled %s %s for %s)", is_client_side ? "client" : "server", __DATE__, __TIME__,
-#ifdef WINDOWS
+#ifdef USE_SDL2
+	    "SDL2"
+#elif defined(WINDOWS)
 	    "WINDOWS"
 #else /* Assume POSIX */
 	    "POSIX"
@@ -355,6 +382,11 @@ void version_build() {
 	    ));
 
 	longVersion = string_make(temp);
+
+#ifdef USE_SDL2
+	os_version = SDL_GetPlatform();
+	return;
+#endif
 
 	/* Get OS version too */
 	path_build(buf, 1024, os_temp_path, "__osname");

@@ -1,0 +1,282 @@
+# $Id$
+# File: makefile.sdl2.mingw
+
+# This is not a very "nice" Makefile, but it usually works.
+
+#
+# This file allows compiling TomeNET binaries for the Windows platform using the MinGW cross-compiler running on Linux.
+#
+# You must install the MinGW cross compiler and Wine first. Wine is used for running tolua.exe during compilation.
+#
+# Also you need to install the headers for SDL 1.2, SDL_mixer, SDL_ttf and SDL_net in your cross compiling environment.
+#
+
+
+# --------------------------------- READ THIS ---------------------------------
+#
+# Flags:
+#
+#  - USE_SDL2 - Required for all SDL2 clients, uses SDL2 and SDL2_ttf libraries. Is set as default.
+#
+#  - SOUND_SDL - Optional, using SDL2_mixer library and provides SDL sound/music support. Is set as default.
+#
+#  - SDL2_CURL - Optional, using curl & openssl libraries for guide checks. Is currently off, due to crashes. Use `make -sdl2_curl_ssl` to force enable.
+#
+#
+
+
+#
+# The SDL2 client "object" files.
+#
+CLI_OBJS = \
+  common/z-util.o common/z-virt.o common/z-form.o common/z-rand.o \
+  common/net-sdl2.o common/sockbuf.o common/common.o \
+  client/z-term.o client/c-util.o client/c-cmd.o client/c-inven.o \
+  client/c-files.o client/c-tables.o client/c-store.o client/c-init.o \
+  client/variable.o client/main-sdl2.o client/nclient.o client/client.o \
+  client/c-birth.o client/c-xtra1.o client/c-xtra2.o client/c-spell.o \
+  client/skills.o common/files.o common/SFMT.o client/snd-sdl.o \
+  common/tables.o common/md5.o
+
+CLI_LUAOBJS = \
+  client/c-script.o client/lua_bind.o \
+  client/w_play.o client/w_util.o client/w_spells.o
+
+#
+# The TOLUA compiler "object" files.
+#
+# TODO: lua directory should be under common/ and not server/
+TOLUAOBJS = \
+  server/lua/lapi.o server/lua/lcode.o server/lua/ldebug.o server/lua/ldo.o server/lua/lfunc.o server/lua/lgc.o \
+  server/lua/llex.o server/lua/lmem.o server/lua/lobject.o server/lua/lparser.o server/lua/lstate.o server/lua/lstring.o \
+  server/lua/ltable.o server/lua/ltests.o server/lua/ltm.o server/lua/lundump.o server/lua/lvm.o server/lua/lzio.o \
+  server/lua/lauxlib.o server/lua/lbaselib.o server/lua/ldblib.o server/lua/liolib.o server/lua/lstrlib.o \
+  server/lua/tolua_lb.o server/lua/tolua_rg.o server/lua/tolua_tt.o server/lua/tolua_tm.o server/lua/tolua_gp.o \
+  server/lua/tolua_eh.o server/lua/tolua_bd.o server/lua/lmathlib.o
+
+
+#
+# Following are some "system" definitions
+#
+# No changes are needed to compile a version that will run on
+# SDL2, in debugging mode, with maximal warnings, on many
+# normal Unix machines.
+#
+# To use an "alternative" definition, simply "modify" (or "replace")
+# the definition below with one that you like.  For example, you can
+# change the compiler to "cc", or remove the "debugging" options, or
+# remove the sound or guide check support, etc, as desired.
+#
+# See also "config.h" and "h-config.h" for important information.
+#
+# Some "examples" are given below, they can be used by simply
+# removing the FIRST column of "#" signs from the "block" of lines
+# you wish to use, and commenting out "standard" block below.
+#
+# This is not intended to be a "good" Makefile, just a "simple" one.
+#
+
+
+#
+# MinGW toolchain target name
+#
+# You many need to change this depending on your setup.
+MINGW_TARGET = i686-w64-mingw32
+
+
+#
+# Default C compiler for client, tolua, preproc and object files
+#
+CC = $(MINGW_TARGET)-gcc
+
+
+#
+# Binaries for generating configurating flags and libraries.
+#
+PKG_CONFIG = $(MINGW_TARGET)-pkg-config
+SDL_CONFIG = /usr/$(MINGW_TARGET)/bin/sdl2-config
+SDL_CFLAGS = $(shell $(SDL_CONFIG) --cflags)
+SDL_LIBS = $(shell $(SDL_CONFIG) --libs)
+
+
+#
+# Common flags and libraries.
+#
+# Note: Removing the MINGW flag, linking fails although everything compiles. The regex library probably calls a 'index' function, which is not available until the flag is used.
+COMMON_FLAGS = -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501 -DMINGW $(SDL_CFLAGS) -DSOUND_SDL -DUSE_SDL2
+LIBS = -lregex $(SDL_LIBS) -lSDL2_mixer -lSDL2_ttf -lSDL2_net
+
+
+#
+# Check for libcurl and openssl libraries and set flags according.
+#
+CURL_LDFLAGS = $(shell $(PKG_CONFIG) --libs libcurl 2>/dev/null)
+SSL_LDFLAGS = $(shell $(PKG_CONFIG) --libs openssl 2>/dev/null)
+ifneq ($(and $(sdl2_curl_ssl), $(CURL_LDFLAGS), $(SSL_LDFLAGS)),)
+  CFLAGS += -DSDL2_CURL_SSL
+  LIBS += $(CURL_LDFLAGS) $(SSL_LDFLAGS)
+else
+  # NOTE: Client compiled with curl & ssl currently crashes under wine. If you want to try if it's still crashing, define the "sdl2_curl_ssl" variable (example: make -f makefile.sdl2.mingw tomenet.exe sdl2_curl_ssl=1).
+  $(info Building without -DSDL2_CURL_SSL)
+  ifeq ($(CURL_LDFLAGS),)
+    $(warning Warning: libcurl not found, SDL2_CURL_SSL will not be enabled)
+  endif
+  ifeq ($(SSL_LDFLAGS),)
+    $(warning Warning: openssl not found, SDL2_CURL_SSL will not be enabled)
+  endif
+endif
+
+
+# Optional: Compile with Link Time Optimization (LTO)
+#COMMON_FLAGS += -flto=auto
+
+# Optional: Catch memory errors with AddressSanitizer
+#COMMON_FLAGS += -fsanitize=address -fno-omit-frame-pointer
+
+# Optional: Catch bugs with UndefinedBehaviorSanitizer
+#COMMON_FLAGS += -fsanitize=undefined -fno-omit-frame-pointer
+
+# Reduce warnings
+#COMMON_FLAGS += -Wno-format-overflow
+
+
+#
+# Lua convertor and flags
+#
+TOLUA = server/tolua.exe
+COMMON_FLAGS += -Iserver -Iserver/lua
+
+
+#
+# Default CPP compiler and flags for usage with the preprocessor
+#
+CPP = $(MINGW_TARGET)-gcc
+CPPFLAGS = -x c -E -Wp,-C,-P,-nostdinc
+
+# Native Linux gcc for compiling preproc.
+# Todo actually: Fix this to allow preproc-win.c -> preproc.exe compilation and use,
+# currently preproc.exe couldn't access the CPP from within wine environment.
+NCC = gcc
+
+
+
+#
+# Rules
+#
+all: tomenet.exe
+	@echo Now you need to copy the binaries out of the src directory or run \"make install\".
+
+
+install: all
+	install -b tomenet.exe ..
+
+
+date:
+	touch common/common.c
+
+
+#
+# Rules for building the TomeNET SDL2 (test) client
+#
+# Compiler for lient gets additional security hardening flags (linker too)
+tomenet.exe: CFLAGS = -Djezek_t $(COMMON_FLAGS) -D_FORTIFY_SOURCE=2 -O2
+tomenet.exe: $(CLI_OBJS) $(CLI_LUAOBJS) $(TOLUAOBJS)
+	$(CC) $(CFLAGS) -mwindows -o tomenet.exe $(CLI_OBJS) $(CLI_LUAOBJS) $(TOLUAOBJS) $(LIBS)
+
+# No security hardening for test client
+tomenet.test.exe: CFLAGS = -Djezek_tt $(COMMON_FLAGS) -DTEST_CLIENT -O0
+tomenet.test.exe: CPPFLAGS = -DTEST_CLIENT
+tomenet.test.exe: $(CLI_OBJS) $(CLI_LUAOBJS) $(TOLUAOBJS)
+	$(CC) $(CFLAGS) -mwindows -o tomenet.exe $(CLI_OBJS) $(CLI_LUAOBJS) $(TOLUAOBJS) $(LIBS)
+
+
+#
+# Rulea for building the tolua convertor
+#
+#TODO We don't need SDL for lua, so keep it simple..
+#$(TOLUA): CFLAGS = -Djezek_tl $(COMMON_FLAGS)
+$(TOLUA): CFLAGS = -Djezek_tl -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501
+$(TOLUA): LIBS =
+$(TOLUA): $(TOLUAOBJS) server/lua/tolua.c server/lua/tolualua.c
+	$(CC) $(CFLAGS) -o $@ $(TOLUAOBJS) server/lua/tolua.c server/lua/tolualua.c $(LIBS)
+
+
+#
+# Rules for building the custom LUA preprocessor
+#
+#TODO jezek - no flags needed for preprocessor
+#preproc/preproc: CFLAGS = -Djezek_pp $(COMMON_FLAGS)
+preproc/preproc: CFLAGS = -Djezek_pp
+preproc/preproc: preproc/preproc.o
+	$(NCC) $(CFLAGS) -o preproc/preproc preproc/preproc.o
+preproc/preproc.o: preproc/preproc.c
+	$(NCC) $(CFLAGS) -o preproc/preproc.o -c preproc/preproc.c
+
+
+##
+## Rule for making a "object" ('.o') file
+##
+%.o: %.c
+	$(CC) $(CFLAGS) -o $*.o -c $*.c
+
+
+#
+# Clean up old junk
+#
+clean:
+	cd server/lua; rm -f *.o
+	cd server; rm -f *.o w_play.c w_util.c w_spells.c *.pkg
+	cd client; rm -f *.o w_play.c w_util.c w_spells.c *.pkg
+	cd common; rm -f *.o w_z_pack.c
+	cd console; rm -f *.o
+	rm -f preproc/preproc.o
+
+
+#
+# Clean a build all
+#
+re: clean all
+
+#
+# Lua library compilation rules
+#
+# Use preprocessor with CPP to generate .pkg files from .pre
+server/util.pkg: server/util.pre preproc/preproc
+	cd server; ../preproc/preproc util.pre util.pkg $(CPP) $(CPPFLAGS); cd ..
+
+server/player.pkg: server/player.pre preproc/preproc
+	cd server; ../preproc/preproc player.pre player.pkg $(CPP) $(CPPFLAGS); cd ..
+
+server/spells.pkg: server/spells.pre preproc/preproc
+	cd server; ../preproc/preproc spells.pre spells.pkg $(CPP) $(CPPFLAGS); cd ..
+
+client/util.pkg: client/util.pre preproc/preproc
+	cd client; ../preproc/preproc util.pre util.pkg $(CPP) $(CPPFLAGS); cd ..
+
+client/player.pkg: client/player.pre preproc/preproc
+	cd client; ../preproc/preproc player.pre player.pkg $(CPP) $(CPPFLAGS); cd ..
+
+client/spells.pkg: client/spells.pre preproc/preproc
+	cd client; ../preproc/preproc spells.pre spells.pkg $(CPP) $(CPPFLAGS); cd ..
+
+# Use TOLUA to generate .c files from .pkg
+server/w_util.c: server/util.pkg $(TOLUA)
+	cd server; wine ../$(TOLUA) -n util -o w_util.c util.pkg; cd ..
+
+server/w_play.c: server/player.pkg $(TOLUA)
+	cd server; wine ../$(TOLUA) -n player -o w_play.c player.pkg; cd ..
+
+server/w_spells.c: server/spells.pkg $(TOLUA)
+	cd server; wine ../$(TOLUA) -n spells -o w_spells.c spells.pkg; cd ..
+
+common/w_z_pack.c: common/z_pack.pkg $(TOLUA)
+	cd common; wine ../$(TOLUA) -n z_pack -o w_z_pack.c z_pack.pkg; cd ..
+
+client/w_play.c: client/player.pkg $(TOLUA)
+	cd client; wine ../$(TOLUA) -n player -o w_play.c player.pkg; cd ..
+
+client/w_util.c: client/util.pkg $(TOLUA)
+	cd client; wine ../$(TOLUA) -n util -o w_util.c util.pkg; cd ..
+
+client/w_spells.c: client/spells.pkg $(TOLUA)
+	cd client; wine ../$(TOLUA) -n spells -o w_spells.c spells.pkg; cd ..

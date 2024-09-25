@@ -135,10 +135,12 @@
 #if defined(_Windows) || defined(__WINDOWS__) || \
     defined(__WIN32__) || defined(WIN32) || \
     defined(__WINNT__) || defined(__NT__)
+# ifndef USE_SDL2
 # ifndef WINDOWS
 #  define WINDOWS
 #  define strcasecmp stricmp
 #  define strncasecmp strnicmp
+# endif
 # endif
 #endif
 /* Note: The client-side code for Windows often runs into the trouble of Wine/Win7/Win10/Win11 etc. behaving
@@ -169,7 +171,7 @@
  * Basically, SET_UID should *only* be set for "Unix" machines,
  * or for the "Atari" platform which is Unix-like, apparently
  */
-#if !defined(MACINTOSH) && !defined(WINDOWS) && \
+#if !defined(MACINTOSH) && !defined(WINDOWS) && !defined(USE_SDL2) && \
     !defined(MSDOS) && \
     !defined(AMIGA) && !defined(ACORN) && !defined(VM)
 # define SET_UID

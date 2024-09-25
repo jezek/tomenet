@@ -544,6 +544,7 @@ char	*host;
 int	port;
 #endif /* __STDC__ */
 {
+	fprintf(stderr, "jezek - CreateClientSocket() unix\n");
     int			fd;
 
 #ifdef UNIX_SOCKETS

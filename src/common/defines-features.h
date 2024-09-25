@@ -646,12 +646,23 @@
  #define GFXERR_FALLBACK
 #endif
 #if 1 /* actually make these constants always available for now, might need sorting out/cleaning up */
-//#ifdef GRAPHICS_BG_MASK
  /* Constants for use_graphics client setting */
  #define UG_NONE	0
  #define UG_NORMAL	1
- #define UG_2MASK	2
-//#endif
+ #ifdef GRAPHICS_BG_MASK
+  #define UG_2MASK	2
+ #endif
+
+ #ifdef USE_SDL2
+  /* Maximum number of masks per tile and tiles per coordinate. */
+  #ifdef GRAPHICS_BG_MASK
+   #define GRAPHICS_MAX_MPT 3
+   #define GRAPHICS_MAX_TPC 2
+  #else
+   #define GRAPHICS_MAX_MPT 2
+   #define GRAPHICS_MAX_TPC 1
+  #endif
+ #endif
 #endif
 
 /* Casino: Use custom/graphical visuals for Go stones, dice, etc. if player has custom mappings to allow it? */

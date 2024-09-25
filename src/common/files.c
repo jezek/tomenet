@@ -7,9 +7,21 @@
  */
 
 #ifdef WIN32
-#include <winsock.h> /* For htonl and ntohl */
+ #include <winsock.h> /* For htonl and ntohl */
+#elif defined(USE_SDL2)
+ #ifndef __MAKEDEPEND__
+  #include <SDL2/SDL.h>
+ #endif
+
+static inline uint32_t htonl(uint32_t hostlong) {
+    return SDL_SwapBE32(hostlong);
+}
+
+static inline uint32_t ntohl(uint32_t netlong) {
+    return SDL_SwapBE32(netlong);
+}
 #else
-#include <arpa/inet.h> /* For htonl and ntohl */
+ #include <arpa/inet.h> /* For htonl and ntohl */
 #endif
 
 #include "angband.h"
@@ -420,7 +432,7 @@ int local_file_init(int ind, unsigned short fnum, char *fname) {
 	c_fd->state = FS_READY;
 	c_fd->chunksize = OLD_TNF_SEND;	/* doesn't matter when receiving, use the old value of MAX_TNF_SEND */
 	if (c_fd->fp) {
-#ifndef __MINGW32__
+#if defined(MINGW) || defined(USE_SDL2)
 		unlink(tname);		/* don't fill up /tmp */
 #endif
 		c_fd->id = fnum;
@@ -449,7 +461,7 @@ int local_file_write(int ind, unsigned short fnum, unsigned long len) {
 	if (fwrite(&c_fd->buffer, 1, len, c_fd->fp) < len) {
 		fprintf(stderr, "Error: fwrite failed in local_file_write\n");
 		fclose(c_fd->fp);	/* close & remove temp file */
-#ifdef __MINGW32__
+#if defined(MINGW) || defined(USE_SDL2)
 		unlink(c_fd->tname);	/* remove it on Windows OS */
 #endif
 		remove_ft(c_fd);
@@ -489,7 +501,7 @@ int local_file_close(int ind, unsigned short fnum) {
 	} else success = 0;
 
 	fclose(c_fd->fp);	/* close & remove temp file */
-#ifdef __MINGW32__
+#if defined(MINGW) || defined(USE_SDL2)
 	unlink(c_fd->tname);	/* remove it on Windows OS */
 #endif
 	remove_ft(c_fd);

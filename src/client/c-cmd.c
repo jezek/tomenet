@@ -6802,7 +6802,7 @@ bool png_screenshot(void) {
 #ifdef WINDOWS
 	char path[1024], *c = path, *c2, tmp[1024], executable[1024];
 #endif
-#if !defined(WINDOWS) && !defined(USE_X11)
+#if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
 	/* Neither WINDOWS nor USE_X11 */
 	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an X11 or Windows system.");
 	return(FALSE);
@@ -7008,7 +7008,7 @@ bool png_screenshot(void) {
 	return(FALSE);
 #endif
 
-#ifdef USE_X11
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
 	/* Use chrome, chromium or firefox to create a png screenshot from xhtml
 	   We prefer chrome/chromium since it allows setting background to transparent (or black) instead of white.
 	   BIG_MAP: 640x750, normal map: 640x420.  - C. Blue */
@@ -7352,7 +7352,7 @@ static void cmd_notes(void) {
  * it sends a letter in place of cur_line...		- Jir -
  */
 //(Linux file managers: Dolphin, Konqueror, Thunar, Caja, Nautilus, Nemo /// generic desktop environments: xdg-open)
-#if defined(USE_X11)
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
  /* '&' for async - actually not needed on X11 though, program will still continue to execute
     because xdg-open spawns the file manager asynchronously and returns right away */
  #ifdef OSX
@@ -7377,10 +7377,10 @@ void cmd_check_misc(void) {
 	int row, res;
 	/* suppress hybrid macros in some submenus */
 	bool inkey_msg_old, uniques, redraw = TRUE;
-#if defined(USE_X11) || defined(WINDOWS)
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 	char path[1024];
 #endif
-#ifdef USE_X11
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
 	FILE *fp;
 	char buf[MAX_CHARS];
 #endif
@@ -7449,11 +7449,11 @@ void cmd_check_misc(void) {
 			Term_putstr( 5, row + 1,   -1, TERM_WHITE, "    a PNG and leave this menu:");
 			Term_putstr( 5, row + 2,   -1, TERM_WHITE, format("    %s", screenshot_filename[0] ? screenshot_filename : "- no screenshot taken -"));
 			Term_putstr(40, row, -1, TERM_WHITE, "(\377oC\377w) Edit the current config file:");
-#ifdef USE_X11
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
 #endif
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 			/* The ini file contains a long path (unlike mangrc_filename), so use two lines for it.. */
 			if (strlen(ini_file) <= 35)
 				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", ini_file));
@@ -7620,7 +7620,7 @@ void cmd_check_misc(void) {
 			cmd_message();
 			break;
 
-#if defined(USE_X11) || defined(WINDOWS)
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 		case 'T': FILEMAN("."); break;
 		case 'U': FILEMAN(ANGBAND_DIR_USER); break;
 		case 'S':
@@ -7676,7 +7676,7 @@ void cmd_check_misc(void) {
 			if (png_screenshot()) i = ESCAPE; /* quit knowledge menu on success */
 			break;
 		case 'C':
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 			//FILEMAN(ini_file);
 			{
 			/* check registry for default text editor: HKEY_CLASSES_ROOT\txtfile\shell\open\command */
@@ -7716,7 +7716,7 @@ void cmd_check_misc(void) {
 			}
 			}
 #endif
-#ifdef USE_X11
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
 			{
 			//system(format("xdg-open %s &", mangrc_filename));
 			//FILEMAN(mangrc_filename);

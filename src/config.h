@@ -469,7 +469,7 @@
 /*
  * OPTION: Allow the use of "graphics" in various places
  */
-#if defined(USE_X11) || defined(WINDOWS) || !defined(CLIENT_SIDE) /* the server must always be able to handle use-graphics clients. Why does it even work w/o this -_-? */
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2) || !defined(CLIENT_SIDE) /* the server must always be able to handle use-graphics clients. Why does it even work w/o this -_-? */
  #define USE_GRAPHICS
 #endif
 
@@ -607,6 +607,25 @@
 #define DEFAULT_X11_FONT_TERM_7		DEFAULT_X11_FONT
 #define DEFAULT_X11_FONT_TERM_8		DEFAULT_X11_FONT
 #define DEFAULT_X11_FONT_TERM_9		DEFAULT_X11_FONT
+
+/*
+ * OPTION: Default font (when using SDL2).
+ */
+#define DEFAULT_SDL2_FONT		"Hack-Regular.ttf 12"
+
+/*
+ * OPTION: Default fonts (when using SDL2)
+ */
+#define DEFAULT_SDL2_FONT_TERM_MAIN		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_1		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_2		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_3		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_4		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_5		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_6		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_7		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_8		DEFAULT_SDL2_FONT
+#define DEFAULT_SDL2_FONT_TERM_9		DEFAULT_SDL2_FONT
 
 
 
@@ -849,4 +868,12 @@
  #endif
  /* Fix weird glitch in GCU with hacky workaround insanity */
  #define META_DISPLAYPINGS_LATER
+#endif
+
+/*
+ * SDL2 definitions
+ */
+#ifdef USE_SDL2
+ #define SDL2_ORG_NAME "TomenetGame"
+ #define SDL2_GAME_NAME "tomenet"
 #endif

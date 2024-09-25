@@ -102,7 +102,7 @@ bool check_dir2(cptr s) {
 	}
 }
 
-#ifndef WINDOWS
+#if defined(USE_SDL2) || !defined(WINDOWS)
 static void validate_dir(cptr s) {
 	/* Verify or fail */
 	if (!check_dir2(s))
@@ -112,10 +112,10 @@ static void validate_dir(cptr s) {
 /*
  * Initialize and verify the file paths.
  *
- * Use the ANGBAND_PATH environment var if possible, else use
+ * Use the TOMENET_PATH environment var if possible, else use
  * DEFAULT_PATH, and in either case, branch off appropriately.
  *
- * First, we'll look for the ANGBAND_PATH environment variable,
+ * First, we'll look for the TOMENET_PATH environment variable,
  * and then look for the files in there.  If that doesn't work,
  * we'll try the DEFAULT_PATH constant.  So be sure that one of
  * these two things works...
@@ -133,6 +133,9 @@ void init_stuff(void) {
 	strcpy(path, "TomeNET:");
  #else /* All systems except Amiga / VM: */
 	/* Change current directory to the location of the binary - mikaelh */
+  #if defined(USE_SDL2)
+	if (chdir(SDL2_GAME_PATH) == -1) plog_fmt("init_stuff: chdir(\"%s\") failed", SDL2_GAME_PATH);
+  #else
 	if (argv0) {
 		char *app_path = strdup(argv0);
 		char *app_dir;
@@ -143,6 +146,7 @@ void init_stuff(void) {
 
 		free(app_path);
 	}
+  #endif
 	/* Obtain our path */
 	if (!strlen(path)) {
 		cptr tail;
@@ -155,7 +159,11 @@ void init_stuff(void) {
 	}
 
 	/* Hack -- Add a path separator (only if needed) */
+  #if defined(USE_SDL2)
+	if (!suffix(path, SDL2_PATH_SEP)) strcat(path, SDL2_PATH_SEP);
+  #else
 	if (!suffix(path, PATH_SEP)) strcat(path, PATH_SEP);
+  #endif
 
 	/* Validate the path */
 	validate_dir(path);
@@ -3103,7 +3111,7 @@ static void Input_loop(void) {
 #if 0 /* 0: moved to a hack 'fix_custom_font_after_startup'. */
 	/* requires in_game == TRUE in handle_process_font_file() */
 	/* ---- TODO: A little order glitch, that we workaround here - should fix this in a cleaner manner probably: ----     - C. Blue
-	        The visual modules (init_x11() / init_gcu() / init_windows()) are loaded BEFORE client_init() is called.
+	        The visual modules (init_x11() / init_gcu() / init_windows() / init_sdl2()) are loaded BEFORE client_init() is called.
 	        That means the init_stuff()->init_file_paths() has't been done yet, and and custom fonts won't initialize their
 	        custom mapping .prf files either. Also, custom fonts are apparently reset even if this is put as far down as
 	        into Input_loop() (after client_init() has finished already), so for now until someone sorts this out cleanly,
@@ -3183,8 +3191,11 @@ static void Input_loop(void) {
 		 */
 		update_ticks();
 
+/* Don't flush events in SDL2. Flushing it will fail to register some key presses. */
+#ifndef USE_SDL2
 		/* Flush input (now!) */
 		flush_now();
+#endif
 
 		/* Redraw windows if necessary */
 		window_stuff();
@@ -3575,7 +3586,7 @@ void client_init(char *argv1, bool skip) {
 	FILE *fp;
 	char buf[1024];
 
-#if defined(USE_X11) || defined(USE_GCU)
+#if defined(USE_X11) || defined(USE_GCU) || defined(USE_SDL2)
 	/* Force creation of fresh .tomenetrc file in case none existed yet.
 	   The reason we do it *right now* is that it generates visual glitches later
 	   and prevents plog() output from being displayed.
@@ -3617,6 +3628,7 @@ void client_init(char *argv1, bool skip) {
 	init_guide();
 
 	GetLocalHostName(host_name, 80);
+	fprintf(stderr, "jezek - client_init: host_name: %s\n", host_name);
 
 	/* Set the "quit hook" */
 	if (!quit_aux) quit_aux = quit_hook;
@@ -3723,6 +3735,7 @@ void client_init(char *argv1, bool skip) {
 
 	/* Capitalize the name */
 	nick[0] = toupper(nick[0]);
+	fprintf(stderr, "jezek - client_init: nick: %s\n", nick);
 
 	/* Create the net socket and make the TCP connection */
 	if ((Socket = CreateClientSocket(server_name, cfg_game_port)) == -1)
@@ -3773,6 +3786,8 @@ void client_init(char *argv1, bool skip) {
 			}
 			WSACleanup( );
 		}
+#elif defined(USE_SDL2)
+		//TODO jezek - This is new, figure out what to do here.
 #endif
 
 #if defined(USE_X11) || defined(USE_GCU)
@@ -3907,14 +3922,18 @@ again:
 		}
 		remove("__ipc");
  #endif
+#elif defined(USE_SDL2)
+		//TODO jezek - This is new, figure out what to do here.
 #endif
 	}
 
+	fprintf(stderr, "jezek - client_init: Socket: %u\n", Socket);
 	/* Create a socket buffer */
 	if (Sockbuf_init(&ibuf, Socket, CLIENT_SEND_SIZE,
 	    SOCKBUF_READ | SOCKBUF_WRITE) == -1) {
 		quit("No memory for socket buffer\n");
 	}
+	fprintf(stderr, "jezek - client_init: Sockbuf_init\n");
 
 	/* Clear it */
 	Sockbuf_clear(&ibuf);
@@ -3922,15 +3941,21 @@ again:
 	/* Extended version */
 	if (server_protocol >= 2) version = 0xFFFFU;
 
+	fprintf(stderr, "jezek - client_init: version: %u\n", version);
+	fprintf(stderr, "jezek - client_init: before1 ibuf.len: %d\n", ibuf.len);
 	/* Put the contact info in it */
 	Packet_printf(&ibuf, "%u", magic);
+	fprintf(stderr, "jezek - client_init: before2 ibuf.len: %d\n", ibuf.len);
 	Packet_printf(&ibuf, "%s%hu%c", real_name, GetPortNum(ibuf.sock), 0xFF);
+	fprintf(stderr, "jezek - client_init: before3 ibuf.len: %d\n", ibuf.len);
 	Packet_printf(&ibuf, "%s%s%hu", nick, host_name, version);
+	fprintf(stderr, "jezek - client_init: before4 ibuf.len: %d\n", ibuf.len);
 
 	/* Extended version */
 	if (server_protocol >= 2)
 		Packet_printf(&ibuf, "%d%d%d%d%d%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_EXTRA, VERSION_BRANCH, VERSION_BUILD + (VERSION_OS) * 1000000);
 
+	fprintf(stderr, "jezek - client_init: before ibuf.len: %d\n", ibuf.len);
 	/* Connect to server */
 #ifdef UNIX_SOCKETS
 	if ((DgramConnect(Socket, server_name, cfg_game_port)) == -1)
@@ -3940,6 +3965,7 @@ again:
 	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len) == -1))
 		quit("Couldn't send contact information\n");
 
+	fprintf(stderr, "jezek - client_init: after ibuf.len: %d\n", ibuf.len);
 	/* Listen for reply */
 	for (retries = 0; retries < 10; retries++) {
 		/* Set timeout */

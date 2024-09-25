@@ -58,6 +58,11 @@
 # endif
 #endif
 
+#if defined(USE_SDL2)
+ #include <unistd.h>
+#endif
+
+
 #ifdef AMIGA
 # include <pwd.h>
 #endif
@@ -119,7 +124,7 @@ extern char *strrchr();
 
 
 
-#if !defined(linux) && !defined(__MWERKS__) && !defined(ACORN) && !defined(USE_GCU) && !defined(USE_X11) && !defined(__FreeBSD__)
+#if !defined(linux) && !defined(__MWERKS__) && !defined(ACORN) && !defined(USE_GCU) && !defined(USE_X11) && !defined(__FreeBSD__) && !defined(USE_SDL2)
 extern long atol();
 #endif
 

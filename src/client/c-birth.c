@@ -2013,7 +2013,6 @@ void get_char_name(void) {
 	c_put_str(TERM_L_BLUE, nick, LOGIN_ROW + 4, 15);
 #endif
 
-
 	/* Display some helpful information XXX XXX XXX */
 
 	/* Enter both name and password */

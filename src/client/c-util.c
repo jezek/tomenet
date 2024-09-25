@@ -153,10 +153,12 @@ int usleep(huge microSeconds) {
 #endif /* SET_UID */
 
 #ifdef WIN32
+ #ifndef USE_SDL2
 int usleep(long microSeconds) {
 	Sleep(microSeconds / 1000); /* meassured in milliseconds not microseconds*/
 	return(0);
 }
+ #endif
 #endif /* WIN32 */
 
 
@@ -2066,7 +2068,7 @@ static void c_prt_n(byte attr, char *str, int y, int x, int n) {
 	Term_putstr(x, y, -1, attr, tmp);
 }
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 /* Helper function for copy_to_clipboard */
 static void extract_url(char *buf_esc, char *buf_prev, int end_of_name) {
 	char *c, *c2, *be = NULL;
@@ -2249,7 +2251,7 @@ void copy_to_clipboard(char *buf, bool chat_input) {
 	strcpy(buf_prev, buf_esc);
 #endif
 
-#ifdef USE_X11 /* relies on xclip being installed! */
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) ) /* relies on xclip being installed! */
 	int r, pos = 0, end_of_name = 0;
 	char *c, *c2, buf_esc[MSG_LEN + 10]; //+10: room for turning '/' occurances into '//'
 	static char buf_prev[MSG_LEN + 10];
@@ -2330,7 +2332,7 @@ void copy_to_clipboard(char *buf, bool chat_input) {
    'global': paste goes to global chat (including /say and /whisper)? (not private/party/guild/floor chat) -
    For the latter four the line already started with a ':' for the chat prefix and we don't need to duplicate the first ':' anymore. */
 bool paste_from_clipboard(char *buf, bool global) {
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	bool no_slash_command;
 	int pos = 0;
 	char *c, *c2, buf_esc[MSG_LEN + 15];
@@ -2386,7 +2388,7 @@ bool paste_from_clipboard(char *buf, bool global) {
 	return(TRUE);
 #endif
 
-#ifdef USE_X11 /* relies on xclip being installed! */
+#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) ) /* relies on xclip being installed! */
 	FILE *fp;
 	int r;
 	char buf_line[MSG_LEN];
@@ -10295,7 +10297,7 @@ void options_immediate(bool init) {
 	static bool changed7, changed8;
 	static bool changed9a, changed9b, changed9c, changed9d;
 
-#if !defined(WINDOWS) && !defined(USE_X11)
+#if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
 	/* Assume GCU-only client - terminal will break with "^B" visuals if font_map_solid_walls is on, so disable it always: */
 	if (c_cfg.font_map_solid_walls) {
 		c_msg_print("\377yOption 'font_map_solid_walls' is not supported on GCU-only client.");
@@ -10935,7 +10937,7 @@ static void do_cmd_options_win(void) {
 }
 
 #ifdef ENABLE_SUBWINDOW_MENU
- #if defined(WINDOWS) || defined(USE_X11)
+ #if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
   #define MAX_FONTS 100
 
 //  #ifdef WINDOWS
@@ -10987,6 +10989,7 @@ static void do_cmd_options_fonts(void) {
 	int graphic_fonts = 0;
 
   #ifndef WINDOWS
+  //TODO jezek - Do we need x11_refresh with sdl2?
 	int x11_refresh = 50;
 	FILE *fff;
   #else
@@ -11028,7 +11031,8 @@ static void do_cmd_options_fonts(void) {
 	closedir(dir);
   #endif
 
-  #ifdef USE_X11 /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
+  //TODO jezek - TTF font detection for SDL2.
+  #if defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
 	if (fonts < MAX_FONTS) {
@@ -11155,7 +11159,7 @@ static void do_cmd_options_fonts(void) {
 
 			/* Display the font of this window */
 			if (c_cfg.use_color && !term_get_visibility(j)) a = TERM_L_DARK;
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont && win_logfont_get_aa(j)) sprintf(buf, "%-19s (antialiased)", get_font_name(j));
 			else
 #endif
@@ -11217,8 +11221,10 @@ static void do_cmd_options_fonts(void) {
 			strcpy(ang_term_name[y], tmp_name);
 
 			/* Immediately change live window title */
-#ifdef WINDOWS
+#if defined(WINDOWS) && !defined(USE_SDL2)
 			set_window_title_win(y, ang_term_name[y]);
+#elif defined(USE_SDL2)
+			set_window_title_sdl2(y, ang_term_name[y]);
 #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
 #endif
@@ -11242,8 +11248,10 @@ static void do_cmd_options_fonts(void) {
 			}
 
 			/* Immediately change live window title */
-#ifdef WINDOWS
+#if defined(WINDOWS) && !defined(USE_SDL2)
 			set_window_title_win(y, ang_term_name[y]);
+#elif defined(USE_SDL2)
+			set_window_title_sdl2(y, ang_term_name[y]);
 #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
 #endif
@@ -11265,15 +11273,17 @@ static void do_cmd_options_fonts(void) {
 			/* Immediately change live window title */
 			for (j = 0; j < ANGBAND_TERM_MAX; j++) {
 				Term_putstr(1, vertikal_offset + j, -1, TERM_DARK, "                                       ");
-#ifdef WINDOWS
+#if defined(WINDOWS) && !defined(USE_SDL2)
 				set_window_title_win(j, ang_term_name[j]);
+#elif defined(USE_SDL2)
+				set_window_title_sdl2(j, ang_term_name[j]);
 #else /* assume POSIX */
 				set_window_title_x11(j, ang_term_name[j]);
 #endif
 			}
 			break;
 
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 		case '.':
 			if (use_logfont) win_logfont_inc(y, FALSE);
 			else bell();
@@ -11281,7 +11291,7 @@ static void do_cmd_options_fonts(void) {
 #endif
 		case '=':
 		case '+':
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_inc(y, TRUE);
 				break;
@@ -11314,14 +11324,14 @@ static void do_cmd_options_fonts(void) {
 			}
 			break;
 
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 		case ',':
 			if (use_logfont) win_logfont_dec(y, FALSE);
 			else bell();
 			break;
 #endif
 		case '-':
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_dec(y, TRUE);
 				break;
@@ -11355,7 +11365,7 @@ static void do_cmd_options_fonts(void) {
 			break;
 
 		case '\r':
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter new size in format '<width>x<height>' (eg \"9x15\"):");
 				Term_gotoxy(0, 21);
@@ -11426,7 +11436,7 @@ static void do_cmd_options_fonts(void) {
 			c_message_add(""); //linefeed
 			break;
 
-#if defined(WINDOWS) && defined(USE_LOGFONT)
+#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 		case 'L':
 			/* We cannot live-change 'use_logfont' itself, as that'd render the client effectively frozen, just toggle the ini setting for next startup: */
 			use_logfont_ini = !use_logfont_ini;
@@ -11765,7 +11775,7 @@ static void do_cmd_options_tilesets(void) {
 
 	check_for_playerlist();
 }
- #endif /* WINDOWS || USE_X11 */
+ #endif /* defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2) */
 #endif /* ENABLE_SUBWINDOW_MENU */
 
 #ifdef USE_SOUND_2010
@@ -12245,6 +12255,12 @@ static void do_cmd_options_install_audio_packs(void) {
 		inkey();
 		return;
 	}
+#elif(USE_SDL2)
+	//TODO jezek - Unzip somehow!.
+	Term_putstr(0, 1, -1, TERM_RED, "SDL2 client doesn't support unzipping yet.");
+	Term_putstr(0, 9, -1, TERM_WHITE, "Press any key to return to options menu...");
+	inkey();
+	return;
 #else /* assume posix */
 	fff = fopen("tmp", "w");
 	fclose(fff);
@@ -12574,6 +12590,8 @@ static void do_cmd_options_install_audio_packs(void) {
 	Term_putstr(0, 6, -1, TERM_ORANGE, "That pack wants to install to this target folder. Is that ok? (y/n):");
 #ifdef WINDOWS
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s\\%s'", ANGBAND_DIR_XTRA, ins_path));
+#elif defined(USE_SDL2)
+	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s%s%s'", ANGBAND_DIR_XTRA, SDL2_PATH_SEP, ins_path));
 #else
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s/%s'", ANGBAND_DIR_XTRA, ins_path));
 #endif
@@ -12603,6 +12621,9 @@ static void do_cmd_options_install_audio_packs(void) {
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-p\"%s\"", password), format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
+#elif defined(USE_SDL2)
+		//TODO jezek - Extract somehow.
+		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Sound pack not correctly installed!");
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -12635,6 +12656,9 @@ static void do_cmd_options_install_audio_packs(void) {
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-p\"%s\"", password), format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
+#elif defined(USE_SDL2)
+		//TODO jezek - Extract somehow.
+		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Music pack not correctly installed!");
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -12735,11 +12759,11 @@ static void do_cmd_options_colourblindness(void) {
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yt\377w) Set palette to Tritanopia colours");
 			l++;
 
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current INI file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current INI file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", ini_file));
-#elif USE_X11
+#elif defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current rc-file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current rc-file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", mangrc_filename));
@@ -12878,11 +12902,13 @@ static void do_cmd_options_colourblindness(void) {
 			for (i = 0; i < CLIENT_PALETTE_SIZE; i++) {
 				client_color_map[i] = client_color_map_org[i];
 				if ((i == 6 || i == BASE_PALETTE_SIZE + 6) && lighterdarkblue && client_color_map[i] == 0x0000ff)
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 					enable_readability_blue_win();
 #else
  #ifdef USE_X11
 					enable_readability_blue_x11();
+ #elif defined(USE_SDL2)
+					enable_readability_blue_sdl2();
  #else
 					enable_readability_blue_gcu();
  #endif
@@ -12921,7 +12947,7 @@ static void do_cmd_options_colourblindness(void) {
 
 		case 's':
 			if (!c_cfg.palette_animation) continue;
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
  #ifndef CUSTOMIZE_COLOURS_FREELY
 			for (i = 1; i < BASE_PALETTE_SIZE; i++) {
  #else
@@ -12945,11 +12971,13 @@ static void do_cmd_options_colourblindness(void) {
 			for (i = 0; i < CLIENT_PALETTE_SIZE; i++) {
 				client_color_map[i] = client_color_map_org[i];
 				if ((i == 6 || i == BASE_PALETTE_SIZE + 6) && lighterdarkblue && client_color_map[i] == 0x0000ff)
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 					enable_readability_blue_win();
 #else
  #ifdef USE_X11
 					enable_readability_blue_x11();
+ #elif defined(USE_SDL2)
+					enable_readability_blue_sdl2();
  #else
 					enable_readability_blue_gcu();
  #endif
@@ -13008,7 +13036,7 @@ void do_cmd_options(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y1\377w-\377y5\377w)   User interface options (Base+Vis/Visuals/Format/Notifications/Messages)");
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y6\377w-\377y7\377w)   Audio options (SFX+Music/Paging+OS)");
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y8\377w-\377y0\377w)   Gameplay options (Actions+Safety/Disturbances/Items)");
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 		Term_putstr(1, l++, -1, TERM_WHITE, format("(\377yw\377w/\377yE\377w)  Window flags / %s%s",
 		    disable_CS_IME ? "Force IME on" : (enable_CS_IME ? "Auto-IME" : "Force IME off"),
 		    (disable_CS_IME || enable_CS_IME) ? "" : (suggest_IME ? " (Currently Auto-ON)" : " (Currently Auto-OFF)")));
@@ -13027,9 +13055,9 @@ void do_cmd_options(void) {
 		if (strcmp(ANGBAND_SYS, "gcu")) {
 			Term_putstr(1, l++, -1, TERM_WHITE, "(\377oT\377w)     Save current window, positions and sizes to current config file");
 
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", ini_file));
-#elif USE_X11
+#elif defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", mangrc_filename));
 #else
 			l++; //paranoia
@@ -13052,7 +13080,7 @@ void do_cmd_options(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377yn\377w/\377yN\377w) Jukebox, listen to and disable/reenable specific sound effects/music");
 #endif
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		/* Font (and window) settings aren't available in command-line mode */
 		if (strcmp(ANGBAND_SYS, "gcu")) {
  #ifdef ENABLE_SUBWINDOW_MENU
@@ -13197,10 +13225,10 @@ void do_cmd_options(void) {
 				c_message_add("\377ySorry, windows are not available in the GCU (command-line) client.");
 				continue;
 			}
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 			save_term_data_to_term_prefs();
 			c_msg_format("\377wSaved current configuration to %s.", ini_file);
-#elif USE_X11
+#elif defined(USE_X11) || defined(USE_SDL2)
 			all_term_data_to_term_prefs();
 			write_mangrc(FALSE, FALSE, FALSE);
 			c_msg_format("\377wSaved current configuration to %s.", mangrc_filename);
@@ -13326,7 +13354,8 @@ void do_cmd_options(void) {
 		else if (k == 'm') set_bigmap(0, FALSE);
 #endif
 
-#ifdef WINDOWS
+//TODO jezek - Search for WINDOWS and add !def USE_SDL2.
+#if defined(WINDOWS) && !defined(USE_SDL2)
 		else if (k == 'E') {
 			/* Cycle 3 steps in order: */
 			if (disable_CS_IME) { // force off? -> force on
@@ -13347,7 +13376,7 @@ void do_cmd_options(void) {
 		}
 #endif
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
  #ifdef ENABLE_SUBWINDOW_MENU
 		/* Change fonts separately and manually */
 		else if (k == 'f') do_cmd_options_fonts();
@@ -14747,7 +14776,7 @@ void audio_pack_selector(void) {
 		strcpy(cfg_musicpack_version, mp_version[cur_mp]);
 	}
 
-#ifdef WINDOWS
+#if !defined(USE_SDL2) && defined(WINDOWS)
 	store_audiopackfolders();
 #else /* assume POSIX */
 	write_mangrc(FALSE, FALSE, TRUE);
@@ -15051,6 +15080,10 @@ static void handle_process_graphics_file(void) {
 	 * there is no need to update graphics files after MAX_FONT_CHAR is changed. */
 	char_map_offset = MAX_FONT_CHAR + 1;
 	if (process_pref_file(fname) == -1) logprint(format("ERROR: Can't read graphics preferences file: %s\n", fname));
+ #if defined(USE_SDL2)
+	/* If the file is successfully processed, send info to SDL2 client. */
+	else sdl2_graphics_pref_file_processed();
+ #endif
 	char_map_offset = 0;
 
 	/* Initialize pseudo-features and pseudo-objects that don't exist in the game world but are just used for graphical tilesets */
@@ -15121,7 +15154,7 @@ void handle_process_font_file(void) {
 	char_map_offset = 0; //paranoia
 
 	/* Actually try to load a custom font-xxx.prf file, depending on the main screen font */
- #if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	get_term_main_font_name(fname);
  #endif
 	if (fname[0]) {

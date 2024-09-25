@@ -1551,6 +1551,7 @@ void do_cmd_check_players(int Ind, int line, char *srcstr) {
 		case OS_ANDROID: strcpy(version, "A\377-"); break;
 		case OS_IPHONE: strcpy(version, "I\377-"); break;
 		case OS_IPAD: strcpy(version, "P\377-"); break;
+		case OS_SDL2: strcpy(version, "S\377-"); break;
 		default: strcpy(version, "?\377-"); break;
 		}
 

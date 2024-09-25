@@ -90,6 +90,11 @@ char smarker1[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 
 char smarker2[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 char smarker3[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 char smarker4[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+#elif defined(USE_SDL2)
+char smarker1[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker2[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker3[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker4[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 //#else /* command-line client ("-c") doesn't draw either! */
 #endif
 void clear_huge_bars(void) {
@@ -174,7 +179,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 	switch ((c_cfg.mp_huge_bar ? 1 : 0) + (c_cfg.sn_huge_bar ? 1 : 0) + (c_cfg.hp_huge_bar ? 1 : 0) + (c_cfg.st_huge_bar ? 1 : 0)) {
 	case 1:
 		x = 3;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker1;
 		else
 #endif
@@ -182,7 +187,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 		break;
 	case 2:
 		x = 2 + (4 + 1) * pos;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker2;
 		else
 #endif
@@ -190,7 +195,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 		break;
 	case 3:
 		x = 1 + (3 + 1) * pos;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker3;
 		else
 #endif
@@ -274,11 +279,11 @@ void draw_huge_stun_bar(byte attr) {
 	/* Huge bars are only available in big_map mode */
 	if (screen_hgt != MAX_SCREEN_HGT) return;
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	if (!force_cui && c_cfg.solid_bars)
- #ifdef WINDOWS
+ #if defined(WINDOWS) && !defined(USE_SDL2)
 		c = FONT_MAP_SOLID_WIN;
- #elif defined(USE_X11)
+ #elif defined(USE_X11) || defined(USE_SDL2)
 		c = FONT_MAP_SOLID_X11;
  #endif
 	else
@@ -1631,8 +1636,8 @@ int Net_start(int sex, int race, int class) {
 	Sockbuf_clear(&wbuf);
 	Packet_printf(&wbuf, "%c", PKT_PLAY);
 
-#if defined(WINDOWS) || defined(USE_X11)
- #if defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
+ #if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 	if (use_logfont) sprintf(fname, "<LOGFONT>%dx%d", win_get_logfont_w(0), win_get_logfont_h(0));
 	else
  #endif
@@ -1677,6 +1682,7 @@ int Net_start(int sex, int race, int class) {
 	char32_t max_char = 0;
 	int limit;
 
+	fprintf(stderr, "jezek - Send redefinitions 1\n");
 	/* Send the "unknown" redefinitions */
 	for (i = 0; i < TV_MAX; i++) {
 		/* 4.8.1 and newer servers communicate using 32bit character size. */
@@ -3168,7 +3174,7 @@ int Receive_char(void) {
 		if (c == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c = '#';
 		if (c == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c = '*';
 	}
- #ifdef USE_X11
+ #if defined(USE_X11) || defined(USE_SDL2)
 	if (c == FONT_MAP_SOLID_WIN) c = FONT_MAP_SOLID_X11;
 	if (c == FONT_MAP_VEIN_WIN) c = FONT_MAP_VEIN_X11;
  #elif defined(WINDOWS)
@@ -3187,7 +3193,7 @@ int Receive_char(void) {
 		if (c_back == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c_back = '#';
 		if (c_back == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c_back = '*';
 	}
-  #ifdef USE_X11
+  #if defined(USE_X11) || defined(USE_SDL2)
 	if (c_back == FONT_MAP_SOLID_WIN) c_back = FONT_MAP_SOLID_X11;
 	if (c_back == FONT_MAP_VEIN_WIN) c_back = FONT_MAP_VEIN_X11;
   #elif defined(WINDOWS)
@@ -4237,7 +4243,7 @@ c_msg_format("RLI wx,wy=%d,%d; mmsx,mmsy=%d,%d, mmpx,mmpy=%d,%d, y_offset=%d", p
 				if (c == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c = '#';
 				if (c == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c = '*';
 			}
- #ifdef USE_X11
+ #if defined(USE_X11) || defined(USE_SDL2)
 			if (c == FONT_MAP_SOLID_WIN) c = FONT_MAP_SOLID_X11;
 			if (c == FONT_MAP_VEIN_WIN) c = FONT_MAP_VEIN_X11;
  #elif defined(WINDOWS)
@@ -4255,7 +4261,7 @@ c_msg_format("RLI wx,wy=%d,%d; mmsx,mmsy=%d,%d, mmpx,mmpy=%d,%d, y_offset=%d", p
 				if (c_back == FONT_MAP_SOLID_X11 || c_back == FONT_MAP_SOLID_WIN) c_back = '#';
 				if (c_back == FONT_MAP_VEIN_X11 || c_back == FONT_MAP_VEIN_WIN) c_back = '*';
 			}
-  #ifdef USE_X11
+  #if defined(USE_X11) || defined(USE_SDL2)
 			if (c_back == FONT_MAP_SOLID_WIN) c_back = FONT_MAP_SOLID_X11;
 			if (c_back == FONT_MAP_VEIN_WIN) c_back = FONT_MAP_VEIN_X11;
   #elif defined(WINDOWS)
@@ -5738,6 +5744,7 @@ int Receive_pause(void) {
 	Term_fresh();
 
 	/* Flush any pending keystrokes */
+	if (Term->keys->length) fprintf(stderr, "Receive_pause\n");
 	Term_flush();
 
 	/* Wait */
@@ -8386,6 +8393,7 @@ int Send_client_setup(void) {
 
 	char32_t max_char = 0;
 
+	fprintf(stderr, "jezek - Send redefinitions 2\n");
 	/* Send the "unknown" redefinitions */
 	for (i = 0; i < TV_MAX; i++) {
 		/* 4.8.1 and newer servers communicate using 32bit character size. */
@@ -8517,7 +8525,7 @@ int Send_font(void) {
 	if (is_older_than(&server_version, 4, 8, 1, 2, 0, 0)) return(-1);
 
 #if defined(WINDOWS) || defined(USE_X11)
- #if defined(WINDOWS) && defined(USE_LOGFONT)
+ #if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
 	if (use_logfont) sprintf(fname, "<LOGFONT>%dx%d", win_get_logfont_w(0), win_get_logfont_h(0));
 	else
  #endif

@@ -368,6 +368,7 @@ int SLGetPeerName(int fd, char *name, int namelen){
  * Originally coded by Arne Helme
  */
 int CreateClientSocket(char *host, int port){
+	fprintf(stderr, "jezek - CreateClientSocket() amy\n");
     int			fd;
 
     struct hostent	*hp;

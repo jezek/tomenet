@@ -794,3 +794,8 @@ extern bool is_client_side;
 
 /* Needed for RETRY_LOGIN in the client */
 extern bool rl_connection_destructible, rl_connection_destroyed, rl_connection_state;
+
+#if defined(USE_SDL2)
+extern char *SDL2_USER_PATH, *SDL2_GAME_PATH;
+extern char SDL2_PATH_SEP[2];
+#endif
