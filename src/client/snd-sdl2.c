@@ -1,11 +1,8 @@
 /*
- * File: snd-sdl.c
- * Purpose: SDL sound support for TomeNET
+ * File: snd-sdl2.c
+ * Purpose: SDL2 sound support for TomeNET
  *
- * Written in 2010 by C. Blue, inspired by old angband sdl code.
- * New custom sound structure, ambient sound, background music and weather.
- * New in 2022, I added positional audio. Might migrate to OpenAL in the
- * future to support HRTF for z-plane spatial audio. - C. Blue
+ * Written in 2025 by jEzEk, copying and editing the snd-sdl.c file.
  *
  * This work is free software; you can redistribute it and/or modify it
  * under the terms of either:
@@ -19,15 +16,24 @@
  *    are included in all such copies.  Other copyrights may also apply.
  */
 
+#ifdef SOUND_SDL2
+ #ifndef USE_SDL2
+  #error "Compiling with SOUND_SDL2 works currently only for SDL2 client!"
+ #endif
+
+ #ifdef SOUND_SDL
+  #error "Compiling client with SOUND_SDL and SOUND_SDL2 at the same time!"
+ #endif
 
 #include "angband.h"
 
-/* Summer 2022 I migrated from SDL to SDL2, requiring SDL2_mixer v2.5 or higher
-   for Mix_SetPanning() and Mix_GetMusicPosition(). - C. Blue */
-#ifdef SOUND_SDL
+#include <errno.h>
 
-/* Enable ALMixer, overriding SDL? */
-//#define SOUND_AL_SDL
+#include "SDL2/SDL.h"
+/* Requires SDL2_mixer v2.5 or higher */
+#include "SDL2/SDL_mixer.h"
+#include "SDL2/SDL_thread.h"
+
 
 /* allow pressing RETURN key to play any piece of music (like for sfx) -- only reason to disable: It's spoilery ;) */
 #define ENABLE_JUKEBOX
@@ -62,24 +68,6 @@
 #define USER_VOLUME_SFX
 #define USER_VOLUME_MUS
 
-#ifdef SOUND_AL_SDL
- // port from SDL to AL? Future stuff, if SDL3 still sux (or we want full 3d head model sfx)
-#elif 0
- #include <SDL/SDL.h>
- #include <SDL/SDL_mixer.h>
- #include <SDL/SDL_thread.h>
-#elif 1
- /* This works for SDL2 on Arm64, Linux and MinGW (i686-w64-mingw32) */
- #include <SDL.h>
- #include <SDL_mixer.h>
- #include <SDL_thread.h>
-#else
- /* This is the way recommended by the SDL web page (this was from SDL1-times though) -- this was used till almost end of jan 2024 */
- #include "SDL.h"
- #include "SDL_mixer.h"
- #include "SDL_thread.h"
-#endif
-
 /* completely turn off mixing of disabled audio features (music, sound, weather, all)
    as opposed to just muting their volume? */
 //#define DISABLE_MUTED_AUDIO
@@ -88,10 +76,10 @@
 /* disabled because this can cause delays up to a few seconds */
 bool on_demand_loading = FALSE;
 
-#ifndef WINDOWS //assume POSIX
-/* assume normal softlimit for maximum amount of file descriptors, minus some very generous overhead */
-int sdl_files_max = 1024 - 32, sdl_files_cur = 0;
-#endif
+/* Track usage of available and loaded audio file descriptors. */
+int sdl_music_loaded_max = 0; /* Maximum available file descriptors for music files. Will be set on init. */
+int sdl_music_loaded = 0; /* Count of streamed Mix_Music handles (keeps music file descriptor open). */
+int sdl_samples_loaded = 0; /* Count of cached Mix_Chunk handles (keeps sample in memory, closes file descriptor). */
 
 /* output various status messages about initializing audio */
 //#define DEBUG_SOUND
@@ -112,6 +100,42 @@ SDL_Thread *load_audio_thread;
 SDL_mutex *load_sample_mutex_entrance, *load_song_mutex_entrance;
 SDL_mutex *load_sample_mutex, *load_song_mutex;
 
+static bool audio_initialized = FALSE;
+
+static void destroy_audio_mutexes(void) {
+	if (load_sample_mutex_entrance) {
+		SDL_DestroyMutex(load_sample_mutex_entrance);
+		load_sample_mutex_entrance = NULL;
+	}
+	if (load_song_mutex_entrance) {
+		SDL_DestroyMutex(load_song_mutex_entrance);
+		load_song_mutex_entrance = NULL;
+	}
+	if (load_sample_mutex) {
+		SDL_DestroyMutex(load_sample_mutex);
+		load_sample_mutex = NULL;
+	}
+	if (load_song_mutex) {
+		SDL_DestroyMutex(load_song_mutex);
+		load_song_mutex = NULL;
+	}
+}
+
+static void free_pack_paths(void) {
+#ifndef SEGFAULT_HACK
+	if (ANGBAND_DIR_XTRA_SOUND) {
+		string_free(ANGBAND_DIR_XTRA_SOUND);
+		ANGBAND_DIR_XTRA_SOUND = NULL;
+	}
+	if (ANGBAND_DIR_XTRA_MUSIC) {
+		string_free(ANGBAND_DIR_XTRA_MUSIC);
+		ANGBAND_DIR_XTRA_MUSIC = NULL;
+	}
+#else
+	ANGBAND_DIR_XTRA_SOUND[0] = '\0';
+	ANGBAND_DIR_XTRA_MUSIC[0] = '\0';
+#endif
+}
 
 /* declare */
 static void fadein_next_music(void);
@@ -467,6 +491,9 @@ static void close_audio(void) {
 	size_t i;
 	int j;
 
+	if (!audio_initialized) return;
+	audio_initialized = FALSE;
+
 	/* Kill the loading thread if it's still running */
 	if (load_audio_thread) {
 		//kill_load_audio_thread = TRUE; -- not needed (see far above)
@@ -519,21 +546,17 @@ static void close_audio(void) {
 		mus->num = 0;
 	}
 
-#ifndef SEGFAULT_HACK
-	string_free(ANGBAND_DIR_XTRA_SOUND);
-	string_free(ANGBAND_DIR_XTRA_MUSIC);
-#endif
+	free_pack_paths();
 
 	/* Close the audio */
 	Mix_CloseAudio();
+	sdl_music_loaded = 0;
+	sdl_samples_loaded = 0;
 
-	SDL_DestroyMutex(load_sample_mutex_entrance);
-	SDL_DestroyMutex(load_song_mutex_entrance);
-	SDL_DestroyMutex(load_sample_mutex);
-	SDL_DestroyMutex(load_song_mutex);
+	destroy_audio_mutexes();
 
-	/* XXX This may conflict with the SDL port */
-	SDL_Quit();
+	/* Only shut down audio so the video subsystem stays alive */
+	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 }
 
 /* Just for external call when using  = I  to install an audio pack while already running */
@@ -574,6 +597,7 @@ static bool open_audio(void) {
 		plog_fmt("Couldn't open mixer: %s", SDL_GetError());
 //		puts(format("Couldn't open mixer: %s", SDL_GetError()));
 //#endif
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
 		return(FALSE);
 	}
 
@@ -585,112 +609,711 @@ static bool open_audio(void) {
 	/* set hook for fading over to next song */
 	Mix_HookMusicFinished(fadein_next_music);
 
+	audio_initialized = TRUE;
+
 	/* Success */
 	return(TRUE);
 }
 
-#ifndef WINDOWS //assume POSIX
- #include <sys/resource.h> /* for rlimit et al */
-static int get_filedescriptor_limit(void) {
-	struct rlimit limit;
-
- #if 0
-	limit.rlim_cur = 65535;
-	limit.rlim_max = 65535;
-	if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
-		printf("setrlimit() failed with errno=%d\n", errno);
-		return(0);
-	}
- #endif
-
-	/* Get max number of files. */
-	if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
-		printf("getrlimit() failed with errno=%d\n", errno);
-		return(1024); //assume default
-	}
-
-	if (limit.rlim_cur > 65536) limit.rlim_cur = 65536; //cap to sane values to save resources
-
-	return(limit.rlim_cur);
-}
-/* note: method 1 and method 2 report different amounts of free file descriptors at different times, and also different amounts before and after loading audio files -_- */
- #include <dirent.h>
-int count_open_fds1(void) {
-	struct dirent *de;
-	int count = -3; // '.', '..', dp
-	DIR *dp = opendir("/proc/self/fd");
-
-	if (dp == NULL) return(-1);
-
-	while ((de = readdir(dp)) != NULL) count++;
-	(void)closedir(dp);
-
-	return(count + 3);
-}
- #include <poll.h>
-int count_open_fds2(int max) {
-	struct pollfd fds[max];
-	int ret, i, count = 0;
-
-	if (max <= 0) return(0); //paranoia
-
-	for (i = 0; i < max; i++) fds[i].events = 0;
-
-	ret = poll(fds, max, 0);
-	if (ret <= 0) return(0);
-
-	for (i = 0; i < max; i++)
-		if (fds[i].revents & POLLNVAL) count++;
-
-	return(count);
-}
-void log_fd_usage(void) {
-	int max_files, cur_files1, cur_files2;
-
-	max_files = get_filedescriptor_limit();
-	cur_files1 = count_open_fds1();
-	cur_files2 = count_open_fds2(max_files);
-
-	logprint(format("max_files = %d, cur_files1/2 = %d/%d -> sdl_files_cur/max = %d\n", max_files, cur_files1, cur_files2, sdl_files_cur, sdl_files_max));
-}
-#endif
-
-
 /*
- * Read sound.cfg and map events to sounds; then load all the sounds into
- * memory to avoid I/O latency later.
+ * Probe the runtime file descriptor limit in a portable way.  We attempt to
+ * open the null device repeatedly until failure and use the number of
+ * successful opens to estimate how many additional files can be opened.
+ * The null device is "/dev/null" on POSIX systems and "NUL" on Windows, but
+ * we avoid compile-time OS checks by trying both at runtime.
+ *
+ * Note: probe_fd_available() exhausts every remaining descriptor by repeatedly
+ * fopen-ing the null device. During that window any other thread trying to
+ * open a socket/file will see EMFILE/ENFILE, so we can fail networking or
+ * logging during audio init.
  */
-/* Instead of using one large string buffer, use multiple smaller ones? (Not recommended, was just for debugging/testing) */
-#define BUFFERSIZE 4096
-static bool sound_sdl_init(bool no_cache) {
-	char path[2048];
-	char buffer0[BUFFERSIZE] = { 0 }, *buffer = buffer0, bufferx[BUFFERSIZE] = { 0 };
-	FILE *fff;
-	int i, j, cur_line, k, sets;
-	char out_val[160];
-	bool disabled, cat_this_line, cat_next_line;
+#define SDL2_FD_PROBE_MAX   4096
+static int probe_fd_available(void) {
+	FILE *fps[SDL2_FD_PROBE_MAX];
+	const char *names[] = { "/dev/null", "NUL", NULL };
+	const char *path = NULL;
+	int i, res;
+	/* find a working null device */
+	for (i = 0; names[i]; i++) {
+		fps[0] = fopen(names[i], "rb");
+		if (fps[0]) {
+			path = names[i];
+			fclose(fps[0]);
+			break;
+		}
+	}
+	if (!path) return(-1);
 
-	bool events_loaded_semaphore;
+	logprint("Probing available file descriptors");
+	for (i = 0; i < SDL2_FD_PROBE_MAX; i++) {
+		fps[i] = fopen(path, "rb");
+		if (i%1000 == 0) logprint(".");
+		if (!fps[i]) break;
+	}
+	res = i;
+	while (i > 0) fclose(fps[--i]);
+	logprint("done\n");
 
-	/* Note: referencef-feature is for music only (music.cfg), not available for sounds (in sound.cfg). */
-	int references = 0;
-	int referencer[REFERENCES_MAX];
-	bool reference_initial[REFERENCES_MAX];
-	char referenced_event[REFERENCES_MAX][MAX_CHARS_WIDE];
+	return(res);
+}
 
-#ifndef WINDOWS //assume POSIX
-	/* for checking whether we have enough available file descriptors for loading a lot of audio files */
-	int max_files = get_filedescriptor_limit(), cur_files1 = count_open_fds1(), cur_files2 = count_open_fds2(max_files);
-
-
-	sdl_files_max = max_files - (cur_files1 > cur_files2 ? cur_files1 : cur_files2);
+static int fd_avail = 0;
+/*
+ * Sets the limit of how many files can we open for sound.
+ */
+static void init_fd_limit(void) {
+	fd_avail = probe_fd_available();
+	if (fd_avail < 0) sdl_music_loaded_max = 256; /* Can't determine, use sane minimum.*/
+	else if (fd_avail > 32) sdl_music_loaded_max = fd_avail - 32; /* Keep some descriptors for other in-game use. */
+	else sdl_music_loaded_max = 0; /* Nearly no file descriptors left, there will be no sound. */
+#ifdef DEBUG_SOUND
+	logprint(format("init_fd_limit: available fds: %d -> sdl_music_loaded_max = %d\n", fd_avail, sdl_music_loaded_max));
+#endif
+}
 
 #ifdef DEBUG_SOUND
-	log_fd_usage()
-#endif
+void log_fd_usage(void) {
+	logprint(format("available fds: %d -> music loaded/max: %d/%d, samples loaded: %d\n",
+		fd_avail, sdl_music_loaded, sdl_music_loaded_max, sdl_samples_loaded));
+}
 #endif
 
-	/* Paranoia? null all the pointers */
+/* Extract next token from a config entry and advance the cursor. */
+static char *next_config_token(char **cursor, int cur_line, const char *config_label) {
+	char *token, *search;
+
+	if (!cursor || !*cursor) return(NULL);
+
+	token = *cursor;
+	while (*token == ' ' || *token == '\t') token++;
+	if (!*token) {
+		*cursor = NULL;
+		return(NULL);
+	}
+
+	/* Handle names within quotes */
+	if (token[0] == '\"') {
+		token++;
+		search = strchr(token, '\"');
+		if (search) {
+			search[0] = '\0';
+			search = strpbrk(search + 1, " \t");
+		} else {
+			logprint(format("%s error: Missing closing quotes in line %d.\n", config_label, cur_line));
+			search = NULL;
+		}
+	} else {
+		search = strpbrk(token, " \t");
+	}
+
+	if (search) {
+		search[0] = '\0';
+		*cursor = search + 1;
+	} else {
+		*cursor = NULL;
+	}
+
+	if (*cursor) {
+		/* Trim spaces/tabs. */
+		while (**cursor == ' ' || **cursor == '\t') (*cursor)++;
+		if (!**cursor) *cursor = NULL;
+	}
+
+	return(token);
+}
+
+/* Read next music token while decoding optional !initial and +reference flags. */
+static char *next_music_token_with_flags(char **cursor, bool *initial, bool *reference, int cur_line) {
+	char *token;
+
+
+	if (!cursor || !*cursor) return(NULL);
+
+	token = *cursor;
+	/* Songs: Trim spaces/tabs */
+	while (*token == ' ' || *token == '\t') token++;
+	if (!*token) {
+		*cursor = NULL;
+		return(NULL);
+	}
+
+	*initial = FALSE;
+	*reference = FALSE;
+	if (*token == '!') {
+		*initial = TRUE;
+		token++;
+	}
+	if (*token == '+') {
+		*reference = TRUE;
+		token++;
+	}
+
+	*cursor = token;
+	return(next_config_token(cursor, cur_line, "Music.cfg"));
+}
+
+#define BUFFERSIZE 4096
+
+/* Open a config file, copying it from the bundled default file when missing. */
+static FILE *open_config_with_default(const char *dir, const char *config_label, const char *config_name, const char *default_name) {
+	FILE *fff;
+	char path[2048];
+	size_t path_size = sizeof(path);
+
+	/* Open config file for reading. */
+	path_build(path, path_size, dir, config_name);
+	fff = my_fopen(path, "r");
+	if (fff) return(fff);
+
+	/* Failed to open config file, try to use simple default file and create a new one from it. */
+	FILE *fallback;
+	FILE *dest;
+	char path2[2048];
+
+	/* Open default config file for reading. */
+	path_build(path, path_size, dir, default_name);
+	fallback = my_fopen(path, "r");
+	if (!fallback) {
+		plog_fmt("Failed to open default %s config (%s):\n    %s", config_label, path, strerror(errno));
+		return(NULL);
+	}
+
+	/* Create empty config file. */
+	path_build(path2, sizeof(path2), dir, config_name);
+	dest = my_fopen(path2, "w");
+	if (!dest) {
+		plog_fmt("Failed to write %s config (%s):\n    %s", config_label, path2, strerror(errno));
+		my_fclose(fallback);
+		return(NULL);
+	}
+
+	char buffer[BUFFERSIZE] = { 0 };
+
+	/* Copy default config file to the newly created one. */
+	while (my_fgets(fallback, buffer, sizeof(buffer)) == 0)
+		fprintf(dest, "%s\n", buffer);
+
+	my_fclose(dest);
+	my_fclose(fallback);
+
+	/* Open config file for reading again. */
+	path_build(path, path_size, dir, config_name);
+	fff = my_fopen(path, "r");
+	if (!fff) {
+		plog_fmt("Failed to open %s config (%s):\n    %s", config_label, path, strerror(errno));
+		return(NULL);
+	}
+
+	return(fff);
+}
+
+typedef struct {
+	FILE *file;
+	const char *log_name;
+	int line_no;
+	bool cat_next_line;
+	char buffer0[BUFFERSIZE];
+	char bufferx[BUFFERSIZE];
+} config_reader;
+
+typedef struct {
+	char *line;
+	bool disabled;
+	int line_no;
+} config_line;
+
+/* Skip leading spaces and tabs in-place. */
+static char *trim_leading_whitespace(char *s) {
+	while (*s == ' ' || *s == '\t') s++;
+	return(s);
+}
+
+/* Remove trailing spaces and tabs in-place. */
+static void trim_trailing_whitespace(char *s) {
+	char *end = s + strlen(s);
+	while (end > s) {
+		char prev = *(end - 1);
+		if (prev != ' ' && prev != '\t') break;
+		*(--end) = '\0';
+	}
+}
+
+/* Strip unquoted # comments from a configuration line. */
+static void strip_config_comment(char *line) {
+	char *cursor = line;
+
+	/* Everything after a non-quoted '#' gets ignored */
+	while (*cursor && (cursor = strchr(cursor, '#'))) {
+		char *scan = line;
+		bool quoted = FALSE;
+
+		/* Check if the # is caught inside quotes, then part of a legal file name eg "botpack #9.mp3" */
+		while (*scan && scan < cursor) {
+			if (*scan == '\"') quoted = !quoted;
+			scan++;
+		}
+		if (quoted) {
+			cursor++;
+			continue;
+		}
+
+		/* Ignore everything after the '#' */
+		*cursor = '\0';
+		break;
+	}
+}
+
+/* Prepare a config_reader helper for iterative parsing. */
+static void config_reader_init(config_reader *reader, FILE *file, const char *log_name) {
+	reader->file = file;
+	reader->log_name = log_name;
+	reader->line_no = 0;
+	reader->cat_next_line = FALSE;
+	reader->buffer0[0] = '\0';
+	reader->bufferx[0] = '\0';
+}
+
+/* Fetch the next logical config line, handling continuations and blanks. */
+static bool config_reader_next(config_reader *reader, config_line *out_line) {
+	const int buffer_size = sizeof(reader->buffer0);
+
+	while (fgets(reader->buffer0, buffer_size, reader->file) != NULL) {
+		bool cat_this_line = reader->cat_next_line;
+		reader->cat_next_line = FALSE;
+		reader->line_no++;
+
+		if (!reader->buffer0[0]) {
+			if (cat_this_line) logprint(format("Warning: Blank line follows ' \\' line concatenator: #%d -> #%d!\n", reader->line_no - 1, reader->line_no));
+			continue;
+		}
+
+		size_t len = strlen(reader->buffer0);
+		if (len >= (size_t)(buffer_size - 1) && reader->buffer0[len - 1] != '\n') {
+			logprint(format("%s: Discarded line %d as it is too long (must be %d at most)\n", reader->log_name, reader->line_no, buffer_size - 1));
+			continue;
+		}
+
+		if (len && reader->buffer0[len - 1] == '\n') reader->buffer0[--len] = '\0';
+
+		strip_config_comment(reader->buffer0);
+		trim_trailing_whitespace(reader->buffer0);
+		char *content = trim_leading_whitespace(reader->buffer0);
+
+		if (!*content) {
+			if (cat_this_line) logprint(format("Warning: Blank line follows ' \\' line concatenator: #%d -> #%d!\n", reader->line_no - 1, reader->line_no));
+			continue;
+		}
+
+		/* Allow line wrapping via trailing ' \' character sequence right before EOL. */
+		size_t content_len = strlen(content);
+		if (content_len >= 2 && content[content_len - 1] == '\\' && (content[content_len - 2] == ' ' || content[content_len - 2] == '\t')) {
+			content[content_len - 2] = '\0';
+			reader->cat_next_line = TRUE;
+		}
+		if (!cat_this_line) {
+			strcpy(reader->bufferx, content);
+		} else {
+			size_t existing = strlen(reader->bufferx);
+			size_t addition = strlen(content);
+			if (existing + addition + 1 >= (size_t)buffer_size) { // +1: We strcat a space sometimes, see below.
+				logprint(format("Warning: %s line #%d is too long to concatinate.\n", reader->log_name, reader->line_no));
+				/* String overflow protection: Discard all that is too much. -- fall through and go on without this line. */
+			} else {
+				/* If the continuation of the wrapped line doesn't start on a space, re-insert a space to ensure proper parameter separation. */
+				if (content[0] != ' ' && content[0] != '\t' && content[0]) strcat(reader->bufferx, " ");
+				strcat(reader->bufferx, content);
+			}
+		}
+
+		if (reader->cat_next_line) continue;
+
+		/* Proceed with the beginning of the whole (multi-)line. */
+		strcpy(reader->buffer0, reader->bufferx);
+#ifdef DEBUG_SOUND
+		//printf("config_reader_next() <%s>\n", reader->buffer0);
+#endif
+
+
+		/* Lines starting on ';' count as 'provided event' but actually remain silent, as a way of disabling effects/songs without letting the server know. */
+		char *line_ptr = reader->buffer0;
+		bool disabled = FALSE;
+		if (*line_ptr == ';') {
+			disabled = TRUE;
+			line_ptr = trim_leading_whitespace(line_ptr + 1);
+		}
+
+		/* Skip anything not beginning with an alphabetic character. */
+		if (!*line_ptr || !isalpha((unsigned char)*line_ptr)) continue;
+
+		out_line->line = line_ptr;
+		out_line->disabled = disabled;
+		out_line->line_no = reader->line_no;
+		return(TRUE);
+	}
+
+	return(FALSE);
+}
+
+/* Split a config entry into the key and value portions. */
+static bool split_config_entry(char *line, char **key_out, char **value_out) {
+	char *sep = strchr(line, '=');
+	if (!sep) return(FALSE);
+
+	*sep = '\0';
+	char *value = sep + 1;
+
+	char *key = trim_leading_whitespace(line);
+	trim_trailing_whitespace(key);
+	trim_trailing_whitespace(value);
+	value = trim_leading_whitespace(value);
+
+	if (!*key || !*value) return(FALSE);
+
+	*key_out = key;
+	*value_out = value;
+	return(TRUE);
+}
+
+/* Resolve a config event name to an internal index via Lua metadata. */
+static int lookup_audio_event(const char *cfg_name, int max_events, const char *lua_format) {
+	int event;
+	char out_val[160];
+
+	for (event = max_events - 1; event >= 0; event--) {
+		sprintf(out_val, lua_format, event);
+		cptr lua_name = string_exec_lua(0, out_val);
+		if (!strlen(lua_name)) continue;
+		if (strcmp(cfg_name, lua_name) == 0) return(event);
+	}
+
+	return(-1);
+}
+
+/* Register a sample file for the given event if the file exists. */
+static bool add_sound_sample(int event, const char *token, int line_no) {
+	sample_list *sample = &samples[event];
+	char path[2048];
+
+	if (sample->num >= MAX_SAMPLES) return(FALSE);
+
+	/* Build the path to the sample. */
+	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, token);
+	errno = 0;
+	if (!my_fexists(path)) {
+		if (errno == EMFILE || errno == ENFILE) {
+			logprint(format("Too many open files while verifying sample '%s' (line %d)\n", token, line_no));
+		} else {
+			logprint(format("Can't find sample '%s' (line %d)\n", token, line_no));
+		}
+		return(FALSE);
+	}
+
+	/* Store sample path and increase sample count. */
+	sample->paths[sample->num++] = string_make(path);
+ /* Initialize as 'not being played'. */
+	sample->current_channel = -1;
+
+	return(TRUE);
+}
+
+/* Load sound effect mappings and user overrides from sound.cfg. */
+static bool load_sound_config(void) {
+	FILE *fff;
+	config_reader reader;
+	config_line line;
+
+	fff = open_config_with_default(ANGBAND_DIR_XTRA_SOUND, "sound", "sound.cfg", "sound.cfg.default");
+	if (!fff) return(FALSE);
+
+	 config_reader_init(&reader, fff, "Sound.cfg");
+
+#ifdef DEBUG_SOUND
+	puts("load_sound_config() reading sound.cfg:");
+#endif
+
+	while (config_reader_next(&reader, &line)) {
+		char *event_name;
+		char *sample_list;
+		int event;
+		bool event_counted = FALSE;
+		char *token_cursor;
+		char *token;
+
+		if (!split_config_entry(line.line, &event_name, &sample_list)) continue;
+#ifdef DEBUG_SOUND
+	//puts(format("load_sound_config() event '%s' list: %s", event_name, sample_list));
+#endif
+
+		if (!sample_list || !sample_list[0]) continue;
+
+		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+ */
+		if (!strncmp(event_name, "packname", 8) || !strncmp(event_name, "author", 6) || !strncmp(event_name, "description", 11) || !strncmp(event_name, "version", 7)) {
+			if (!strncmp(event_name, "packname", 8)) strncpy(cfg_soundpack_name, sample_list, MAX_CHARS);
+			//if (!strncmp(event_name, "author", 6)) ;
+			//if (!strncmp(event_name, "description", 11)) ;
+			if (!strncmp(event_name, "version", 7)) strncpy(cfg_soundpack_version, sample_list, MAX_CHARS);
+			continue;
+		}
+
+		event = lookup_audio_event(event_name, SOUND_MAX_2010, "return get_sound_name(%d)");
+		if (event < 0) {
+			logprint(format("Sound effect '%s' not in audio.lua\n", event_name));
+			continue;
+		}
+
+		samples[event].current_channel = -1;
+		token_cursor = sample_list;
+		/* Now we find all the sample names and add them one by one. */
+		while ((token = next_config_token(&token_cursor, line.line_no, "Sound.cfg")) != NULL) {
+			if (samples[event].num >= MAX_SAMPLES) {
+				logprint(format("Too many samples. Sample '%s' not added to effect '%s'\n", token, event_name));
+				break;
+			}
+			if (!add_sound_sample(event, token, line.line_no)) continue;
+			if (!event_counted) {
+				event_counted = TRUE;
+				audio_sfx++;
+				/* For do_cmd_options_...(): remember that this sample was mentioned in our config file. */
+				samples[event].config = TRUE;
+			}
+		}
+
+		/* Disable this sfx? */
+		if (line.disabled) samples[event].disabled = TRUE;
+	}
+
+	my_fclose(fff);
+
+	char path[2048];
+	char buffer0[BUFFERSIZE] = { 0 };
+	int buffer_size = sizeof(buffer0);
+	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-soundvol.cfg");
+
+	fff = my_fopen(path, "r");
+	if (fff) {
+		while (my_fgets(fff, buffer0, buffer_size) == 0) {
+			int idx;
+			/* Find out event state (disabled/enabled). */
+			idx = exec_lua(0, format("return get_sound_index(\"%s\")", buffer0));
+			if (my_fgets(fff, buffer0, buffer_size)) break; /* Error, incomplete entry. */
+			/* Unknown (different game version/sound pack?). */
+			if (idx == -1 || !samples[idx].config) continue;
+			/* Set sample volume in this file. */
+			samples[idx].volume = atoi(buffer0);
+		}
+	}
+	my_fclose(fff);
+
+#ifdef DEBUG_SOUND
+	log_fd_usage();
+#endif
+
+	return(TRUE);
+}
+
+
+/* Attach a music file to an event, tracking optional initial flag. */
+static bool add_music_song(int event, const char *token, bool initial_flag, int line_no) {
+	song_list *song = &songs[event];
+	int num = song->num;
+	char path[2048];
+
+	if (num >= MAX_SONGS) return(FALSE);
+
+	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, token);
+	errno = 0;
+	if (!my_fexists(path)) {
+		if (errno == EMFILE || errno == ENFILE) {
+			logprint(format("Too many open files while verifying song '%s' (line %d)\n", token, line_no));
+		} else {
+			logprint(format("Can't find song '%s' (line %d)\n", token, line_no));
+		}
+		return(FALSE);
+	}
+
+	song->paths[num] = string_make(path);
+	song->wavs[num] = NULL;
+	song->initial[num] = initial_flag;
+	song->is_reference[num] = FALSE;
+	song->num = num + 1;
+
+	return(TRUE);
+}
+
+/* Expand +reference entries by sharing song metadata across events. */
+static void apply_music_reference(int event, int referenced_event_idx, bool initial_flag) {
+	int num = songs[event].num;
+	int j, k;
+
+	for (j = 0; j < songs[referenced_event_idx].num; j++) {
+		/* Don't allow too many songs. */
+		if (num >= MAX_SONGS) break;
+		/* Never reference initial songs. */
+		if (songs[referenced_event_idx].initial[j]) continue;
+
+		/* Avoid cross-referencing ourselves! */
+		for (k = 0; k < songs[event].num; k++)
+			if (streq(songs[event].paths[k], songs[referenced_event_idx].paths[j])) break;
+		if (k != songs[event].num) {
+			logprint(format("Music: Duplicate reference <%s> (%d,%d <-> %d,%d)\n",
+				songs[event].paths[k], event, k, referenced_event_idx, j));
+			continue;
+		}
+
+		songs[event].paths[num] = songs[referenced_event_idx].paths[j];
+		/* So we need to remember the reference indices instead to avoid duplicate/multiple loading of the same files over and over, killing our files handle pool (1024)... */
+		songs[event].referenced_event[num] = referenced_event_idx;
+		songs[event].referenced_song[num] = j;
+		songs[event].initial[num] = initial_flag;
+		songs[event].is_reference[num] = TRUE;
+#ifdef DEBUG_SOUND
+		logprint(format("  adding song #%d <%d> : <%s> (initial = %d)\n",
+			event, num, songs[event].paths[num], initial_flag));
+#endif
+		num++;
+		songs[event].num = num;
+		songs[event].config = TRUE;
+	}
+}
+
+/* Load music event definitions, references, and per-song volume tweaks. */
+static bool load_music_config(void) {
+	FILE *fff;
+	config_reader reader;
+	config_line line;
+	char path[2048];
+	char buffer0[BUFFERSIZE] = { 0 };
+	int buffer_size = sizeof(buffer0);
+	typedef struct {
+		int event;
+		bool initial;
+		char name[MAX_CHARS_WIDE];
+	} music_reference;
+	music_reference refs[REFERENCES_MAX];
+	int reference_count = 0;
+
+	fff = open_config_with_default(ANGBAND_DIR_XTRA_MUSIC, "music", "music.cfg", "music.cfg.default");
+	if (!fff) return(FALSE);
+
+	config_reader_init(&reader, fff, "Music.cfg");
+
+#ifdef DEBUG_SOUND
+	puts("load_music_config() reading music.cfg:");
+#endif
+
+	//TODO jezek - Music config in snd-sdl.c now has lines with sets. Search for "New (2025): Allow multiple alternative 'sets' within one cfg file" in comments.
+	while (config_reader_next(&reader, &line)) {
+		char *entry = line.line;
+		bool event_counted = FALSE;
+		char *event_name;
+		char *song_list;
+		int event;
+		char *token;
+		char *token_cursor;
+		bool initial_flag;
+		bool reference_flag;
+
+		if (!split_config_entry(entry, &event_name, &song_list)) continue;
+#ifdef DEBUG_SOUND
+	puts(format("load_music_config() event '%s' list: %s", event_name, song_list));
+#endif
+
+		if (!song_list || !song_list[0]) continue;
+
+
+		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+. */
+		if (!strncmp(event_name, "packname", 8) || !strncmp(event_name, "author", 6) || !strncmp(event_name, "description", 11) || !strncmp(event_name, "version", 7)) {
+			if (!strncmp(event_name, "packname", 8)) strncpy(cfg_musicpack_name, song_list, MAX_CHARS);
+			//if (!strncmp(event_name, "author", 6)) ;
+			//if (!strncmp(event_name, "description", 11)) ;
+			if (!strncmp(event_name, "version", 7)) strncpy(cfg_musicpack_version, song_list, MAX_CHARS);
+			continue;
+		}
+
+		/* Make sure this is a valid event name. */
+		event = lookup_audio_event(event_name, MUSIC_MAX, "return get_music_name(%d)");
+		if (event < 0) {
+			logprint(format("Music event '%s' not in audio.lua\n", event_name));
+			continue;
+		}
+
+		token_cursor = song_list;
+		/* Now we find all the song names and add them one by one. */
+		while ((token = next_music_token_with_flags(&token_cursor, &initial_flag, &reference_flag, line.line_no)) != NULL) {
+			if (reference_flag) {
+				if (reference_count < REFERENCES_MAX) {
+					refs[reference_count].event = event;
+					refs[reference_count].initial = initial_flag;
+					strncpy(refs[reference_count].name, token, MAX_CHARS_WIDE);
+					refs[reference_count].name[MAX_CHARS_WIDE - 1] = '\0';
+					reference_count++;
+#ifdef DEBUG_SOUND
+					logprint(format("added REF #%d <%d> -> <%s>\n", reference_count, event, token));
+#endif
+				} else {
+					logprint(format("Music: Too many references (limit is %d)\n", REFERENCES_MAX));
+				}
+				if (!event_counted) {
+					event_counted = TRUE;
+					audio_music++;
+					songs[event].config = TRUE;
+				}
+				continue;
+			}
+
+			if (songs[event].num >= MAX_SONGS) {
+				logprint(format("Too many songs. Song '%s' not added to event '%s'\n", token, event_name));
+				break;
+			}
+			if (!add_music_song(event, token, initial_flag, line.line_no)) continue;
+			if (!event_counted) {
+				event_counted = TRUE;
+				audio_music++;
+				songs[event].config = TRUE;
+			}
+		}
+
+		if (line.disabled) songs[event].disabled = TRUE;
+	}
+
+	my_fclose(fff);
+
+	/* Solve all stored references now. */
+	for (int i = 0; i < reference_count; i++) {
+		int event_ref = lookup_audio_event(refs[i].name, MUSIC_MAX, "return get_music_name(%d)");
+		if (event_ref < 0) {
+			logprint(format("Referenced music event '%s' not in audio.lua\n", refs[i].name));
+			continue;
+		}
+		apply_music_reference(refs[i].event, event_ref, refs[i].initial);
+	}
+
+	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-musicvol.cfg");
+
+	fff = my_fopen(path, "r");
+	if (fff) {
+		while (my_fgets(fff, buffer0, buffer_size) == 0) {
+			/* Find out event state (disabled/enabled). */
+			int idx = exec_lua(0, format("return get_music_index(\"%s\")", buffer0));
+			if (my_fgets(fff, buffer0, buffer_size)) break; /* Error, incomplete entry. */
+			/* Unknown (different game version/music pack?). */
+			if (idx == -1 || !songs[idx].config) continue;
+			/* Set volume of songs listed in this file. */
+			songs[idx].volume = atoi(buffer0);
+		}
+	}
+	my_fclose(fff);
+
+#ifdef DEBUG_SOUND
+	log_fd_usage();
+#endif
+
+	return(TRUE);
+}
+
+/* Clear sound and music metadata before reading fresh configuration. */
+static void reset_audio_definitions(void) {
+	int i, j;
 	for (i = 0; i < SOUND_MAX_2010; i++) {
 		for (j = 0; j < MAX_SAMPLES; j++) {
 			samples[i].wavs[j] = NULL;
@@ -713,973 +1336,102 @@ static bool sound_sdl_init(bool no_cache) {
 		songs[i].bak_pos = 0;
 #endif
 	}
+}
 
+static bool audio_init_fail(void) {
+	if (audio_initialized) close_audio();
+	free_pack_paths();
+	destroy_audio_mutexes();
+	return(FALSE);
+}
 
-	load_sample_mutex_entrance = SDL_CreateMutex();
-	load_song_mutex_entrance = SDL_CreateMutex();
-	load_sample_mutex = SDL_CreateMutex();
-	load_song_mutex = SDL_CreateMutex();
-
-	/* Initialise the mixer  */
-	if (!open_audio()) return(FALSE);
-
-#ifdef DEBUG_SOUND
-	puts(format("sound_sdl_init() opened at %d Hz.", cfg_audio_rate));
+/*
+ * Opens audio and reads sound and music configurations and maps events.
+ *
+ * Note: This just loads sound and music configurations into intended structures.
+ * Loading samples and songs into memory to avoid I/O latency needs to be done later.
+ */
+static bool audio_and_config_init(void) {
+	char path[2048];
+	int i;
+#ifndef SEGFAULT_HACK
+	char *tmp;
 #endif
 
-	/* Initialize sound-fx channel management */
+	/* Null all the pointers. */
+	reset_audio_definitions();
+
+	/* Create mutexes. */
+	load_sample_mutex_entrance = SDL_CreateMutex();
+	if (!load_sample_mutex_entrance) {
+		plog_fmt("Failed to create sample entrance mutex: %s", SDL_GetError());
+		return(audio_init_fail());
+	}
+	load_song_mutex_entrance = SDL_CreateMutex();
+	if (!load_song_mutex_entrance) {
+		plog_fmt("Failed to create song entrance mutex: %s", SDL_GetError());
+		return(audio_init_fail());
+	}
+	load_sample_mutex = SDL_CreateMutex();
+	if (!load_sample_mutex) {
+		plog_fmt("Failed to create sample mutex: %s", SDL_GetError());
+		return(audio_init_fail());
+	}
+	load_song_mutex = SDL_CreateMutex();
+	if (!load_song_mutex) {
+		plog_fmt("Failed to create song mutex: %s", SDL_GetError());
+		return(audio_init_fail());
+	}
+
+	/* Initialize the mixer.  */
+	if (!open_audio()) return(audio_init_fail());
+#ifdef DEBUG_SOUND
+	puts(format("audio_and_config_init() opened at %d Hz.", cfg_audio_rate));
+#endif
+
+	/* Initialize sounds. */
+
+	/* Initialize sound-fx channel management. */
 	for (i = 0; i < cfg_max_channels; i++) channel_sample[i] = -1;
-
-
-	/* ------------------------------- Init Sounds */
-
-	/* Build the "sound" path */
+	/* Build the "sound" path. */
 	path_build(path, sizeof(path), ANGBAND_DIR_XTRA, cfg_soundpackfolder);
 #ifndef SEGFAULT_HACK
-	ANGBAND_DIR_XTRA_SOUND = string_make(path);
+	tmp = string_make(path);
+	if (!tmp) {
+		plog("Failed to allocate sound pack path.");
+		return(audio_init_fail());
+	}
+	ANGBAND_DIR_XTRA_SOUND = tmp;
 #else
 	strcpy(ANGBAND_DIR_XTRA_SOUND, path);
 #endif
+	/* Load sound configuration. */
+	if (!load_sound_config()) return(audio_init_fail());
 
-	/* Find and open the config file */
-#if 0
- #ifdef WINDOWS
-	/* On Windows we must have a second config file just to store disabled-state, since we cannot write to Program Files folder after Win XP anymore..
-	   So if it exists, let it override the normal config file. */
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s.cfg", ANGBAND_DIR_USER, cfg_soundpackfolder);
-	else path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-sound.cfg"); //paranoia
+	/* Initialize music. */
 
-	fff = my_fopen(path, "r");
-	if (!fff) {
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-		fff = my_fopen(path, "r");
-	}
- #else
-	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-	fff = my_fopen(path, "r");
- #endif
-#else
-	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-	fff = my_fopen(path, "r");
-#endif
-
-	/* Handle errors */
-	if (!fff) {
-#if 0
-		plog_fmt("Failed to open sound config (%s):\n    %s", path, strerror(errno));
-		return(FALSE);
-#else /* try to use simple default file */
-		FILE *fff2;
-		char path2[2048];
-
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "sound.cfg.default");
-		fff = my_fopen(path, "r");
-		if (!fff) {
-			plog_fmt("Failed to open default sound config (%s):\n    %s", path, strerror(errno));
-			return(FALSE);
-		}
-
-		path_build(path2, sizeof(path2), ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-		fff2 = my_fopen(path2, "w");
-		if (!fff2) {
-			plog_fmt("Failed to write sound config (%s):\n    %s", path2, strerror(errno));
-			return(FALSE);
-		}
-
-		while (my_fgets(fff, buffer, sizeof(buffer0)) == 0)
-			fprintf(fff2, "%s\n", buffer);
-
-		my_fclose(fff2);
-		my_fclose(fff);
-
-		/* Try again */
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-		fff = my_fopen(path, "r");
-		if (!fff) {
-			plog_fmt("Failed to open sound config (%s):\n    %s", path, strerror(errno));
-			return(FALSE);
-		}
-#endif
-	}
-
-#ifdef DEBUG_SOUND
-	puts("sound_sdl_init() reading sound.cfg:");
-#endif
-
-	/* Parse the file */
-	/* Lines are always of the form "name = sample [sample ...]" */
-	cur_line = 0;
-	cat_this_line = cat_next_line = FALSE;
-	sets = 0;
-	while (fgets(buffer0, sizeof(buffer0), fff) != 0) {
-		char *cfg_name;
-		cptr lua_name;
-		char *sample_sublist;
-		char *search;
-		char *cur_token;
-		char *next_token;
-		int event;
-		char *c;
-
-		cur_line++;
-
-		if (strlen(buffer0) >= BUFFERSIZE - 1 && buffer0[strlen(buffer0) - 1] != '\n') {
-			logprint(format("Sound.cfg: Discarded line %d as it is too long (must be %d at most)\n", cur_line, BUFFERSIZE - 1));
-			continue;
-		}
-
-		if (buffer0[strlen(buffer0) - 1] == '\n') buffer0[strlen(buffer0) - 1] = 0; //trim linefeed (the last line in the file might not have one)
-
-		/* Everything after a non-quoted '#' gets ignored */
-		c = buffer0;
-		while (*c && (c = strchr(c, '#'))) {
-			char *c2;
-			bool quoted = 0;
-
-			/* Check if the # is caught inside quotes, then part of a legal file name eg "botpack #9.mp3" */
-			c2 = buffer0;
-			while (*c2 && c2 < c) {
-				if (*c2 == '"') quoted = !quoted;
-				c2++;
-			}
-			if (quoted) {
-				c++;
-				continue;
-			}
-
-			/* Ignore everything after the '#' */
-			*c = 0;
-			break;
-		}
-
-		/* strip trailing spaces/tabs */
-		c = buffer0;
-		while (*c && (c[strlen(c) - 1] == ' ' || c[strlen(c) - 1] == '\t')) c[strlen(c) - 1] = 0;
-
-		/* (2022, 4.9.0) strip preceding spaces/tabs */
-		c = buffer0;
-		while (*c == ' ' || *c == '\t') c++;
-
-		/* New (2018): Allow linewrapping via trailing ' \' character sequence right before EOL */
-		if (cat_next_line) {
-			cat_this_line = TRUE;
-			cat_next_line = FALSE;
-		}
-		if (strlen(c) >= 2 && c[strlen(c) - 1] == '\\' && (c[strlen(c) - 2] == ' ' || c[strlen(c) - 2] == '\t')) {
-			c[strlen(c) - 2] = 0; /* Discard the '\' and the space (we re-insert the space next, if required) */
-			cat_next_line = TRUE;
-		}
-		if (!cat_this_line) strcpy(bufferx, c);
-		else {
-			cat_this_line = FALSE;
-			if (strlen(bufferx) + strlen(c) + 1 >= BUFFERSIZE) { //+1: we strcat a space sometimes, see below
-				logprint(format("Warning: Sound.cfg line #%d is too long to concatinate.\n", cur_line));
-				/* String overflow protection: Discard all that is too much. -- fall through and go on without this line */
-			} else {
-				/* If the continuation of the wrapped line doesn't start on a space, re-insert a space to ensure proper parameter separation */
-				if (c[0] != ' ' && c[0] != '\t' && c[0]) strcat(bufferx, " ");
-				strcat(bufferx, c);
-			}
-		}
-		if (cat_next_line) continue;
-		/* Proceed with the beginning of the whole (multi-)line */
-		strcpy(buffer0, bufferx);
-
-		/* Lines starting on ';' count as 'provided event' but actually
-		   remain silent, as a way of disabling effects/songs without
-		   letting the server know. */
-		buffer = buffer0;
-		if (buffer0[0] == ';') {
-			buffer++;
-			disabled = TRUE;
-		} else disabled = FALSE;
-
-		/* Skip anything not beginning with an alphabetic character */
-		if (!buffer[0] || !isalpha((unsigned char)buffer[0])) continue;
-
-		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+ */
-		if (!strncmp(buffer, "packname", 8) || !strncmp(buffer, "author", 6) || !strncmp(buffer, "description", 11) || !strncmp(buffer, "version", 7)) {
-			char *ckey = buffer, *cval;
-
-			/* Search for key separator */
-			if (!(cval = strchr(ckey, '='))) continue;
-			*cval = 0;
-			cval++;
-			/* Trim spaces/tabs */
-			while (strlen(ckey) && (ckey[strlen(ckey) - 1] == ' ' || ckey[strlen(ckey) - 1] == '\t')) ckey[strlen(ckey) - 1] = 0;
-			while (*cval == ' ' || *cval == '\t') cval++;
-			while (strlen(cval) && (cval[strlen(cval) - 1] == ' ' || cval[strlen(cval) - 1] == '\t')) cval[strlen(cval) - 1] = 0;
-
-			if (!strncmp(buffer, "packname", 8)) strncpy(cfg_soundpack_name, cval, MAX_CHARS);
-			//if (!strncmp(buffer, "author", 6)) ;
-			//if (!strncmp(buffer, "description", 11)) ;
-			if (!strncmp(buffer, "version", 7)) strncpy(cfg_soundpack_version, cval, MAX_CHARS);
-			continue;
-		}
-
-		/* Split the line into two: the key, and the rest */
-
-		search = strchr(buffer, '=');
-		/* no event name given? */
-		if (!search) continue;
-		*search = 0;
-		search++;
-		/* Event name (key): Trim spaces/tabs */
-		while (*buffer && (buffer[strlen(buffer) - 1] == ' ' || buffer[strlen(buffer) - 1] == '\t')) buffer[strlen(buffer) - 1] = 0;
-		if (!(*buffer)) continue; /* No key (aka event) name given */
-		/* File name (value): Trim spaces/tabs */
-		while (*search && (search[strlen(search) - 1] == ' ' || search[strlen(search) - 1] == '\t')) search[strlen(search) - 1] = 0;
-		if (!(*search)) continue; /* No value (aka name) given for the key */
-
-		/* Set the event name */
-		cfg_name = buffer;
-
-		/* Make sure this is a valid event name */
-		for (event = SOUND_MAX_2010 - 1; event >= 0; event--) {
-			sprintf(out_val, "return get_sound_name(%d)", event);
-			lua_name = string_exec_lua(0, out_val);
-			if (!strlen(lua_name)) continue;
-			if (strcmp(cfg_name, lua_name) == 0) break;
-		}
-		if (event < 0) {
-			logprint(format("Sound effect '%s' not in audio.lua\n", cfg_name));
-			continue;
-		}
-
-		/*
-		 * Now we find all the sample names and add them one by one
-		*/
-		events_loaded_semaphore = FALSE;
-
-		/* Songs: Trim spaces/tabs */
-		c = search;
-		while (*c == ' ' || *c == '\t') c++;
-		sample_sublist = c;
-
-		/* no audio filenames listed? */
-		if (!sample_sublist[0]) continue;
-
-		/* Terminate the current token */
-		cur_token = sample_sublist;
-		/* Handle sample names within quotes */
-		if (cur_token[0] == '\"') {
-			cur_token++;
-			search = strchr(cur_token, '\"');
-			if (search) {
-				search[0] = '\0';
-				search = strpbrk(search + 1, " \t");
-			} else logprint(format("Sound.cfg error: Missing closing quotes in line %d.\n", cur_line));
-		} else {
-			search = strpbrk(cur_token, " \t");
-		}
-		if (search) {
-			search[0] = '\0';
-			next_token = search + 1;
-		} else {
-			next_token = NULL;
-		}
-
-		/* Sounds: Trim spaces/tabs */
-		if (next_token) while (*next_token == ' ' || *next_token == '\t') next_token++;
-
-		while (cur_token) {
-			int num = samples[event].num;
-
-			/* Don't allow too many samples */
-			if (num >= MAX_SAMPLES) break;
-
-			/* Build the path to the sample */
-			path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, cur_token);
-			if (!my_fexists(path)) {
-				logprint(format("Can't find sample '%s' (line %d)\n", cur_token, cur_line));
-				goto next_token_snd;
-			}
-
-			/* Don't load now if we're not caching */
-			if (no_cache) {
-				/* Just save the path for later */
-				samples[event].paths[num] = string_make(path);
-			} else {
-#ifndef WINDOWS //assume POSIX
-				sdl_files_cur++;
-				if (sdl_files_cur >= sdl_files_max) {
-					logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
-					goto next_token_snd;
-				}
-#ifdef DEBUG_SOUND
-				logprint(format("s-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, path));
-#endif
-#endif
-
-				/* Load the file now */
-				samples[event].wavs[num] = Mix_LoadWAV(path);
-				if (!samples[event].wavs[num]) {
-					plog_fmt("%s: %s", SDL_GetError(), strerror(errno));
-					puts(format("%s: %s (%s)", SDL_GetError(), strerror(errno), path));//DEBUG USE_SOUND_2010
-					goto next_token_snd;
-				}
-			}
-			/* Initialize as 'not being played' */
-			samples[event].current_channel = -1;
-
-			/* Imcrement the sample count */
-			samples[event].num++;
-			if (!events_loaded_semaphore) {
-				events_loaded_semaphore = TRUE;
-				audio_sfx++;
-				/* for do_cmd_options_...(): remember that this sample was mentioned in our config file */
-				samples[event].config = TRUE;
-			}
-
-			next_token_snd:
-
-			/* Figure out next token */
-			cur_token = next_token;
-			if (next_token) {
-				/* Handle song names within quotes */
-				if (cur_token[0] == '\"') {
-					cur_token++;
-					search = strchr(cur_token, '\"');
-					if (search) {
-						search[0] = '\0';
-						search = strpbrk(search + 1, " \t");
-					} else logprint(format("Sound.cfg error: Missing closing quotes in line %d.\n", cur_line));
-				} else {
-					/* Try to find a space */
-					search = strpbrk(cur_token, " \t");
-				}
-				/* If we can find one, terminate, and set new "next" */
-				if (search) {
-					search[0] = '\0';
-					next_token = search + 1;
-				} else {
-					/* Otherwise prevent infinite looping */
-					next_token = NULL;
-				}
-
-				/* Sounds: Trim spaces/tabs */
-				if (next_token) while (*next_token == ' ' || *next_token == '\t') next_token++;
-			}
-		}
-
-		/* disable this sfx? */
-		if (disabled) samples[event].disabled = TRUE;
-	}
-
-	soundpack_subsets = sets;
-
-#ifdef WINDOWS
-	/* On Windows we must have a second config file just to store disabled-state, since we cannot write to Program Files folder after Win XP anymore..
-	   So if it exists, let it override the normal config file. */
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s-disabled.cfg", ANGBAND_DIR_USER, cfg_soundpackfolder);
-	else path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-nosound.cfg"); //paranoia
-
-	fff = my_fopen(path, "r");
-	if (fff) {
-		while (my_fgets(fff, buffer0, sizeof(buffer0)) == 0) {
-			/* find out event state (disabled/enabled) */
-			i = exec_lua(0, format("return get_sound_index(\"%s\")", buffer0));
-			/* unknown (different game version/sound pack?) */
-			if (i == -1 || !samples[i].config) continue;
-			/* disable samples listed in this file */
-			samples[i].disabled = TRUE;
-		}
-	}
-	my_fclose(fff);
-#endif
-
-#ifdef WINDOWS
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s-volume.cfg", ANGBAND_DIR_USER, cfg_soundpackfolder);
-	else path_build(path, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-soundvol.cfg"); //paranoia
-#else
-	path_build(path, 1024, ANGBAND_DIR_XTRA_SOUND, "TomeNET-soundvol.cfg");
-#endif
-
-	fff = my_fopen(path, "r");
-	if (fff) {
-		while (my_fgets(fff, buffer0, sizeof(buffer0)) == 0) {
-			/* find out event state (disabled/enabled) */
-			i = exec_lua(0, format("return get_sound_index(\"%s\")", buffer0));
-			if (my_fgets(fff, buffer0, sizeof(buffer0))) break; /* Error, incomplete entry */
-			/* unknown (different game version/sound pack?) */
-			if (i == -1 || !samples[i].config) continue;
-			/* set sample volume in this file */
-			samples[i].volume = atoi(buffer0);
-		}
-	}
-	my_fclose(fff);
-
-#ifndef WINDOWS //assume POSIX
-#ifdef DEBUG_SOUND
-	log_fd_usage();
-#endif
-#endif
-
-
-	/* ------------------------------- Init Music */
-
-	buffer = buffer0;
-
-	/* Build the "music" path */
+	/* Build the "music" path. */
 	path_build(path, sizeof(path), ANGBAND_DIR_XTRA, cfg_musicpackfolder);
 #ifndef SEGFAULT_HACK
-	ANGBAND_DIR_XTRA_MUSIC = string_make(path);
+	tmp = string_make(path);
+	if (!tmp) {
+		plog("Failed to allocate music pack path.");
+		return(audio_init_fail());
+	}
+	ANGBAND_DIR_XTRA_MUSIC = tmp;
 #else
 	strcpy(ANGBAND_DIR_XTRA_MUSIC, path);
 #endif
-
-	/* Find and open the config file */
-#if 0
- #ifdef WINDOWS
-	/* On Windows we must have a second config file just to store disabled-state, since we cannot write to Program Files folder after Win XP anymore..
-	   So if it exists, let it override the normal config file. */
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s.cfg", ANGBAND_DIR_USER, cfg_musicpackfolder);
-	else path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-music.cfg"); //paranoia
-
-	fff = my_fopen(path, "r");
-	if (!fff) {
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-		fff = my_fopen(path, "r");
-	}
- #else
-	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-	fff = my_fopen(path, "r");
- #endif
-#else
-	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-	fff = my_fopen(path, "r");
-#endif
-
-	/* Handle errors */
-	if (!fff) {
-#if 0
-		plog_fmt("Failed to open music config (%s):\n    %s", path, strerror(errno));
-		return(FALSE);
-#else /* try to use simple default file */
-		FILE *fff2;
-		char path2[2048];
-
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "music.cfg.default");
-		fff = my_fopen(path, "r");
-		if (!fff) {
-			plog_fmt("Failed to open default music config (%s):\n    %s", path, strerror(errno));
-			return(FALSE);
-		}
-
-		path_build(path2, sizeof(path2), ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-		fff2 = my_fopen(path2, "w");
-		if (!fff2) {
-			plog_fmt("Failed to write music config (%s):\n    %s", path2, strerror(errno));
-			return(FALSE);
-		}
-
-		while (my_fgets(fff, buffer, sizeof(buffer0)) == 0)
-			fprintf(fff2, "%s\n", buffer);
-
-		my_fclose(fff2);
-		my_fclose(fff);
-
-		/* Try again */
-		path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-		fff = my_fopen(path, "r");
-		if (!fff) {
-			plog_fmt("Failed to open music config (%s):\n    %s", path, strerror(errno));
-			return(FALSE);
-		}
-#endif
-	}
+	/* Load music configuration. */
+	if (!load_music_config()) return(audio_init_fail());
 
 #ifdef DEBUG_SOUND
-	puts("sound_sdl_init() reading music.cfg:");
-#endif
-
-	/* Parse the file */
-	/* Lines are always of the form "name = music [music ...]" */
-	cur_line = 0;
-	cat_this_line = cat_next_line = FALSE;
-	sets = 0;
-	while (fgets(buffer0, sizeof(buffer0), fff) != 0) {
-		char *cfg_name;
-		cptr lua_name;
-		char *song_sublist;
-		char *search;
-		char *cur_token;
-		char *next_token;
-		int event, set = 0;
-		bool initial, reference;
-		char *c, *ctmp1, *ctmp2;
-
-		cur_line++;
-
-
-		if (!buffer0[0]) {
-			if (cat_next_line) logprint(format("Warning: Blank line follows ' \\' line concatenator: #%d -> #%d!\n", cur_line - 1, cur_line));
-			continue;
-		}
-		if (strlen(buffer0) >= BUFFERSIZE - 1 && buffer0[strlen(buffer0) - 1] != '\n') {
-			logprint(format("Music.cfg: Discarded line %d as it is too long (must be %d at most)\n", cur_line, BUFFERSIZE - 1));
-			continue;
-		}
-
-		if (buffer0[strlen(buffer0) - 1] == '\n') buffer0[strlen(buffer0) - 1] = 0; //trim linefeed (the last line in the file might not have one)
-		if (!buffer0[0]) {
-			if (cat_next_line) logprint(format("Warning: Blank line follows ' \\' line concatenator: #%d -> #%d!\n", cur_line - 1, cur_line));
-			continue;
-		}
-
-
-		/* Everything after a non-quoted '#' gets ignored */
-		c = buffer0;
-		while (*c && (c = strchr(c, '#'))) {
-			char *c2;
-			bool quoted = 0;
-
-			/* Check if the # is caught inside quotes, then part of a legal file name eg "botpack #9.mp3" */
-			c2 = buffer0;
-			while (*c2 && c2 < c) {
-				if (*c2 == '"') quoted = !quoted;
-				c2++;
-			}
-			if (quoted) {
-				c++;
-				continue;
-			}
-
-			/* Ignore everything after the '#' */
-			*c = 0;
-			break;
-		}
-
-		/* strip trailing spaces/tabs */
-		c = buffer0;
-		while (*c && (c[strlen(c) - 1] == ' ' || c[strlen(c) - 1] == '\t')) c[strlen(c) - 1] = 0;
-
-		/* (2022, 4.9.0) strip preceding spaces/tabs */
-		c = buffer0;
-		while (*c == ' ' || *c == '\t') c++;
-
-		if (!*c) {
-			if (cat_next_line) logprint(format("Warning: Blank line follows ' \\' line concatenator: #%d -> #%d!\n", cur_line - 1, cur_line));
-			continue;
-		}
-
-		/* New (2018): Allow linewrapping via trailing ' \' character sequence right before EOL */
-		if (cat_next_line) {
-			cat_this_line = TRUE;
-			cat_next_line = FALSE;
-		}
-		if (strlen(c) >= 2 && c[strlen(c) - 1] == '\\' && (c[strlen(c) - 2] == ' ' || c[strlen(c) - 2] == '\t')) {
-			c[strlen(c) - 2] = 0; /* Discard the '\' and the space (we re-insert the space next, if required) */
-			cat_next_line = TRUE;
-		}
-		if (!cat_this_line) strcpy(bufferx, c);
-		else {
-			cat_this_line = FALSE;
-			if (strlen(bufferx) + strlen(c) + 1 >= BUFFERSIZE) { //+1: we strcat a space sometimes, see below
-				logprint(format("Warning: Music.cfg line #%d is too long to concatinate.\n", cur_line));
-				/* String overflow protection: Discard all that is too much. -- fall through and go on without this line */
-			} else {
-				/* If the continuation of the wrapped line doesn't start on a space, re-insert a space to ensure proper parameter separation */
-				if (c[0] != ' ' && c[0] != '\t' && c[0]) strcat(bufferx, " ");
-				strcat(bufferx, c);
-			}
-		}
-		if (cat_next_line) continue;
-		/* Proceed with the beginning of the whole (multi-)line */
-		strcpy(buffer0, bufferx);
-#ifdef DEBUG_SOUND
-		printf("<%s>\n", buffer0);
-#endif
-
-		/* Lines starting on ';' count as 'provided event' but actually
-		   remain silent, as a way of disabling effects/songs without
-		   letting the server know. */
-		buffer = buffer0;
-		if (buffer0[0] == ';') {
-			buffer++;
-			disabled = TRUE;
-		} else disabled = FALSE;
-
-		/* New (2025): Allow multiple alternative 'sets' within one cfg file, denoted by leading '<set number>|' markers,
-		   where number must be > 0 and '1' will be the default set which is automatically selected on init/load
-		   (TODO: save curren set choice to ini/rc or -even better probably- to pack-specific config file);
-		   added this as Kurzel's electronic dance music pack suggested in the music.cfg comments to do this manually via text editor, now it's easier: */
-		ctmp1 = strchr(buffer, '|');
-		ctmp2 = strchr(buffer, '=');
-		if (ctmp1 && ctmp2 && ctmp2 > ctmp1) {
-			/* 'set' detected */
-			set = atoi(buffer);
-			if (set > AUDIO_SUBSETS_MAX) continue; //excess sets? discard
-			if (set > sets) sets = set;
-
-			/* eat set info, advance line processing */
-			buffer = ctmp1 + 1;
-		}
-
-		/* Skip anything not beginning with an alphabetic character */
-		if (!buffer[0] || !isalpha((unsigned char)buffer[0])) continue;
-
-		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+ */
-		if (!strncmp(buffer, "packname", 8) || !strncmp(buffer, "author", 6) || !strncmp(buffer, "description", 11) || !strncmp(buffer, "version", 7)) {
-			char *ckey = buffer, *cval;
-
-			/* Search for key separator */
-			if (!(cval = strchr(ckey, '='))) continue;
-			*cval = 0;
-			cval++;
-			/* Trim spaces/tabs */
-			while (strlen(ckey) && (ckey[strlen(ckey) - 1] == ' ' || ckey[strlen(ckey) - 1] == '\t')) ckey[strlen(ckey) - 1] = 0;
-			while (*cval == ' ' || *cval == '\t') cval++;
-			while (strlen(cval) && (cval[strlen(cval) - 1] == ' ' || cval[strlen(cval) - 1] == '\t')) cval[strlen(cval) - 1] = 0;
-
-			if (!strncmp(buffer, "packname", 8)) strncpy(cfg_musicpack_name, cval, MAX_CHARS);
-			//if (!strncmp(buffer, "author", 6)) ;
-			//if (!strncmp(buffer, "description", 11)) ;
-			if (!strncmp(buffer, "version", 7)) strncpy(cfg_musicpack_version, cval, MAX_CHARS);
-
-			/* Remember all relevant [title] info at least, for subset selection menu */
-			if (set) {
-				if (!strncmp(buffer, "packname", 8)) strcpy(musicpack_packname[set], cfg_musicpack_name);
-				if (!strncmp(buffer, "description", 11)) strncpy(musicpack_description[set], cval, MAX_CHARS * 3);
-			}
-
-			continue;
-		}
-
-		/* Skip all lines from sets that aren't currently selected */
-		if (set && set != cfg_musicpack_subset) continue;
-
-
-		/* Split the line into two: the key, and the rest */
-
-		search = strchr(buffer, '=');
-		/* no event name given? */
-		if (!search) continue;
-		*search = 0;
-		search++;
-		/* Event name (key): Trim spaces/tabs */
-		while (*buffer && (buffer[strlen(buffer) - 1] == ' ' || buffer[strlen(buffer) - 1] == '\t')) buffer[strlen(buffer) - 1] = 0;
-		if (!(*buffer)) continue; /* No key (aka event) name given */
-		/* File name (value): Trim spaces/tabs */
-		while (*search && (search[strlen(search) - 1] == ' ' || search[strlen(search) - 1] == '\t')) search[strlen(search) - 1] = 0;
-		if (!(*search)) continue; /* No value (aka name) given for the key */
-
-		/* Set the event name */
-		cfg_name = buffer;
-
-		/* Make sure this is a valid event name */
-		for (event = MUSIC_MAX - 1; event >= 0; event--) {
-			sprintf(out_val, "return get_music_name(%d)", event);
-			lua_name = string_exec_lua(0, out_val);
-			if (!strlen(lua_name)) continue;
-			if (strcmp(cfg_name, lua_name) == 0) break;
-		}
-		if (event < 0) {
-			logprint(format("Music event '%s' not in audio.lua\n", cfg_name));
-			continue;
-		}
-
-		/*
-		 * Now we find all the song names and add them one by one
-		*/
-		events_loaded_semaphore = FALSE;
-
-		/* Songs: Trim spaces/tabs */
-		c = search;
-		while (*c == ' ' || *c == '\t') c++;
-		song_sublist = c;
-
-		/* no audio filenames listed? */
-		if (!song_sublist[0]) continue;
-
-		/* Terminate the current token */
-		cur_token = song_sublist;
-		/* Handle '!' indicator for 'initial' songs */
-		if (cur_token[0] == '!') {
-			cur_token++;
-			initial = TRUE;
-		} else initial = FALSE;
-		/* Handle '+' indicator for 'referenced' music events */
-		reference = FALSE;
-		if (cur_token[0] == '+') {
-			reference = TRUE;
-			cur_token++;
-		}
-		/* Handle song names within quotes */
-		if (cur_token[0] == '\"') {
-			cur_token++;
-			search = strchr(cur_token, '\"');
-			if (search) {
-				search[0] = '\0';
-				search = strpbrk(search + 1, " \t");
-			} else logprint(format("Music.cfg error: Missing closing quotes in line %d.\n", cur_line));
-		} else {
-			search = strpbrk(cur_token, " \t");
-		}
-		if (search) {
-			search[0] = '\0';
-			next_token = search + 1;
-		} else {
-			next_token = NULL;
-		}
-
-		/* Songs: Trim spaces/tabs */
-		if (next_token) while (*next_token == ' ' || *next_token == '\t') next_token++;
-
-		while (cur_token) {
-			int num = songs[event].num;
-
-			/* Don't allow too many songs */
-			if (num >= MAX_SONGS) break;
-
-			/* Handle reference */
-			if (reference) {
-				/* Too many references already? Skip it */
-				if (references >= REFERENCES_MAX) goto next_token_mus;
-				/* Remember reference for handling them all later, to avoid cycling reference problems */
-				referencer[references] = event;
-				reference_initial[references] = initial;
-				strcpy(referenced_event[references], cur_token);
-#ifdef DEBUG_SOUND
-				logprint(format("added REF #%d <%d> -> <%s>\n", references, event, cur_token));
-#endif
-				references++;
-
-				if (!events_loaded_semaphore) {
-					events_loaded_semaphore = TRUE;
-					audio_music++;
-					/* for do_cmd_options_...(): remember that this sample was mentioned in our config file */
-					songs[event].config = TRUE;
-				}
-
-				goto next_token_mus;
-			}
-
-			/* Build the path to the sample */
-			path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, cur_token);
-			if (!my_fexists(path)) {
-				logprint(format("Can't find song '%s' (line %d)\n", cur_token, cur_line));
-				goto next_token_mus;
-			}
-
-			songs[event].initial[num] = initial;
-
-			/* Don't load now if we're not caching */
-			if (no_cache) {
-				/* Just save the path for later */
-				songs[event].paths[num] = string_make(path);
-			} else {
-#ifndef WINDOWS //assume POSIX
-				sdl_files_cur++;
-				if (sdl_files_cur >= sdl_files_max) {
-					logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
-					goto next_token_mus;
-				}
-#ifdef DEBUG_SOUND
-				logprint(format("m-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, path));
-#endif
-#endif
-
-				/* Load the file now */
-				songs[event].wavs[num] = Mix_LoadMUS(path);
-				if (!songs[event].wavs[num]) {
-					//puts(format("PRBPATH: lua_name %s, ev %d, num %d, path %s", lua_name, event, num, path));
-					plog_fmt("%s: %s", SDL_GetError(), strerror(errno));
-					//puts(format("%s: %s", SDL_GetError(), strerror(errno)));//DEBUG USE_SOUND_2010
-					goto next_token_mus;
-				}
-			}
-
-			//puts(format("loaded song %s (ev %d, #%d).", songs[event].paths[num], event, num));//debug
-			/* Imcrement the sample count */
-			songs[event].num++;
-			if (!events_loaded_semaphore) {
-				events_loaded_semaphore = TRUE;
-				audio_music++;
-				/* for do_cmd_options_...(): remember that this sample was mentioned in our config file */
-				songs[event].config = TRUE;
-			}
-
-			next_token_mus:
-
-			/* Figure out next token */
-			cur_token = next_token;
-			if (next_token) {
-				/* Handle '!' indicator for 'initial' songs */
-				if (cur_token[0] == '!') {
-					cur_token++;
-					initial = TRUE;
-				} else initial = FALSE;
-				/* Handle '+' indicator for 'referenced' music events */
-				reference = FALSE;
-				if (cur_token[0] == '+') {
-					reference = TRUE;
-					cur_token++;
-				}
-				/* Handle song names within quotes */
-				if (cur_token[0] == '\"') {
-					cur_token++;
-					search = strchr(cur_token, '\"');
-					if (search) {
-						search[0] = '\0';
-						search = strpbrk(search + 1, " \t");
-					} else logprint(format("Music.cfg error: Missing closing quotes in line %d.\n", cur_line));
-				} else {
-					/* Try to find a space */
-					search = strpbrk(cur_token, " \t");
-				}
-				/* If we can find one, terminate, and set new "next" */
-				if (search) {
-					search[0] = '\0';
-					next_token = search + 1;
-				} else {
-					/* Otherwise prevent infinite looping */
-					next_token = NULL;
-				}
-
-				/* Songs: Trim spaces/tabs */
-				if (next_token) while (*next_token == ' ' || *next_token == '\t') next_token++;
-			}
-		}
-
-		/* disable this song? */
-		if (disabled) songs[event].disabled = TRUE;
-	}
-
-	musicpack_subsets = sets;
-
-#ifndef WINDOWS //assume POSIX
-#ifdef DEBUG_SOUND
-	log_fd_usage();
-#endif
-#endif
-
-#ifdef DEBUG_SOUND
-	logprint(format("solving REFs: #%d\n", references));
-#endif
-	/* Solve all stored references now */
-	for (i = 0; i < references; i++) {
-		int num, event, event_ref, j;
-		cptr lua_name;
-		bool initial;
-
-		/* Make sure this is a valid event name */
-		for (event = MUSIC_MAX - 1; event >= 0; event--) {
-			sprintf(out_val, "return get_music_name(%d)", event);
-			lua_name = string_exec_lua(0, out_val);
-			if (!strlen(lua_name)) continue;
-			if (strcmp(referenced_event[i], lua_name) == 0) break;
-		}
-		if (event < 0) {
-			logprint(format("Referenced music event '%s' not in audio.lua\n", referenced_event[i]));
-			continue;
-		}
-		event_ref = event;
-
-		/* Handle.. */
-		event = referencer[i];
-		initial = reference_initial[i];
-		num = songs[event].num;
-#ifdef DEBUG_SOUND
-		logprint(format("adding REF #%d <%d> -> <%s> (ev = %d, initial = %d, songs %d)\n", i, event, referenced_event[i], event_ref, initial, num));
-#endif
-
-		for (j = 0; j < songs[event_ref].num; j++) {
-			/* Don't allow too many songs */
-			if (num >= MAX_SONGS) break;
-
-			/* Never reference initial songs */
-			if (songs[event_ref].initial[j]) continue;
-
-			/* Avoid cross-referencing ourselves! */
-			for (k = 0; k < songs[event].num; k++)
-				if (streq(songs[event].paths[k], songs[event_ref].paths[j])) break;
-			if (k != songs[event].num) {
-				logprint(format("Music: Duplicate reference <%s> (%d,%d <-> %d,%d)\n", songs[event].paths[k], event, k, event_ref, j));
-				continue;
-			}
-
-			songs[event].paths[num] = songs[event_ref].paths[j];
-#if 0 /* these are all NULL here, as thread_load_audio() is only called _after_ we return */
-			songs[event].wavs[num] = songs[event_ref].wavs[j];
-#else /* so we need to remember the reference indices instead to avoid duplicate/multiple loading of the same files over and over, killing our files handle pool (1024)... */
-			songs[event].referenced_event[num] = event_ref;
-			songs[event].referenced_song[num] = j;
-#endif
-			songs[event].initial[num] = initial;
-			songs[event].is_reference[num] = TRUE;
-#ifdef DEBUG_SOUND
-			logprint(format("  adding song #%d <%d> : <%s> (initial = %d)\n", event, num, songs[event].paths[num], initial));
-#endif
-			num++;
-			songs[event].num = num;
-			/* for do_cmd_options_...(): remember that this sample was mentioned in our config file */
-			songs[event].config = TRUE;
-		}
-	}
-
-	/* Close the file */
-	my_fclose(fff);
-
-#ifndef WINDOWS //assume POSIX
-#ifdef DEBUG_SOUND
-	log_fd_usage();
-#endif
-#endif
-
-#ifdef WINDOWS
-	/* On Windows we must have a second config file just to store disabled-state, since we cannot write to Program Files folder after Win XP anymore..
-	   So if it exists, let it override the normal config file. */
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s-disabled.cfg", ANGBAND_DIR_USER, cfg_musicpackfolder);
-	else path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-nomusic.cfg"); //paranoia
-
-	fff = my_fopen(path, "r");
-	if (fff) {
-		while (my_fgets(fff, buffer0, sizeof(buffer0)) == 0) {
-			/* find out event state (disabled/enabled) */
-			i = exec_lua(0, format("return get_music_index(\"%s\")", buffer0));
-			/* unknown (different game version/music pack?) */
-			if (i == -1 || !songs[i].config) continue;
-			/* disable songs listed in this file */
-			songs[i].disabled = TRUE;
-		}
-	}
-	my_fclose(fff);
-#endif
-#ifdef WINDOWS
-	if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-		sprintf(path, "%s\\TomeNET-%s-volume.cfg", ANGBAND_DIR_USER, cfg_musicpackfolder);
-	else
-#endif
-	path_build(path, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-musicvol.cfg"); //paranoia
-
-	fff = my_fopen(path, "r");
-	if (fff) {
-		while (my_fgets(fff, buffer0, sizeof(buffer0)) == 0) {
-			/* find out event state (disabled/enabled) */
-			i = exec_lua(0, format("return get_music_index(\"%s\")", buffer0));
-			if (my_fgets(fff, buffer0, sizeof(buffer0))) break; /* Error, incomplete entry */
-			/* unknown (different game version/music pack?) */
-			if (i == -1 || !songs[i].config) continue;
-			/* set volume of songs listed in this file */
-			songs[i].volume = atoi(buffer0);
-		}
-	}
-	my_fclose(fff);
-
-#ifdef DEBUG_SOUND
-	puts("sound_sdl_init() done.");
+	puts("audio_and_config_init() done.");
 #endif
 
 	/* Success */
 	return(TRUE);
 }
-
 
 /* play the 'bell' sound */
 #define BELL_REDUCTION 3 /* reduce volume of bell() sounds by this factor */
@@ -2042,7 +1794,6 @@ static bool play_sound(int event, int type, int vol, s32b player_id, int dist_x,
 
 	return(TRUE);
 }
-
 
 /* Release weather channel after fading out has been completed */
 static void clear_channel(int c) {
@@ -3022,7 +2773,7 @@ static bool play_music_vol(int event, char vol) {
 static void fadein_next_music(void) {
 	Mix_Music *wave = NULL;
 #ifdef WILDERNESS_MUSIC_RESUME
-	bool prev_wilderness, was_resumed = FALSE;
+	bool prev_wilderness;
 	cptr pmn, mn;
 #endif
 
@@ -3152,24 +2903,6 @@ static void fadein_next_music(void) {
 #ifdef ENABLE_JUKEBOX
 		if (jukebox_screen) jukebox_update_songlength();
 #endif
-
-		/* If music was game-initiated, ie not from the jukebox, log it if desired */
-		if (!jukebox_screen && c_cfg.log_music) {
-			const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
-
-#ifdef WINDOWS
-			while (*c != '\\' && c >= songs[music_cur].paths[music_cur_song]) c--;
-#else
-			while (*c != '/' && c >= songs[music_cur].paths[music_cur_song]) c--;
-#endif
-			c++;
-			while (*c2 != '.' && c2 > c) c2--;
-			if (c2 == c) c_msg_format("\377WMusic <%s> started.", c);
-			else c_msg_format("\377WMusic <%.*s> started.", (int)(c2 - c), c);
-			//sprintf(out_val, "return get_music_name(%d)", j);
-			//lua_name = string_exec_lua(0, out_val);
-		}
-
 		return;
 	}
 
@@ -3289,45 +3022,12 @@ static void fadein_next_music(void) {
 		    ) {
 			music_cur_song = songs[music_cur].bak_song;
 			Mix_SetMusicPosition(songs[music_cur].bak_pos / 1000);
-			if (songs[music_cur].bak_pos) was_resumed = TRUE;
 		}
 	}
 #endif
 #ifdef ENABLE_JUKEBOX
 	if (jukebox_screen) jukebox_update_songlength();
 #endif
-
-	/* If music was game-initiated, ie not from the jukebox, log it if desired */
-#ifdef WILDERNESS_MUSIC_RESUME
-	if (!jukebox_screen && c_cfg.log_music) {
-		const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
-
- #ifdef WINDOWS
-		while (*c != '\\' && c >= songs[music_cur].paths[music_cur_song]) c--;
- #else
-		while (*c != '/' && c >= songs[music_cur].paths[music_cur_song]) c--;
- #endif
-		c++;
-		while (*c2 != '.' && c2 > c) c2--;
-		if (c2 == c) c_msg_format("\377WMusic <%s> %s.", c, was_resumed ? "resumed" : "started");
-		else c_msg_format("\377WMusic <%.*s> %s.", (int)(c2 - c), c, was_resumed ? "resumed" : "started");
-#else
-	if (!jukebox_screen && c_cfg.log_music) {
-		const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
-
- #ifdef WINDOWS
-		while (*c != '\\' && c >= songs[music_cur].paths[music_cur_song]) c--;y
- #else
-		while (*c != '/' && c >= songs[music_cur].paths[music_cur_song]) c--;
- #endif
-		c++;
-		while (*c2 != '.' && c2 > c) c2--;
-		if (c2 == c) c_msg_format("\377WMusic <%s> started.", c);
-		else c_msg_format("\377WMusic <%.*s> started.", (int)(c2 - c), c);
-#endif
-		//sprintf(out_val, "return get_music_name(%d)", j);
-		//lua_name = string_exec_lua(0, out_val);
-	}
 }
 
 //#ifdef JUKEBOX_INSTANT_PLAY
@@ -3545,13 +3245,13 @@ errr init_sound_sdl(int argc, char **argv) {
 	puts(format("init_sound_sdl() init%s", no_cache_audio == FALSE ? " (cached)" : " (not cached)"));
 #endif
 
-	/* Load sound preferences if requested */
-#if 0
-	if (!sound_sdl_init(no_cache_audio)) {
-#else /* never cache audio right at program start, because it creates an annoying delay! */
-	if (!sound_sdl_init(TRUE)) {
-#endif
+	/* Determine how many files we can keep open for cached audio. */
+	init_fd_limit();
+
+	/* Initialize audio and load sound preferences. */
+	if (!audio_and_config_init()) {
 		plog("Failed to initialise audio.");
+		close_audio();
 
 		/* Failure */
 		return(1);
@@ -3607,7 +3307,7 @@ errr init_sound_sdl(int argc, char **argv) {
 /* Try to allow re-initializing audio.
    Purpose: Switching between audio packs live, without need for client restart. */
 errr re_init_sound_sdl(void) {
-	int i, j;
+	int i;
 
 
 	/* --- exit --- */
@@ -3616,28 +3316,7 @@ errr re_init_sound_sdl(void) {
 	close_audio();
 
 	/* Reset variables (closing audio doesn't do this since it assumes program exit anyway) */
-	for (i = 0; i < SOUND_MAX_2010; i++) {
-		for (j = 0; j < MAX_SAMPLES; j++) { //could also just go to < samples[i].num instead, for efficiency...
-			samples[i].wavs[j] = NULL;
-			samples[i].paths[j] = NULL;
-		}
-		samples[i].num = 0;
-		samples[i].config = FALSE;
-		samples[i].disabled = FALSE;
-	}
-	for (i = 0; i < MUSIC_MAX; i++) {
-		for (j = 0; j < MAX_SONGS; j++) { //could also just go to < songs[i].num instead, for efficiency...
-			songs[i].wavs[j] = NULL;
-			songs[i].paths[j] = NULL;
-			songs[i].is_reference[j] = FALSE;
-		}
-		songs[i].num = 0;
-		songs[i].config = FALSE;
-		songs[i].disabled = FALSE;
-#ifdef WILDERNESS_MUSIC_RESUME
-		songs[i].bak_pos = 0;
-#endif
-	}
+	reset_audio_definitions();
 
 	for (i = 0; i < MAX_CHANNELS; i++) {
 		channel_sample[i] = -1;
@@ -3687,9 +3366,8 @@ errr re_init_sound_sdl(void) {
 	browse_sound_idx = -1; browsebook_sound_idx = -1; browseinven_sound_idx = -1;
 	casino_craps_sound_idx = -1; casino_inbetween_sound_idx = -1; casino_wheel_sound_idx = -1; casino_slots_sound_idx = -1;
 
-#ifndef WINDOWS //assume POSIX
-	sdl_files_cur = 0;
-#endif
+	sdl_music_loaded = 0;
+	sdl_samples_loaded = 0;
 
 	/* --- init --- */
 
@@ -3699,13 +3377,10 @@ errr re_init_sound_sdl(void) {
 	puts(format("re_init_sound_sdl() init%s", no_cache_audio == FALSE ? " (cached)" : " (not cached)"));
 #endif
 
-	/* Load sound preferences if requested */
-#if 0
-	if (!sound_sdl_init(no_cache_audio)) {
-#else /* never cache audio right at program start, because it creates an annoying delay! */
-	if (!sound_sdl_init(TRUE)) {
-#endif
+	/* Initialize audio and load sound preferences. */
+	if (!audio_and_config_init()) {
 		plog("Failed to re-initialise audio.");
+		close_audio();
 
 		/* Failure */
 		return(1);
@@ -3800,11 +3475,11 @@ static int thread_load_audio(void *dummy) {
 		}
 	}
 
-#ifndef WINDOWS //assume POSIX
 #ifdef DEBUG_SOUND
 	log_fd_usage();
-#endif
-	logprint(format("Opened %d audio files (of %d max OS fds. Change via 'ulimit -n').\n", sdl_files_cur, sdl_files_max));
+	logprint(format("Loaded %d sound samples into memory.\n", sdl_samples_loaded));
+	logprint(format("Streaming %d music tracks of maximum %d. Change maximum via 'ulimit -n'.\n",
+		sdl_music_loaded, sdl_music_loaded_max));
 #endif
 
 	return(0);
@@ -3831,27 +3506,17 @@ static Mix_Chunk* load_sample(int idx, int subidx) {
 	/* Try loading it, if it's not yet cached */
 
 	/* Verify it exists */
+	errno = 0;
 	if (!my_fexists(filename)) {
+		if (errno == EMFILE || errno == ENFILE) {
+			logprint(format("Too many open files while loading sample %d,%d: %s\n", idx, subidx, filename));
+		}
 #ifdef DEBUG_SOUND
-		puts(format("file doesn't exist %d, %d: %s.", idx, subidx, filename));
+		else puts(format("file doesn't exist %d, %d: %s.", idx, subidx, filename));
 #endif
 		SDL_UnlockMutex(load_sample_mutex);
 		return(NULL);
 	}
-
-#ifndef WINDOWS //assume POSIX
-	sdl_files_cur++;
-	if (sdl_files_cur >= sdl_files_max) {
-		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
-		// and for now just disable the whole event, to be safe against repeated attempts to load it
-		samples[idx].disabled = TRUE;
-		SDL_UnlockMutex(load_sample_mutex);
-		return(NULL);
-	}
-#ifdef DEBUG_SOUND
-	logprint(format("LS-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, filename));
-#endif
-#endif
 
 	/* Load */
 	wave = Mix_LoadWAV(filename);
@@ -3859,6 +3524,7 @@ static Mix_Chunk* load_sample(int idx, int subidx) {
 	/* Did we get it now? */
 	if (wave) {
 		samples[idx].wavs[subidx] = wave;
+		sdl_samples_loaded++;
 #ifdef DEBUG_SOUND
 		puts(format("loaded sample %d, %d: %s.", idx, subidx, filename));
 #endif
@@ -3873,6 +3539,7 @@ static Mix_Chunk* load_sample(int idx, int subidx) {
 	SDL_UnlockMutex(load_sample_mutex);
 	return(wave);
 }
+
 static Mix_Music* load_song(int idx, int subidx) {
 	const char *filename = songs[idx].paths[subidx];
 	Mix_Music *waveMUS = NULL;
@@ -3908,7 +3575,7 @@ static Mix_Music* load_song(int idx, int subidx) {
 	SDL_UnlockMutex(load_song_mutex_entrance);
 
 #ifdef DEBUG_SOUND
-	printf("load_song(%d,%d)\n", idx, subidx);
+	//printf("load_song(%d,%d)\n", idx, subidx);
 #endif
 
 	/* check if it's already loaded */
@@ -3923,27 +3590,25 @@ static Mix_Music* load_song(int idx, int subidx) {
 	/* Try loading it, if it's not yet cached */
 
 	/* Verify it exists */
+	errno = 0;
 	if (!my_fexists(filename)) {
+		if (errno == EMFILE || errno == ENFILE) {
+			logprint(format("Too many open files while loading song %d,%d: %s\n", idx, subidx, filename));
+		}
 #ifdef DEBUG_SOUND
-		puts(format("file doesn't exist %d, %d: %s.", idx, subidx, filename));
+		else puts(format("file doesn't exist %d, %d: %s.", idx, subidx, filename));
 #endif
 		SDL_UnlockMutex(load_song_mutex);
 		return(NULL);
 	}
 
-#ifndef WINDOWS //assume POSIX
-	sdl_files_cur++;
-	if (sdl_files_cur >= sdl_files_max) {
-		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
+	if (sdl_music_loaded >= sdl_music_loaded_max) {
+		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_music_loaded_max, filename));
 		// and for now just disable the whole event, to be safe against repeated attempts to load it
 		songs[idx].disabled = TRUE;
 		SDL_UnlockMutex(load_song_mutex);
 		return(NULL);
 	}
-#ifdef DEBUG_SOUND
-	logprint(format("LM-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, filename));
-#endif
-#endif
 
 	/* Load */
 	waveMUS = Mix_LoadMUS(filename);
@@ -3951,6 +3616,7 @@ static Mix_Music* load_song(int idx, int subidx) {
 	/* Did we get it now? */
 	if (waveMUS) {
 		songs[idx].wavs[subidx] = waveMUS;
+		sdl_music_loaded++;
 #ifdef DEBUG_SOUND
 		puts(format("loaded song %d, %d: %s.", idx, subidx, filename));
 #endif
@@ -4159,13 +3825,7 @@ void do_cmd_options_sfx_sdl(void) {
 			/* -- save disabled info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-#ifndef WINDOWS
 			path_build(buf2, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.$$$");
-#else
-			if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-				sprintf(buf2, "%s\\TomeNET-%s-disabled.cfg", ANGBAND_DIR_USER, cfg_soundpackfolder);
-			else path_build(buf2, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-nosound.cfg"); //paranoia
-#endif
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -4192,9 +3852,7 @@ void do_cmd_options_sfx_sdl(void) {
 
 				/* ignores lines that don't start on a letter */
 				if (tolower(*p) < 'a' || tolower(*p) > 'z') {
-#ifndef WINDOWS
 					fputs(out_val, fff2);
-#endif
 					continue;
 				}
 
@@ -4206,62 +3864,30 @@ void do_cmd_options_sfx_sdl(void) {
 				j = exec_lua(0, format("return get_sound_index(\"%s\")", evname));
 				if (j == -1 || !samples[j].config) {
 					/* 'empty' event (no filenames specified), just copy it over same as misc lines */
-#ifndef WINDOWS
 					fputs(out_val, fff2);
-#endif
 					continue;
 				}
 
 				/* apply new state */
 				if (samples[j].disabled) {
-#ifndef WINDOWS
 					strcpy(out_val2, ";");
 					strcat(out_val2, p);
 				} else strcpy(out_val2, p);
-#else
-					strcpy(out_val2, evname);
-					strcat(out_val2, "\n");
-				} else continue;
-#endif
 
 				fputs(out_val2, fff2);
 			}
 			fclose(fff);
 			fclose(fff2);
 
-#if 0
- #if 0 /* cannot overwrite the cfg files in Programs (x86) folder on Windows 7 (+?) */
-			rename(buf, format("%s.bak", buf));
-			rename(buf2, buf);
- #endif
- #if 1 /* delete target file first instead of 'over-renaming'? Seems to work on my Win 7 box at least. */
 			rename(buf, format("%s.bak", buf));
 			//fd_kill(file_name);
 			remove(buf);
 			rename(buf2, buf);
- #endif
- #if 0 /* use a separate file instead? */
-			path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "sound-override.cfg");
-			rename(buf2, buf);
- #endif
-#endif
-#ifndef WINDOWS
-			rename(buf, format("%s.bak", buf));
-			//fd_kill(file_name);
-			remove(buf);
-			rename(buf2, buf);
-#endif
 
 			/* -- save volume info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-#ifndef WINDOWS
 			path_build(buf2, 1024, ANGBAND_DIR_XTRA_SOUND, "TomeNET-soundvol.cfg");
-#else
-			if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-				sprintf(buf2, "%s\\TomeNET-%s-volume.cfg", ANGBAND_DIR_USER, cfg_soundpackfolder);
-			else path_build(buf2, sizeof(path), ANGBAND_DIR_XTRA_SOUND, "TomeNET-soundvol.cfg"); //paranoia
-#endif
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -4985,13 +4611,7 @@ void do_cmd_options_mus_sdl(void) {
 			/* -- save disabled info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-#ifndef WINDOWS
 			path_build(buf2, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.$$$");
-#else
-			if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))\
-				sprintf(buf2, "%s\\TomeNET-%s-disabled.cfg", ANGBAND_DIR_USER, cfg_musicpackfolder);
-			else path_build(buf2, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-nomusic.cfg"); //paranoia
-#endif
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -5018,9 +4638,7 @@ void do_cmd_options_mus_sdl(void) {
 
 				/* ignores lines that don't start on a letter */
 				if (tolower(*p) < 'a' || tolower(*p) > 'z') {
-#ifndef WINDOWS
 					fputs(out_val, fff2);
-#endif
 					continue;
 				}
 
@@ -5032,62 +4650,26 @@ void do_cmd_options_mus_sdl(void) {
 				j = exec_lua(0, format("return get_music_index(\"%s\")", evname));
 				if (j == -1 || !songs[j].config) {
 					/* 'empty' event (no filenames specified), just copy it over same as misc lines */
-#ifndef WINDOWS
 					fputs(out_val, fff2);
-#endif
 					continue;
 				}
 
 				/* apply new state */
 				if (songs[j].disabled) {
-#ifndef WINDOWS
 					strcpy(out_val2, ";");
 					strcat(out_val2, p);
 				} else strcpy(out_val2, p);
-#else
-					strcpy(out_val2, evname);
-					strcat(out_val2, "\n");
-				} else continue;
-#endif
 
 				fputs(out_val2, fff2);
 			}
 			fclose(fff);
 			fclose(fff2);
 
-#if 0
- #if 0 /* cannot overwrite the cfg files in Programs (x86) folder on Windows 7 (+?) */
-			rename(buf, format("%s.bak", buf));
-			rename(buf2, buf);
- #endif
- #if 1 /* delete target file first instead of 'over-renaming'? Seems to work on my Win 7 box at least. */
-			rename(buf, format("%s.bak", buf));
-			//fd_kill(file_name);
-			remove(buf);
-			rename(buf2, buf);
- #endif
- #if 0 /* use a separate file instead? */
-			path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "music-override.cfg");
-			rename(buf2, buf);
- #endif
-#endif
-#ifndef WINDOWS
-			rename(buf, format("%s.bak", buf));
-			//fd_kill(file_name);
-			remove(buf);
-			rename(buf2, buf);
-#endif
 
 			/* -- save volume info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-#ifndef WINDOWS
 			path_build(buf2, 1024, ANGBAND_DIR_XTRA_MUSIC, "TomeNET-musicvol.cfg");
-#else
-			if (!win_dontmoveuser && getenv("HOMEDRIVE") && getenv("HOMEPATH"))
-				sprintf(buf2, "%s\\TomeNET-%s-volume.cfg", ANGBAND_DIR_USER, cfg_musicpackfolder);
-			else path_build(buf2, sizeof(path), ANGBAND_DIR_XTRA_MUSIC, "TomeNET-musicvol.cfg"); //paranoia
-#endif
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -5929,4 +5511,4 @@ void update_jukebox_timepos(void) {
 	Term->scr->cu = 1;
 }
 
-#endif /* SOUND_SDL */
+#endif /* SOUND_SDL2 */

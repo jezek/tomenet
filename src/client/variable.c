@@ -216,6 +216,18 @@ cptr ANGBAND_DIR_USER;
 cptr ANGBAND_DIR_XTRA;
 cptr ANGBAND_DIR_GAME;
 
+#ifdef USE_SDL2
+cptr ANGBAND_USER_DIR;
+cptr ANGBAND_USER_DIR_SCPT;
+cptr ANGBAND_USER_DIR_TEXT;
+cptr ANGBAND_USER_DIR_USER;
+cptr ANGBAND_USER_DIR_XTRA;
+cptr ANGBAND_USER_DIR_GAME;
+
+bool sdl2_window_decorations = FALSE;
+int sdl2_graphics_image_force_outline = -1;
+#endif
+
 bool disable_numlock = FALSE;
 bool bad_solid_mapping = FALSE;
 #ifdef WINDOWS

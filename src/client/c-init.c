@@ -33,9 +33,9 @@ static int Socket;
  * List of sound modules in the order they should be tried.
  */
 const struct module sound_modules[] = {
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	{ "sdl", "SDL_mixer sound module", init_sound_sdl },
- #endif /* SOUND_SDL */
+ #endif
 	{ "dummy", "Dummy module", NULL },
 };
 #endif /* USE_SOUND_2010 */
@@ -112,10 +112,10 @@ static void validate_dir(cptr s) {
 /*
  * Initialize and verify the file paths.
  *
- * Use the ANGBAND_PATH environment var if possible, else use
+ * Use the TOMENET_PATH environment var if possible, else use
  * DEFAULT_PATH, and in either case, branch off appropriately.
  *
- * First, we'll look for the ANGBAND_PATH environment variable,
+ * First, we'll look for the TOMENET_PATH environment variable,
  * and then look for the files in there.  If that doesn't work,
  * we'll try the DEFAULT_PATH constant.  So be sure that one of
  * these two things works...
@@ -133,6 +133,9 @@ void init_stuff(void) {
 	strcpy(path, "TomeNET:");
  #else /* All systems except Amiga / VM: */
 	/* Change current directory to the location of the binary - mikaelh */
+  #if defined(USE_SDL2)
+	if (chdir(SDL2_GAME_PATH) == -1) plog_fmt("init_stuff: chdir(\"%s\") failed", SDL2_GAME_PATH);
+  #else
 	if (argv0) {
 		char *app_path = strdup(argv0);
 		char *app_dir;
@@ -143,6 +146,7 @@ void init_stuff(void) {
 
 		free(app_path);
 	}
+  #endif
 	/* Obtain our path */
 	if (!strlen(path)) {
 		cptr tail;
@@ -150,12 +154,28 @@ void init_stuff(void) {
 		/* Get the environment variable */
 		tail = getenv("TOMENET_PATH");
 
+  #ifdef USE_SDL2
+		if (!tail) {
+			/* Compose default: SDL2_GAME_PATH + DEFAULT_PATH */
+			int n = snprintf(path, sizeof(path), "%s%s", SDL2_GAME_PATH, DEFAULT_PATH);
+			if (n < 0 || (size_t)n >= sizeof(path)) {
+				plog("init_stuff: Absolute path too long, using relative instead");
+			} else {
+				/* No error, use the composed path below */
+				tail = path; 
+			}
+		}
+  #endif
 		/* Use the angband_path, or a default */
 		strcpy(path, tail ? tail : DEFAULT_PATH);
 	}
 
 	/* Hack -- Add a path separator (only if needed) */
+  #if defined(USE_SDL2)
+	if (!suffix(path, SDL2_PATH_SEP)) strcat(path, SDL2_PATH_SEP);
+  #else
 	if (!suffix(path, PATH_SEP)) strcat(path, PATH_SEP);
+  #endif
 
 	/* Validate the path */
 	validate_dir(path);
@@ -165,10 +185,19 @@ void init_stuff(void) {
 	init_file_paths(path);
 
 	/* Hack -- Validate the paths */
+	validate_dir(ANGBAND_DIR);
 	validate_dir(ANGBAND_DIR_SCPT);
 	validate_dir(ANGBAND_DIR_TEXT);
 	validate_dir(ANGBAND_DIR_USER);
 	validate_dir(ANGBAND_DIR_GAME);
+
+ #ifdef USE_SDL2
+	validate_dir(ANGBAND_USER_DIR);
+	validate_dir(ANGBAND_USER_DIR_SCPT);
+	validate_dir(ANGBAND_USER_DIR_TEXT);
+	validate_dir(ANGBAND_USER_DIR_USER);
+	validate_dir(ANGBAND_USER_DIR_GAME);
+ #endif
 }
 #endif //not WINDOWS
 
@@ -3125,7 +3154,7 @@ static void Input_loop(void) {
 #if 0 /* 0: moved to a hack 'fix_custom_font_after_startup'. */
 	/* requires in_game == TRUE in handle_process_font_file() */
 	/* ---- TODO: A little order glitch, that we workaround here - should fix this in a cleaner manner probably: ----     - C. Blue
-	        The visual modules (init_x11() / init_gcu() / init_windows()) are loaded BEFORE client_init() is called.
+	        The visual modules (init_x11() / init_gcu() / init_windows() / init_sdl2()) are loaded BEFORE client_init() is called.
 	        That means the init_stuff()->init_file_paths() has't been done yet, and and custom fonts won't initialize their
 	        custom mapping .prf files either. Also, custom fonts are apparently reset even if this is put as far down as
 	        into Input_loop() (after client_init() has finished already), so for now until someone sorts this out cleanly,
@@ -3205,8 +3234,11 @@ static void Input_loop(void) {
 		 */
 		update_ticks();
 
+/* Don't flush events in SDL2. Flushing it will fail to register some key presses. */
+#ifndef USE_SDL2
 		/* Flush input (now!) */
 		flush_now();
+#endif
 
 		/* Redraw windows if necessary */
 		window_stuff();
@@ -3310,7 +3342,7 @@ static void quit_hook(cptr s) {
 #ifdef USE_SOUND_2010
 	/* let the sound fade out, also helps the user to realize
 	   he's been disconnected or something - C. Blue */
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	mixer_fadeall();
  #endif
 #endif
@@ -3355,7 +3387,7 @@ static void quit_hook(cptr s) {
 #ifdef USE_SOUND_2010
 	/* let the sound fade out, also helps the user to realize
 	   he's been disconnected or something - C. Blue */
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	mixer_fadeall();
  #endif
 #endif
@@ -3366,7 +3398,11 @@ static void quit_hook(cptr s) {
 	if (hist_chat_end || hist_chat_looped) {
 		FILE *fp;
 
+#ifdef USE_SDL2
+		path_build(buf, 1024, os_temp_path, format("chathist-%s.tmp", nick));
+#else
 		path_build(buf, 1024, ANGBAND_DIR_USER, format("chathist-%s.tmp", nick));
+#endif
 		fp = fopen(buf, "w");
 		if (fp) {
 			if (!hist_chat_looped) {
@@ -3389,7 +3425,11 @@ static void quit_hook(cptr s) {
 	{
 		FILE *fp;
 
+#ifdef USE_SDL2
+		path_build(buf, 1024, os_temp_path, "bookmarks.tmp");
+#else
 		path_build(buf, 1024, ANGBAND_DIR_USER, "bookmarks.tmp");
+#endif
 		fp = fopen(buf, "w");
 		if (fp) {
 			for (j = 0; j < GUIDE_BOOKMARKS; j++) {
@@ -3486,7 +3526,7 @@ static void init_sound() {
 #ifdef USE_SOUND_2010
 int re_init_sound() {
 	int i;
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	int err;
  #endif
 
@@ -3506,7 +3546,7 @@ int re_init_sound() {
 			puts("ERROR: SDL audio has no init function.");
 			return(-1);
 		}
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 		if ((err = re_init_sound_sdl()) == 0) {
   #ifdef DEBUG_SOUND
 			puts(format("USE_SOUND_2010: successfully loaded module %d.", i));
@@ -3515,7 +3555,7 @@ int re_init_sound() {
 		} else {
 			puts("ERROR: SDL audio failed to re-initialize.");
 			return(err);
-		}
+               }
  #endif
 	}
  #ifdef DEBUG_SOUND
@@ -3601,7 +3641,7 @@ void client_init(char *argv1, bool skip) {
 	FILE *fp;
 	char buf[1024];
 
-#if defined(USE_X11) || defined(USE_GCU)
+#if defined(USE_X11) || defined(USE_GCU) || defined(USE_SDL2)
 	/* Force creation of fresh .tomenetrc file in case none existed yet.
 	   The reason we do it *right now* is that it generates visual glitches later
 	   and prevents plog() output from being displayed.
@@ -3643,6 +3683,7 @@ void client_init(char *argv1, bool skip) {
 	init_guide();
 
 	GetLocalHostName(host_name, 80);
+	fprintf(stderr, "jezek - host_name: %s\n", host_name);
 
 	/* Set the "quit hook" */
 	if (!quit_aux) quit_aux = quit_hook;
@@ -3799,6 +3840,27 @@ void client_init(char *argv1, bool skip) {
 			}
 			WSACleanup( );
 		}
+#elif defined(USE_SDL2)
+ #include <SDL2/SDL_net.h>
+		//TODO jezek - Test ip_iface result against WINDOWS version.
+		// Do the same as WINDOWS version, but use SDL_net functions to be OS independent.
+		// Use SDL_net to get local IP address and assign to ip_iface.
+		IPaddress addrs[16];
+		int count = SDLNet_GetLocalAddresses(addrs, 16);
+		if (count < 0) {
+			c_msg_format("SDLNet_GetLocalAddresses failed: %s\n", SDLNet_GetError());
+		} else {
+			for (int i = 0; i < count; ++i) {
+				if (addrs[i].host != INADDR_NONE && addrs[i].host != INADDR_ANY) {
+					const char* txt = SDLNet_ResolveIP(&addrs[i]);
+					if (txt) {
+						strncpy(ip_iface, txt, MAX_CHARS);
+						ip_iface[MAX_CHARS - 1] = '\0';
+						break;
+					}
+				}
+			}
+		}
 #endif
 
 #if defined(USE_X11) || defined(USE_GCU)
@@ -3871,9 +3933,15 @@ again:
 		int x = 0;
 		char path[1024], path2[1024], pathbat[1024];
 
+#ifdef USE_SDL2
+		path_build(path, 1024, os_temp_path, "__ipc");
+		path_build(pathbat, 1024, os_temp_path, "__ipc.bat");
+		path_build(path2, 1024, os_temp_path, "__ipc_done");
+#else
 		path_build(path, 1024, ANGBAND_DIR_USER, "__ipc");
 		path_build(path2, 1024, ANGBAND_DIR_USER, "__ipc_done");
 		path_build(pathbat, 1024, ANGBAND_DIR_USER, "__ipc.bat");
+#endif
 		fp = fopen(pathbat, "w");
 		if (fp) {
 			fprintf(fp, "ipconfig /all > %s\n", path);
@@ -3952,9 +4020,25 @@ again:
 		}
 		remove(pathbat);
  #endif
+#elif defined(USE_SDL2)
+ #include <stdlib.h>
+ #include <SDL2/SDL_timer.h>
+		// Getting MAC address is not possible using only SDL2. For now generate fake MAC.
+		// Generate fake MAC address: first half constant "F4K", second half random.
+		//TODO jezek - Is MAC address needed? Retrieve ip_addr instead of generating a fake MAC.
+		uint8_t fake_prefix[3] = { 'F', '4', 'K' };
+		for (int i = 0; i < 3; ++i) {
+			ip_iaddr[i] = fake_prefix[i];
+		}
+		srand((unsigned int)SDL_GetTicks());
+		for (int i = 3; i < 6; ++i) {
+			ip_iaddr[i] = (uint8_t)(rand() & 0xFF);
+		}
+		c_msg_print("Generating fake MAC address with prefix 'F4K' and random suffix\n");
 #endif
 	}
 
+	fprintf(stderr, "jezek - client_init: Socket: %u\n", Socket);
 	/* Create a socket buffer */
 	if (Sockbuf_init(&ibuf, Socket, CLIENT_SEND_SIZE,
 	    SOCKBUF_READ | SOCKBUF_WRITE) == -1) {
@@ -3969,6 +4053,7 @@ again:
 
 	/* Put the contact info in it */
 	Packet_printf(&ibuf, "%u", magic);
+	/* Note: The SDL2 client returns always 0 as port number. But it doesn't matter, cause the server throws this information away and probes the port by itself. */
 	Packet_printf(&ibuf, "%s%hu%c", real_name, GetPortNum(ibuf.sock), 0xFF);
 	Packet_printf(&ibuf, "%s%s%hu", nick, host_name, version);
 
@@ -3982,8 +4067,13 @@ again:
 #endif
 
 	/* Send the info */
-	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len) == -1))
+#ifdef USE_SDL2
+	if ((bytes = SocketWrite(Socket, ibuf.buf, ibuf.len)) == -1)
 		quit("Couldn't send contact information\n");
+#else
+	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len)) == -1)
+		quit("Couldn't send contact information\n");
+#endif
 
 	/* Listen for reply */
 	for (retries = 0; retries < 10; retries++) {
@@ -3994,7 +4084,11 @@ again:
 		if (!SocketReadable(Socket)) continue;
 
 		/* Read reply */
+#ifdef USE_SDL2
+		if (SocketRead(Socket, ibuf.buf, ibuf.size) <= 0) {
+#else
 		if (DgramRead(Socket, ibuf.buf, ibuf.size) <= 0) {
+#endif
 			/*printf("DgramReceiveAny failed (errno = %d)\n", errno);*/
 			continue;
 		}
@@ -4316,7 +4410,11 @@ again:
 
 	/* Remember chat input history across logins --
 	   ironically we 'reset message log' between logins in another place, not totally efficient.. */
+#ifdef USE_SDL2
+	path_build(buf, 1024, os_temp_path, format("chathist-%s.tmp", nick));
+#else
 	path_build(buf, 1024, ANGBAND_DIR_USER, format("chathist-%s.tmp", nick));
+#endif
 	fp = fopen(buf, "r");
 	hist_chat_end = 0;
 	while (fp && hist_chat_end < MSG_HISTORY_MAX && my_fgets(fp, message_history_chat[hist_chat_end], MSG_LEN) == 0) hist_chat_end++;
@@ -4328,7 +4426,11 @@ again:
 
 #ifdef GUIDE_BOOKMARKS
 	/* Load guide bookmarks */
+#ifdef USE_SDL2
+	path_build(buf, 1024, os_temp_path, "bookmarks.tmp");
+#else
 	path_build(buf, 1024, ANGBAND_DIR_USER, "bookmarks.tmp");
+#endif
 	fp = fopen(buf, "r");
 	temp = 0;
 	while (fp && temp < GUIDE_BOOKMARKS && fscanf(fp, "%d,%s\n", &bookmark_line[temp], bookmark_name[temp]) != EOF) temp++;
@@ -4367,7 +4469,7 @@ again:
 		/* We quit the game actively? (Otherwise the quit_hook will already have taken care of fading out). Or, in 4.9.3+, it' PKT_RELOGIN from the server. */
 		if (rl_connection_state == 3) {
  #ifdef USE_SOUND_2010
-  #ifdef SOUND_SDL
+  #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 			mixer_fadeall();
   #endif
  #endif

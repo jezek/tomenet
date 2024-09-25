@@ -9,9 +9,16 @@
  */
 
 #include "angband.h"
-extern bool disable_tile_cache;
 
-char mangrc_filename[100] = "";
+#ifdef USE_SDL2
+ #include <SDL2/SDL.h>
+#endif
+
+#ifdef TILE_CACHE_SIZE
+extern bool disable_tile_cache;
+#endif
+
+char mangrc_filename[MAX_PATH_LENGTH] = "";
 bool convert_rc = FALSE;
 
 /* linux clients: load subwindow prefs from .tomenetrc - C. Blue */
@@ -74,10 +81,13 @@ static void read_mangrc_aux(int t, cptr sec_name) {
 static bool read_mangrc(cptr filename) {
 	FILE *config;
 	char buf[1024];
-	bool skip = FALSE, fail = FALSE;
+	bool skip = FALSE;
 	char *old_term_names[10] = { "Mainwindow", "Mirrorwindow", "Recallwindow", "Choicewindow", "Term-4window", "Term-5window", "Term-6window", "Term-7window", "Term-8window", "Term-9window" };
 	char *term_names[10] = { "Term-Main", "Term-1", "Term-2", "Term-3", "Term-4", "Term-5", "Term-6", "Term-7", "Term-8", "Term-9" };
 	char **use_term_names;
+#ifdef USE_SDL2
+	char default_config_path[1024];
+#endif
 
 	lighterdarkblue = FALSE;
 	use_term_names = term_names;
@@ -86,10 +96,19 @@ static bool read_mangrc(cptr filename) {
 	if (!strlen(filename)) {
 #ifdef USE_EMX
 		filename = "tomenet.rc";
+#elif defined(USE_SDL2)
+		filename = "tomenet.cfg";
 #else
 		filename = ".tomenetrc";
 #endif
 
+#ifdef USE_SDL2
+		/* Get configuration file name with path. */
+		if (snprintf(mangrc_filename, MAX_PATH_LENGTH, "%s%s", SDL2_USER_PATH, filename) > MAX_PATH_LENGTH) {
+			fprintf(stderr, "read_mangrc: mangrc_filename exceeded length of %d characters\n", MAX_PATH_LENGTH);
+			return(skip);
+		};
+#else
 		/* Try to find home directory */
 		if (getenv("HOME")) {
 			/* Use home directory as base */
@@ -102,403 +121,424 @@ static bool read_mangrc(cptr filename) {
 		}
 
 		/* Append filename */
-#ifdef USE_EMX
+ #ifdef USE_EMX
 		strcat(mangrc_filename, "\\");
-#else
+ #else
 		strcat(mangrc_filename, "/");
-#endif
+ #endif
 		strcat(mangrc_filename, filename);
+#endif
 	} else {
 		strcpy(mangrc_filename, filename);
 	}
 
-retry_mangrc:
-	/* Attempt to open file */
-	if ((config = fopen(mangrc_filename, "r"))) {
-		/* Read until end */
-		while (!feof(config)) {
-			/* Get a line */
-			if (!fgets(buf, 1024, config)) break;
+	printf("jezek - before fopen %s\n", mangrc_filename);
+	/* Attempt to open file. */
+	config = fopen(mangrc_filename, "r");
+	if (config == NULL) {
+		/* File with configuration not found. Try to copy the default one over.
+			 If this also fails, our last chance will be the auto-generated minimal configuration file from write_mangrc() later. */
+#ifdef USE_SDL2
+		snprintf(default_config_path, 1024, "%s%s", SDL2_GAME_PATH, filename);
+		(void)my_fcopy(default_config_path, mangrc_filename); 
+#else
+		(void)system(format("cp .tomenetrc %s", mangrc_filename));
+#endif
+		/* Attempt to open file again. */
+		config = fopen(mangrc_filename, "r");
+		if (config == NULL) {
+#ifdef USE_SDL2
+			fprintf(stderr, "Warning: Cannot read stock '%s' or cannot write to target '%s'\n", default_config_path, mangrc_filename);
+#else
+			fprintf(stderr, "Warning: Cannot read stock .tomenetrc in CWD or cannot write to target '%s'\n", mangrc_filename);
+#endif
+			return(skip);
+		} 
+	}
 
-			/* Hack for auto-conversion of 4.9.2->4.9.3 config files: Test if main window exists.
-			   If it doesn't that would be because it uses outdated names, so it must be pre 4.9.3 and we convert it. */
-			if (!convert_rc && strstr(buf, "Mainwindow")) {
-				convert_rc = TRUE;
-				use_term_names = old_term_names;
-				plog("Auto-converting old .rc file (on reading).");
+	/* Read until end. */
+	while (!feof(config)) {
+		/* Get a line */
+		if (!fgets(buf, 1024, config)) break;
+
+		/* Hack for auto-conversion of 4.9.2->4.9.3 config files: Test if main window exists.
+			 If it doesn't that would be because it uses outdated names, so it must be pre 4.9.3 and we convert it. */
+		if (!convert_rc && strstr(buf, "Mainwindow")) {
+			convert_rc = TRUE;
+			use_term_names = old_term_names;
+			plog("Auto-converting old .rc file (on reading).");
+		}
+
+		/* Skip comments, empty lines */
+		if (buf[0] == '\n' || buf[0] == '#')
+			continue;
+
+		/* Name line */
+		if (!strncmp(buf, "nick", 4)) {
+			char *name;
+
+			/* Extract name */
+			name = strtok(buf, " \t\n");
+			name = strtok(NULL, "\t\n");
+
+			/* Default nickname */
+			if (name) strcpy(nick, name);
+		}
+
+		/* Password line */
+		if (!strncmp(buf, "pass", 4)) {
+			char *p;
+
+			/* Extract password */
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+
+			/* Default password */
+			if (p) strcpy(pass, p);
+		}
+
+		if (!strncmp(buf, "name", 4)) {
+			char *name;
+
+			name = strtok(buf, " \t\n");
+			name = strtok(NULL, "\t\n");
+
+			strcpy(cname, name);
+		}
+
+		/* meta server line */
+		if (!strncmp(buf, "meta", 4)) {
+			char *p;
+
+			p = strtok(buf, " :\t\n");
+			p = strtok(NULL, ":\t\n");
+
+			if (p) strcpy(meta_address, p);
+		}
+
+		/* game server line (note: should be named 'host' for consistency with tomenet.ini) */
+		if (!strncmp(buf, "server", 6)) {
+			char *p;
+
+			p = strtok(buf, " :\t\n");
+			p = strtok(NULL, ":\t\n");
+
+			if (p) {
+				strcpy(svname, p);
+				p = strtok(NULL, ":\t\n");
+				if (p) cfg_game_port = atoi(p);
 			}
+		}
 
-			/* Skip comments, empty lines */
-			if (buf[0] == '\n' || buf[0] == '#')
-				continue;
+		/* port line */
+		if (!strncmp(buf, "port", 4)) {
+			char *p;
 
-			/* Name line */
-			if (!strncmp(buf, "nick", 4)) {
-				char *name;
+			/* Extract password */
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
 
-				/* Extract name */
-				name = strtok(buf, " \t\n");
-				name = strtok(NULL, "\t\n");
+			/* Default password */
+			if (p) cfg_game_port = atoi(p);
+		}
 
-				/* Default nickname */
-				if (name) strcpy(nick, name);
+		/* fps line */
+		if (!strncmp(buf, "fps", 3)) {
+			char *p;
+
+			/* Extract fps */
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+
+			if (p) cfg_client_fps = atoi(p);
+		}
+
+		/* unix username line */
+		if (!strncmp(buf, "realname", 8)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+
+			if (p) strcpy(real_name, p);
+		}
+
+		/* Path line */
+		if (!strncmp(buf, "path", 4)) {
+			char *p;
+
+			/* Extract path */
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+
+			/* Default path */
+			strcpy(path, p);
+		}
+
+		/* Auto-login */
+		if (!strncmp(buf, "fullauto", 8))
+			skip = TRUE;
+
+		/* READABILITY_BLUE */
+		if (!strncmp(buf, "lighterDarkBlue", 15)) lighterdarkblue = TRUE;
+
+		/* Color map */
+		if (!strncmp(buf, "colormap_", 9)) {
+			int colornum = atoi(buf + 9);
+			char *p;
+			u32b c;
+
+			/* Extract path */
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+
+			c = parse_color_code(p);
+			if (colornum >= 0 && colornum < BASE_PALETTE_SIZE && c < 0x01000000) client_color_map[colornum] = c;
+		}
+
+#ifdef USE_GRAPHICS
+ #if defined(USE_SDL2) && defined(GRAPHICS_BG_MASK)
+		/* force outline radius */
+		if (!strncmp(buf, "graphicsForceOutline", 20)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p && *p) {
+				sdl2_graphics_image_force_outline = atoi(p);
+				if (sdl2_graphics_image_force_outline < -1) sdl2_graphics_image_force_outline = -1;
+				if (sdl2_graphics_image_force_outline > SDL2_FORCE_OUTLINE_MAX_RADIUS) sdl2_graphics_image_force_outline = SDL2_FORCE_OUTLINE_MAX_RADIUS;
 			}
+			else sdl2_graphics_image_force_outline = -1;
+		}
+		else
+ #endif
+		/* graphics */
+		if (!strncmp(buf, "graphics", 8)) {
+			char *p;
 
-			/* Password line */
-			if (!strncmp(buf, "pass", 4)) {
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+ #ifdef GRAPHICS_BG_MASK
+			if (p) use_graphics_new = use_graphics = atoi(p) % 3; //max UG_2MASK
+ #else
+			if (p) use_graphics_new = use_graphics = (atoi(p) != 0);
+ #endif
+			}
+			if (!strncmp(buf, "graphic_tiles", 13)) {
+				bool has_index = (buf[13] >= '0' && buf[13] <= '9');
 				char *p;
 
-				/* Extract password */
 				p = strtok(buf, " \t\n");
 				p = strtok(NULL, "\t\n");
 
-				/* Default password */
-				if (p) strcpy(pass, p);
-			}
+				if (!has_index) {
+					if (p) strcpy(graphic_tiles, p);
+				} else {
+					int i = atoi(buf + 13);
 
-			if (!strncmp(buf, "name", 4)) {
-				char *name;
-
-				name = strtok(buf, " \t\n");
-				name = strtok(NULL, "\t\n");
-
-				strcpy(cname, name);
-			}
-
-			/* meta server line */
-			if (!strncmp(buf, "meta", 4)) {
-				char *p;
-
-				p = strtok(buf, " :\t\n");
-				p = strtok(NULL, ":\t\n");
-
-				if (p) strcpy(meta_address, p);
-			}
-
-			/* game server line (note: should be named 'host' for consistency with tomenet.ini) */
-			if (!strncmp(buf, "server", 6)) {
-				char *p;
-
-				p = strtok(buf, " :\t\n");
-				p = strtok(NULL, ":\t\n");
-
-				if (p) {
-					strcpy(svname, p);
-					p = strtok(NULL, ":\t\n");
-					if (p) cfg_game_port = atoi(p);
+					if (p && i >= 0 && i < MAX_SUBFONTS) graphic_subtiles[i] = (atoi(p) != 0);
 				}
 			}
 
-			/* port line */
-			if (!strncmp(buf, "port", 4)) {
-				char *p;
-
-				/* Extract password */
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				/* Default password */
-				if (p) cfg_game_port = atoi(p);
-			}
-
-			/* fps line */
-			if (!strncmp(buf, "fps", 3)) {
-				char *p;
-
-				/* Extract fps */
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				if (p) cfg_client_fps = atoi(p);
-			}
-
-			/* unix username line */
-			if (!strncmp(buf, "realname", 8)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				if (p) strcpy(real_name, p);
-			}
-
-			/* Path line */
-			if (!strncmp(buf, "path", 4)) {
-				char *p;
-
-				/* Extract path */
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				/* Default path */
-				strcpy(path, p);
-			}
-
-			/* Auto-login */
-			if (!strncmp(buf, "fullauto", 8))
-				skip = TRUE;
-
-			/* READABILITY_BLUE */
-			if (!strncmp(buf, "lighterDarkBlue", 15)) lighterdarkblue = TRUE;
-
-			/* Color map */
-			if (!strncmp(buf, "colormap_", 9)) {
-				int colornum = atoi(buf + 9);
-				char *p;
-				u32b c;
-
-				/* Extract path */
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				c = parse_color_code(p);
-				if (colornum >= 0 && colornum < BASE_PALETTE_SIZE && c < 0x01000000) client_color_map[colornum] = c;
-			}
-
-#ifdef USE_GRAPHICS
-			/* graphics */
-			if (!strncmp(buf, "graphics", 8)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
- #ifdef GRAPHICS_BG_MASK
-				if (p) use_graphics_new = use_graphics = atoi(p) % 3; //max UG_2MASK
- #else
-				if (p) use_graphics_new = use_graphics = (atoi(p) != 0);
- #endif
-			}
-			if (!strncmp(buf, "graphic_tiles", 13) && !(buf[13] >= '0' && buf[13] <= '9')) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) strcpy(graphic_tiles, p);
-			} else if (!strncmp(buf, "graphic_tiles", 13)) { //graphic_subtiles[]
-				char *p;
-				int i = atoi(buf + 13);
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-
-				if (i >= 0 && i < MAX_SUBFONTS) graphic_subtiles[i] = (atoi(p) != 0);
-			}
-
+ #ifdef TILE_CACHE_SIZE
 			if (!strncmp(buf, "disableGfxCache", 15)) { //TILE_CACHE_SIZE
 				char *p;
 
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (atoi(p) != 0) disable_tile_cache = TRUE;
-			}
-#endif
-#ifdef USE_SOUND
-			/* sound */
-			if (!strncmp(buf, "sound", 5) && strncmp(buf, "soundpackFolder", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) {
-					use_sound_org = use_sound = (atoi(p) != 0);
-					if (!use_sound) quiet_mode = TRUE;
-				}
-			}
-#endif
-#ifdef USE_SOUND_2010
-			/* sound hint */
-			if (!strncmp(buf, "hintSound", 9)) sound_hint = FALSE;
-			/* don't cache audio (41.5 MB of ogg samples deflated in memory!) */
-			if (!strncmp(buf, "cacheAudio", 10)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) no_cache_audio = !(atoi(p) != 0);
-			}
-			/* audio sample rate */
-			if (!strncmp(buf, "audioSampleRate", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_rate = atoi(p);
-			}
-			/* maximum number of allocated mixer channels */
-			if (!strncmp(buf, "audioChannels", 13)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_max_channels = atoi(p);
-			}
-			/* Mixed sample size (larger = more lagging sound, smaller = skipping on slow machines) */
-			if (!strncmp(buf, "audioBuffer", 11)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_buffer = atoi(p);
-			}
-			/* Folder of the currently selected sound pack */
-			if (!strncmp(buf, "soundpackFolder", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) strcpy(cfg_soundpackfolder, p);
-			}
-			if (!strncmp(buf, "soundpackSubset", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_soundpack_subset = atoi(p);
-			}
-			/* Folder of the currently selected music pack */
-			if (!strncmp(buf, "musicpackFolder", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) strcpy(cfg_musicpackfolder, p);
-			}
-			if (!strncmp(buf, "musicpackSubset", 15)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_musicpack_subset = atoi(p);
-			}
-			/* audio mixer settings */
-			if (!strncmp(buf, "audioMaster", 11)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_master = (atoi(p) != 0);
-			}
-			if (!strncmp(buf, "audioMusic", 10)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_music = (atoi(p) != 0);
-			}
-			if (!strncmp(buf, "audioSound", 10)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_sound = (atoi(p) != 0);
-			}
-			if (!strncmp(buf, "audioWeather", 12)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_weather = (atoi(p) != 0);
-			}
-			if (!strncmp(buf, "audioVolumeMaster", 17)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_master_volume = atoi(p);
-			}
-			if (!strncmp(buf, "audioVolumeMusic", 16)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_music_volume = atoi(p);
-			}
-			if (!strncmp(buf, "audioVolumeSound", 16)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_sound_volume = atoi(p);
-			}
-			if (!strncmp(buf, "audioVolumeWeather", 18)) {
-				char *p;
-
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) cfg_audio_weather_volume = atoi(p);
-			}
-#endif
-
-///LINUX_TERM_CFG
-			if (!strncmp(buf, use_term_names[0], strlen(use_term_names[0])))
-				read_mangrc_aux(0, buf);
-			if (!strncmp(buf, use_term_names[1], strlen(use_term_names[1])))
-				read_mangrc_aux(1, buf);
-			if (!strncmp(buf, use_term_names[2], strlen(use_term_names[2])))
-				read_mangrc_aux(2, buf);
-			if (!strncmp(buf, use_term_names[3], strlen(use_term_names[3])))
-				read_mangrc_aux(3, buf);
-			if (!strncmp(buf, use_term_names[4], strlen(use_term_names[4])))
-				read_mangrc_aux(4, buf);
-			if (!strncmp(buf, use_term_names[5], strlen(use_term_names[5])))
-				read_mangrc_aux(5, buf);
-			if (!strncmp(buf, use_term_names[6], strlen(use_term_names[6])))
-				read_mangrc_aux(6, buf);
-			if (!strncmp(buf, use_term_names[7], strlen(use_term_names[7])))
-				read_mangrc_aux(7, buf);
-			if (!strncmp(buf, use_term_names[8], strlen(use_term_names[8])))
-				read_mangrc_aux(8, buf);
-			if (!strncmp(buf, use_term_names[9], strlen(use_term_names[9])))
-				read_mangrc_aux(9, buf);
-			convert_rc = FALSE; /* In case we did an automatic ini-file conversion, reset this state after all has been converted now. */
-
-			/* big_map hint */
-			if (!strncmp(buf, "hintBigmap", 10)) {
-				bigmap_hint = FALSE;
-				firstrun = FALSE;
-			}
-
-			/*** Everything else is ignored ***/
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (atoi(p) != 0) disable_tile_cache = TRUE;
 		}
-		fclose(config);
-
-		(void)validate_term_term_main_dimensions(&(term_prefs[0].columns), &(term_prefs[0].lines));
-		/* Calculate game screen dimensions from main window dimensions. */
-		screen_wid = term_prefs[0].columns - SCREEN_PAD_X;
-		screen_hgt = term_prefs[0].lines - SCREEN_PAD_Y;
-#ifdef GLOBAL_BIG_MAP
-		/* Only the rc/ini file determines big_map state now! It is not saved anywhere else! */
-		if (screen_hgt <= SCREEN_HGT) global_c_cfg_big_map = FALSE;
-		else global_c_cfg_big_map = TRUE;
- #if 0 /* the visuals aren't initialized yet! ANGBAND_SYS is not a valid string! */
-		if (!strcmp(ANGBAND_SYS, "gcu")) {
-			screen_hgt = SCREEN_HGT;
-			global_c_cfg_big_map = FALSE;
-		}
-		resize_main_window(CL_WINDOW_WID, CL_WINDOW_HGT);
  #endif
 #endif
+#ifdef USE_SOUND
+		/* sound */
+		if (!strncmp(buf, "sound", 5) && strncmp(buf, "soundpackFolder", 15)) {
+			char *p;
 
-		if (lighterdarkblue && client_color_map[6] == 0x0000ff)
-#ifdef USE_X11
-			enable_readability_blue_x11();
-#else
-			enable_readability_blue_gcu();
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) {
+				use_sound_org = use_sound = (atoi(p) != 0);
+				if (!use_sound) quiet_mode = TRUE;
+			}
+		}
 #endif
-	} else {
-		if (!fail) { /* guard against infinite loop, in case we don't have write access to the target location or something */
-			fail = TRUE;
+#ifdef USE_SOUND_2010
+		/* sound hint */
+		if (!strncmp(buf, "hintSound", 9)) sound_hint = FALSE;
+		/* don't cache audio (41.5 MB of ogg samples deflated in memory!) */
+		if (!strncmp(buf, "cacheAudio", 10)) {
+			char *p;
 
-			/* .tomenetrc not found. Try to copy the default one over.
-			   If this also fails, our last chance will be the auto-generated minimal .tomenetrc from write_mangrc() later. */
-			(void)system(format("cp .tomenetrc %s", mangrc_filename));
-			goto retry_mangrc;
-		} else fprintf(stderr, "Warning: Cannot read stock .tomenetrc in CWD or cannot write to target '%s'\n", mangrc_filename);
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) no_cache_audio = !(atoi(p) != 0);
+		}
+		/* audio sample rate */
+		if (!strncmp(buf, "audioSampleRate", 15)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_rate = atoi(p);
+		}
+		/* maximum number of allocated mixer channels */
+		if (!strncmp(buf, "audioChannels", 13)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_max_channels = atoi(p);
+		}
+		/* Mixed sample size (larger = more lagging sound, smaller = skipping on slow machines) */
+		if (!strncmp(buf, "audioBuffer", 11)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_buffer = atoi(p);
+		}
+		/* Folder of the currently selected sound pack */
+		if (!strncmp(buf, "soundpackFolder", 15)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) strcpy(cfg_soundpackfolder, p);
+		}
+		/* Folder of the currently selected music pack */
+		if (!strncmp(buf, "musicpackFolder", 15)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) strcpy(cfg_musicpackfolder, p);
+		}
+		/* audio mixer settings */
+		if (!strncmp(buf, "audioMaster", 11)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_master = (atoi(p) != 0);
+		}
+		if (!strncmp(buf, "audioMusic", 10)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_music = (atoi(p) != 0);
+		}
+		if (!strncmp(buf, "audioSound", 10)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_sound = (atoi(p) != 0);
+		}
+		if (!strncmp(buf, "audioWeather", 12)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_weather = (atoi(p) != 0);
+		}
+		if (!strncmp(buf, "audioVolumeMaster", 17)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_master_volume = atoi(p);
+		}
+		if (!strncmp(buf, "audioVolumeMusic", 16)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_music_volume = atoi(p);
+		}
+		if (!strncmp(buf, "audioVolumeSound", 16)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_sound_volume = atoi(p);
+		}
+		if (!strncmp(buf, "audioVolumeWeather", 18)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) cfg_audio_weather_volume = atoi(p);
+		}
+#endif
+#ifdef USE_SDL2
+		if (!strncmp(buf, "windowDecorations", 17)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) sdl2_window_decorations = (atoi(p) != 0);
+		}
+#endif
+
+		///LINUX_TERM_CFG
+		if (!strncmp(buf, use_term_names[0], strlen(use_term_names[0])))
+			read_mangrc_aux(0, buf);
+		if (!strncmp(buf, use_term_names[1], strlen(use_term_names[1])))
+			read_mangrc_aux(1, buf);
+		if (!strncmp(buf, use_term_names[2], strlen(use_term_names[2])))
+			read_mangrc_aux(2, buf);
+		if (!strncmp(buf, use_term_names[3], strlen(use_term_names[3])))
+			read_mangrc_aux(3, buf);
+		if (!strncmp(buf, use_term_names[4], strlen(use_term_names[4])))
+			read_mangrc_aux(4, buf);
+		if (!strncmp(buf, use_term_names[5], strlen(use_term_names[5])))
+			read_mangrc_aux(5, buf);
+		if (!strncmp(buf, use_term_names[6], strlen(use_term_names[6])))
+			read_mangrc_aux(6, buf);
+		if (!strncmp(buf, use_term_names[7], strlen(use_term_names[7])))
+			read_mangrc_aux(7, buf);
+		if (!strncmp(buf, use_term_names[8], strlen(use_term_names[8])))
+			read_mangrc_aux(8, buf);
+		if (!strncmp(buf, use_term_names[9], strlen(use_term_names[9])))
+			read_mangrc_aux(9, buf);
+		convert_rc = FALSE; /* In case we did an automatic ini-file conversion, reset this state after all has been converted now. */
+
+		/* big_map hint */
+		if (!strncmp(buf, "hintBigmap", 10)) {
+			bigmap_hint = FALSE;
+			firstrun = FALSE;
+		}
+
+		/*** Everything else is ignored ***/
 	}
+	fclose(config);
+
+	(void)validate_term_term_main_dimensions(&(term_prefs[0].columns), &(term_prefs[0].lines));
+	/* Calculate game screen dimensions from main window dimensions. */
+	screen_wid = term_prefs[0].columns - SCREEN_PAD_X;
+	screen_hgt = term_prefs[0].lines - SCREEN_PAD_Y;
+#ifdef GLOBAL_BIG_MAP
+	/* Only the rc/ini file determines big_map state now! It is not saved anywhere else! */
+	if (screen_hgt <= SCREEN_HGT) global_c_cfg_big_map = FALSE;
+	else global_c_cfg_big_map = TRUE;
+#endif
+
+	if (lighterdarkblue && client_color_map[6] == 0x0000ff)
+#ifdef USE_X11
+		enable_readability_blue_x11();
+#elif defined(USE_SDL2)
+		enable_readability_blue_sdl2();
+#else
+		enable_readability_blue_gcu();
+#endif
+
 	return(skip);
 }
 
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 /* linux clients: save subwindow prefs to .tomenetrc - C. Blue */
 static void write_mangrc_aux(int t, cptr sec_name, FILE *cfg_file) {
 	if (t != 0) {
@@ -565,25 +605,21 @@ static void write_mangrc_aux_line(int t, cptr sec_name_write, cptr sec_name, cha
    If audiopacks_only is TRUE, all other settings except for sound+music pack will be skipped. */
 bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 	int i;
-	char config_name2[100];
+	char config_name2[MAX_PATH_LENGTH];
 	FILE *config, *config2;
 	char buf[1024];
 #ifdef USE_SOUND_2010
 	/* backward compatibility */
 	bool compat_apf = FALSE, compat_apf2 = FALSE;
 #endif
-#ifdef USE_X11
-	bool found_window[ANGBAND_TERM_MAX] = { FALSE };
-#endif
 	bool explicit_save = !(creds_only == TRUE && update_creds == FALSE) /* Don't execute if we got called from client_init(). */
 	    && !(creds_only == TRUE && update_creds == TRUE); /* Don't execute if we got called from store_crecedentials(). */
 	char *old_term_names[ANGBAND_TERM_MAX] = { "Mainwindow", "Mirrorwindow", "Recallwindow", "Choicewindow", "Term-4window", "Term-5window", "Term-6window", "Term-7window", "Term-8window", "Term-9window" };
 	char *term_names[ANGBAND_TERM_MAX] = { "Term-Main", "Term-1", "Term-2", "Term-3", "Term-4", "Term-5", "Term-6", "Term-7", "Term-8", "Term-9" };
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
+	bool found_window[ANGBAND_TERM_MAX] = { FALSE };
 	char **use_term_names;
-#endif
 
-#ifdef USE_X11
 	use_term_names = term_names;
 #endif
 	buf[0] = 0; //valgrind warning it seems..?
@@ -602,7 +638,7 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 				/* Get a line */
 				if (!fgets(buf, 1024, config)) break;
 
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 				/* Hack for auto-conversion of 4.9.2->4.9.3 config files: Test if main window exists.
 				   If it doesn't that would be because it uses outdated names, so it must be pre 4.9.3 and we convert it. */
 				if (!convert_rc && !strncmp(buf, "Mainwindow", 10)) {
@@ -717,9 +753,9 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 						}
 #endif
 
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 						/* Don't do this in terminal mode ('-c') */
-						if (!strcmp(ANGBAND_SYS, "x11")) {
+						if (!strcmp(ANGBAND_SYS, "x11") || !strcmp(ANGBAND_SYS, "sdl2")) {
 							bool win = FALSE;
 
 							/* save window positions/sizes/visibility (and possibly fonts) */
@@ -734,10 +770,18 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 
 							/* save current graphical tileset state */
 							if (win) ;
-							else if (!strncmp(buf, "graphics", 8)) {
-								strcpy(buf, "graphics\t\t");
-								strcat(buf, format("%d\n", use_graphics_new));
+ #ifdef USE_SDL2
+  #if defined(USE_GRAPHICS) && defined(GRAPHICS_BG_MASK)
+							else if (!strncmp(buf, "graphicsForceOutline", 20)) {
+								strcpy(buf, "graphicsForceOutline\t\t");
+								strcat(buf, format("%d\n", sdl2_graphics_image_force_outline));
 							}
+  #endif
+							else if (!strncmp(buf, "windowDecorations", 17)) {
+								strcpy(buf, "windowDecorations\t\t");
+								strcat(buf, format("%d\n", sdl2_window_decorations ? 1 : 0));
+							}
+ #endif
  #ifdef USE_GRAPHICS
 							else if (!strncmp(buf, "graphic_tiles", 13) && !(buf[13] >= '0' && buf[13] <= '9')) {
 								strcpy(buf, "graphic_tiles\t\t");
@@ -747,8 +791,12 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 									fputs(format("graphic_tiles%d\t\t%d\n", i, graphic_subtiles[i] ? 1 : 0), config2);
 							} else if (!strncmp(buf, "graphic_tiles", 13)) continue; //graphic_subtiles[] -> ignore/discard
  #endif
+							else if (!strncmp(buf, "graphics", 8)) {
+								strcpy(buf, "graphics\t\t");
+								strcat(buf, format("%d\n", use_graphics_new));
+							}
 						}
-#endif /* USE_X11 */
+#endif /* defined(USE_X11) || defined(USE_SDL2) */
 					}
 
 					if (!strncmp(buf, "#nick", 5) && nick[0] && pass[0]) {
@@ -799,9 +847,9 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 #endif
 			}
 
-#ifdef USE_X11
+#if defined(USE_X11)
 			/* Don't do this in terminal mode ('-c') */
-			if (!strcmp(ANGBAND_SYS, "x11")
+			if ((!strcmp(ANGBAND_SYS, "x11"))
 			    && explicit_save) { /*This code is only meant for when we deliberately save config. */
 				/* Add missing windows (added for older client versions that didn't have 7-9 yet) */
 				if (!found_window[0]) {
@@ -939,7 +987,12 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 			fputs(format("graphic_tiles\t\t%s\n", graphic_tiles), config2);
 			for (i = 0; i < MAX_SUBFONTS; i++)
 				fputs(format("graphic_tiles%d\t\t%d\n", i, graphic_subtiles[i] ? 1 : 0), config2);
+ #ifdef TILE_CACHE_SIZE
 			fputs("disableGfxCache\t\t0\n", config2);
+ #endif
+ #if defined(USE_SDL2) && defined(GRAPHICS_BG_MASK)
+			fputs(format("graphicsForceOutline\t\t%d\n", sdl2_graphics_image_force_outline), config2);
+ #endif
 #endif
 			fputs("\n", config2);
 //#ifdef USE_SOUND
@@ -965,11 +1018,15 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 			fputs(format("audioVolumeWeather\t%d\n", cfg_audio_weather_volume), config2);
 #endif
 			fputs("\n", config2);
+#ifdef USE_SDL2
+			fputs(format("windowDecorations\t\t%d\n", sdl2_window_decorations ? 1 : 0), config2);
+			fputs("\n", config2);
+#endif
 
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 ///LINUX_TERM_CFG
 /* Don't do this in terminal mode ('-c') */
-			if (!strcmp(ANGBAND_SYS, "x11")) {
+			if (!strcmp(ANGBAND_SYS, "x11") || !strcmp(ANGBAND_SYS, "sdl2")) {
 				write_mangrc_aux(0, "Term-Main", config2);
 				write_mangrc_aux(1, "Term-1", config2);
 				write_mangrc_aux(2, "Term-2", config2);
@@ -1003,7 +1060,7 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 }
 
 bool write_mangrc_colourmap(void) {
-	char config_name2[100];
+	char config_name2[MAX_PATH_LENGTH];
 	FILE *config, *config2;
 	char buf[1024];
 	bool found_start = FALSE, found = FALSE;
@@ -1139,6 +1196,31 @@ int main(int argc, char **argv) {
 	int i, j, modus = 0;
 	bool done = FALSE, skip = FALSE;
 
+	printf("jezek - main start\n");
+#ifdef USE_SDL2
+	printf("jezek - SDL2\n");
+#endif
+#ifdef WINDOWS
+	printf("jezek - WINDOWS\n");
+#endif
+#ifdef USE_X11
+	printf("jezek - X11\n");
+#endif
+
+#ifdef USE_SDL2
+	SDL2_USER_PATH = SDL_GetPrefPath(SDL2_ORG_NAME, SDL2_GAME_NAME);
+	if (!SDL2_USER_PATH) {
+		fprintf(stderr, "main: SDL_GetPrefPath Error: %s\n", SDL_GetError());
+		return(-1);
+	}
+	SDL2_GAME_PATH = SDL_GetBasePath();
+	if (!SDL2_GAME_PATH) {
+		fprintf(stderr, "main: SDL_GetBasePath Error: %s\n", SDL_GetError());
+		return(-1);
+	}
+	SDL2_PATH_SEP[0] = SDL2_USER_PATH[strlen(SDL2_USER_PATH)-1];
+#endif
+
 	/* Save the program name */
 	argv0 = argv[0];
 
@@ -1150,6 +1232,7 @@ int main(int argc, char **argv) {
 	init_temp_path();
 	/* Acquire the version strings */
 	version_build();
+	fprintf(stderr, "jezek - shortVersion: %s, longVersion: %s, os_version: %s\n", shortVersion, longVersion, os_version);
 
 	/* Make a copy to use in colour blindness menu when we want to reset palette to default values.
 	   This must happen before we read the config file, as it contains colour-(re)definitions. */
@@ -1219,7 +1302,7 @@ int main(int argc, char **argv) {
 			screen_hgt = SCREEN_HGT;
  #ifdef WINDOWS
 			data[0].rows = screen_hgt + SCREEN_PAD_Y;
- #else /* POSIX */
+ #else /* POSIX or SDL2 */
 			//screen->rows = screen_hgt + SCREEN_PAD_Y;
 			term_prefs[0].lines = screen_hgt + SCREEN_PAD_Y;
  #endif
@@ -1273,7 +1356,9 @@ int main(int argc, char **argv) {
 		case 'a': override_graphics = UG_NONE; ask_for_graphics = FALSE; break; // ASCII
 		case 'g': override_graphics = UG_NORMAL; ask_for_graphics = FALSE; break; // graphics
 		case 'G': override_graphics = UG_2MASK; ask_for_graphics = FALSE; break; // dual-mask graphics
+#ifdef TILE_CACHE_SIZE
 		case 'T': disable_tile_cache = TRUE; break; //TILE_CACHE_SIZE
+#endif
 		}
 
 		default:
@@ -1285,7 +1370,9 @@ int main(int argc, char **argv) {
 
 	if (override_graphics != -1) use_graphics_new = use_graphics = override_graphics;
 
+#ifdef TILE_CACHE_SIZE
 	if (disable_tile_cache) logprint("Graphics tiles cache disabled.\n");
+#endif
 
 	if (quiet_mode) use_sound = FALSE;
 
@@ -1321,6 +1408,9 @@ int main(int argc, char **argv) {
 		puts("  -V                 Save complete message log on exit, don't prompt");
 		puts("  -x                 Don't save chat/message log on exit (don't prompt)");
 		puts("  -a/-g/-G           Switch to ASCII/gfx/dualmask-gfx mode");
+#ifdef TILE_CACHE_SIZE
+		puts("  -T                 Disable graphics tile cache");
+#endif
 
 #ifdef USE_SOUND_2010
 #if 0 //we don't have 'modules' for everything, yet :-p only sound_modules for now - C. Blue
@@ -1363,6 +1453,13 @@ int main(int argc, char **argv) {
 		if (!done) {
 			if (0 == init_x11()) done = TRUE;
 			if (done) ANGBAND_SYS = "x11";
+		}
+#endif
+#ifdef USE_SDL2
+		/* Attempt to use the "main-sdl2.c" support */
+		if (!done) {
+			if (0 == init_sdl2()) done = TRUE;
+			if (done) ANGBAND_SYS = "sdl2";
 		}
 #endif
 	}
@@ -1413,6 +1510,7 @@ int main(int argc, char **argv) {
 		logprint("Unable to initialize a display module!\n");
 		exit(1);
 	}
+	fprintf(stderr, "jezek - ANGBAND_SYS: %s\n", ANGBAND_SYS);
 
 	{
 		u32b seed;
@@ -1443,9 +1541,11 @@ int main(int argc, char **argv) {
 	done = (modus > 2 || skip) ? TRUE : FALSE;
 
 #ifdef UNIX_SOCKETS
+	fprintf(stderr, "jezek - unix_sockets\n");
 	/* Always call with NULL argument */
 	client_init(NULL, done);
 #else
+	fprintf(stderr, "jezek - no unix_sockets\n");
 	if (strlen(svname) > 0) {
 		/* Initialize with given server name */
 		client_init(svname, done);
@@ -1456,5 +1556,6 @@ int main(int argc, char **argv) {
 #endif
 
 
+	fprintf(stderr, "jezek - main end\n");
 	return(0);
 }

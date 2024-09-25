@@ -40,6 +40,31 @@ extern void get_palette(byte c, byte *r, byte *g, byte *b);
 extern void refresh_palette(void);
 extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
 extern void set_window_title_x11(int term_idx, cptr title);
+#endif
+
+#ifdef USE_SDL2
+extern errr init_sdl2(void);
+
+extern void change_font(int s);
+extern const char* get_font_name(int term_idx);
+extern void set_font_name(int term_idx, char* fnt);
+extern void term_toggle_visibility(int term_idx);
+extern bool term_get_visibility(int term_idx);
+
+extern void resize_main_window_sdl2(int cols, int rows);
+extern bool ask_for_bigmap(void);
+extern void get_term_main_font_name(char *buf);
+extern void animate_palette(void);
+extern void set_palette(byte c, byte r, byte g, byte b);
+extern void get_palette(byte c, byte *r, byte *g, byte *b);
+extern void refresh_palette(void);
+extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
+extern void set_window_title_sdl2(int term_idx, cptr title);
+extern void apply_window_decorations(void);
+extern bool is_ttf_font(const char *name, char *out_name, size_t out_name_len, int8_t *out_size);
+
+extern char *SDL2_USER_PATH, *SDL2_GAME_PATH;
+extern char SDL2_PATH_SEP[2];
 #elif defined(USE_GCU)
 extern bool term_get_visibility(int term_idx);
 #endif
@@ -360,6 +385,18 @@ extern cptr ANGBAND_DIR_USER;
 extern cptr ANGBAND_DIR_XTRA;
 extern cptr ANGBAND_DIR_SCPT;
 extern cptr ANGBAND_DIR_GAME;
+
+#ifdef USE_SDL2
+extern cptr ANGBAND_USER_DIR;
+extern cptr ANGBAND_USER_DIR_SCPT;
+extern cptr ANGBAND_USER_DIR_TEXT;
+extern cptr ANGBAND_USER_DIR_USER;
+extern cptr ANGBAND_USER_DIR_XTRA;
+extern cptr ANGBAND_USER_DIR_GAME;
+
+extern bool sdl2_window_decorations;
+extern int sdl2_graphics_image_force_outline;
+#endif
 
 extern bool disable_numlock;
 #ifdef WINDOWS
@@ -757,6 +794,9 @@ extern void colour_bignum(s32b bn, s32b bn_max, char *out_val, byte method, bool
 extern void set_bigmap(int bm, bool verbose);
 extern void apply_auto_inscriptions(int insc_idx);
 extern int check_guard_inscription_str(cptr ax, char what);
+#ifdef USE_SDL2
+extern int my_fcopy(const char *source, const char *destination);
+#endif
 
 /* c-store.c */
 extern bool leave_store;
@@ -874,7 +914,7 @@ typedef struct {
 	char font[256]; /* Paranoia: actually, 6 should be sufficient */
 } generic_term_info;
 extern generic_term_info term_prefs[10];
-extern char mangrc_filename[100];
+extern char mangrc_filename[MAX_PATH_LENGTH];
 
 /* nclient.c (former netclient.c) */
 extern int ticks, ticks10, existing_characters, command_confirmed;
@@ -1122,9 +1162,26 @@ extern int stricmp(cptr a, cptr b);
 
 #ifdef USE_X11
 /* main-x11.c */
-void all_term_data_to_term_prefs(void);
+extern void all_term_data_to_term_prefs(void);
 extern long x11_win_term_main;
 extern void tiles_rawpict_scale(void);
+#endif
+
+#ifdef USE_SDL2
+/* main-sdl2.c */
+extern void all_term_data_to_term_prefs(void);
+extern errr sdl2_win_term_main_screenshot(cptr name);
+ #ifdef USE_GRAPHICS
+extern void sdl2_graphics_pref_file_processed();
+extern uint32_t graphics_image_masks_colors[GRAPHICS_MAX_MPT];
+extern bool sdl2_tileset_preview_ready(void);
+extern void sdl2_tileset_preview_draw_tile(int col, int row, int type, char32_t tile_char, char32_t background_char);
+extern bool sdl2_set_graphics_mode(byte mode);
+extern bool sdl2_reload_graphics_tileset(void);
+  #ifdef GRAPHICS_BG_MASK
+extern bool sdl2_apply_graphics_image_force_outline(int value);
+  #endif
+ #endif
 #endif
 
 #ifdef WINDOWS
@@ -1206,7 +1263,7 @@ extern bool sound_hint;
 extern const struct module sound_modules[];
 extern int re_init_sound();
 
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
  extern errr init_sound_sdl(int argc, char **argv);
  extern errr re_init_sound_sdl(void);
  extern void close_audio_sdl(void);
@@ -1280,6 +1337,8 @@ extern void enable_readability_blue_win(void);
 #else
  #ifdef USE_X11
 extern void enable_readability_blue_x11(void);
+ #elif defined(USE_SDL2)
+extern void enable_readability_blue_sdl2(void);
  #else
 extern void enable_readability_blue_gcu(void);
 extern void set_palette(byte c, byte r, byte g, byte b);

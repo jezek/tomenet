@@ -499,7 +499,14 @@ bool pern_dofile(int Ind, char *file) {
 	int oldtop = lua_gettop(L);
 
 	/* Build the filename */
+#ifdef USE_SDL2
+	path_build(buf, MAX_PATH_LENGTH, ANGBAND_USER_DIR_SCPT, file);
+	if (!my_fexists(buf)) {
+		path_build(buf, MAX_PATH_LENGTH, ANGBAND_DIR_SCPT, file);
+	}
+#else
 	path_build(buf, MAX_PATH_LENGTH, ANGBAND_DIR_SCPT, file);
+#endif
 
 	error = lua_dofile(L, buf);
 	lua_settop(L, oldtop);
@@ -541,6 +548,7 @@ cptr string_exec_lua(int Ind, char *file) {
 
 static FILE *lua_file;
 void master_script_begin(char *name, char mode) {
+	fprintf(stderr, "jezek - master_script_begin(name: %s, mode: %c)\n", name, mode);
 	char buf[MAX_PATH_LENGTH];
 
 	/* Build the filename */
@@ -574,6 +582,7 @@ void master_script_exec(int Ind, char *buf) {
 }
 
 void cat_script(char *name) {
+	fprintf(stderr, "jezek - cat_script(name: %s)\n", name);
 	char buf[1025];
 	FILE *fff;
 

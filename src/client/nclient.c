@@ -98,6 +98,11 @@ char smarker1[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 
 char smarker2[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 char smarker3[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 char smarker4[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+#elif defined(USE_SDL2)
+char smarker1[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker2[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker3[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
+char smarker4[] = { FONT_MAP_SOLID_X11, FONT_MAP_SOLID_X11, 0 };
 //#else /* command-line client ("-c") doesn't draw either! */
 #endif
 void clear_huge_bars(void) {
@@ -182,7 +187,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 	switch ((c_cfg.mp_huge_bar ? 1 : 0) + (c_cfg.sn_huge_bar ? 1 : 0) + (c_cfg.hp_huge_bar ? 1 : 0) + (c_cfg.st_huge_bar ? 1 : 0)) {
 	case 1:
 		x = 3;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker1;
 		else
 #endif
@@ -190,7 +195,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 		break;
 	case 2:
 		x = 2 + (4 + 1) * pos;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker2;
 		else
 #endif
@@ -198,7 +203,7 @@ void draw_huge_bar(int typ, int *prev, int cur, int *prev_max, int max) {
 		break;
 	case 3:
 		x = 1 + (3 + 1) * pos;
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		if (!force_cui && c_cfg.solid_bars) marker = smarker3;
 		else
 #endif
@@ -282,11 +287,11 @@ void draw_huge_stun_bar(byte attr) {
 	/* Huge bars are only available in big_map mode */
 	if (screen_hgt != MAX_SCREEN_HGT) return;
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	if (!force_cui && c_cfg.solid_bars)
  #ifdef WINDOWS
 		c = FONT_MAP_SOLID_WIN;
- #elif defined(USE_X11)
+ #elif defined(USE_X11) || defined(USE_SDL2)
 		c = FONT_MAP_SOLID_X11;
  #endif
 	else
@@ -1454,6 +1459,8 @@ int Net_init(int fd) {
 	sock = fd;
 
 	wbuf.sock = sock;
+/* SDL2_net lacks setters for delay and buffer sizes. */
+#ifndef USE_SDL2
 	if (SetSocketNoDelay(sock, 1) == -1) {
 		plog("Can't set TCP_NODELAY on socket");
 		return(-1);
@@ -1462,6 +1469,7 @@ int Net_init(int fd) {
 		plog(format("Can't set send buffer size to %d: error %d", CLIENT_SEND_SIZE + 256, errno));
 	if (SetSocketReceiveBufferSize(sock, CLIENT_RECV_SIZE + 256) == -1)
 		plog(format("Can't set receive buffer size to %d", CLIENT_RECV_SIZE + 256));
+#endif
 
 	/* queue buffer, not a valid socket filedescriptor needed */
 	if (Sockbuf_init(&qbuf, -1, CLIENT_RECV_SIZE,
@@ -1502,6 +1510,15 @@ void Net_cleanup(void) {
 
 	if (sock > 2) {
 		ch = PKT_QUIT;
+#ifdef USE_SDL2
+		if (SocketWrite(sock, &ch, 1) != 1) {
+			GetSocketError(sock);
+			SocketWrite(sock, &ch, 1);
+		}
+		Term_xtra(TERM_XTRA_DELAY, 50);
+
+		SocketClose(sock);
+#else
 		if (DgramWrite(sock, &ch, 1) != 1) {
 			GetSocketError(sock);
 			DgramWrite(sock, &ch, 1);
@@ -1509,6 +1526,7 @@ void Net_cleanup(void) {
 		Term_xtra(TERM_XTRA_DELAY, 50);
 
 		DgramClose(sock);
+#endif
 	}
 
 	Sockbuf_cleanup(&rbuf);
@@ -1640,7 +1658,7 @@ int Net_start(int sex, int race, int class) {
 	Sockbuf_clear(&wbuf);
 	Packet_printf(&wbuf, "%c", PKT_PLAY);
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
  #if defined(WINDOWS) && defined(USE_LOGFONT)
 	if (use_logfont) sprintf(fname, "<LOGFONT>%dx%d", win_get_logfont_w(0), win_get_logfont_h(0));
 	else
@@ -1686,6 +1704,7 @@ int Net_start(int sex, int race, int class) {
 	char32_t max_char = 0;
 	int limit;
 
+	fprintf(stderr, "jezek - Send redefinitions 1\n");
 	/* Send the "unknown" redefinitions */
 	for (i = 0; i < TV_MAX; i++) {
 		/* 4.8.1 and newer servers communicate using 32bit character size. */
@@ -3189,7 +3208,7 @@ int Receive_char(void) {
 		if (c == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c = '#';
 		if (c == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c = '*';
 	}
- #ifdef USE_X11
+ #if defined(USE_X11) || defined(USE_SDL2)
 	if (c == FONT_MAP_SOLID_WIN) c = FONT_MAP_SOLID_X11;
 	if (c == FONT_MAP_VEIN_WIN) c = FONT_MAP_VEIN_X11;
  #elif defined(WINDOWS)
@@ -3208,7 +3227,7 @@ int Receive_char(void) {
 		if (c_back == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c_back = '#';
 		if (c_back == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c_back = '*';
 	}
-  #ifdef USE_X11
+  #if defined(USE_X11) || defined(USE_SDL2)
 	if (c_back == FONT_MAP_SOLID_WIN) c_back = FONT_MAP_SOLID_X11;
 	if (c_back == FONT_MAP_VEIN_WIN) c_back = FONT_MAP_VEIN_X11;
   #elif defined(WINDOWS)
@@ -3306,7 +3325,8 @@ int Receive_message(void) {
 		struct tm* ctl = localtime(&ct);
 
 		path_build(path, 1024, ANGBAND_DIR_USER, format("notes-%s.txt", nick));
-		fp = fopen(path, "a");
+		//TODO jezek - Test this append.
+		fp = my_fopen(path, "a");
 		if (fp) {
 			char buf2[MSG_LEN] = { 0 }, *c = buf + (got_note ? 2 : 6 + 10), *c2 = buf2;
 
@@ -4264,7 +4284,7 @@ c_msg_format("RLI wx,wy=%d,%d; mmsx,mmsy=%d,%d, mmpx,mmpy=%d,%d, y_offset=%d", p
 				if (c == FONT_MAP_SOLID_X11 || c == FONT_MAP_SOLID_WIN) c = '#';
 				if (c == FONT_MAP_VEIN_X11 || c == FONT_MAP_VEIN_WIN) c = '*';
 			}
- #ifdef USE_X11
+ #if defined(USE_X11) || defined(USE_SDL2)
 			if (c == FONT_MAP_SOLID_WIN) c = FONT_MAP_SOLID_X11;
 			if (c == FONT_MAP_VEIN_WIN) c = FONT_MAP_VEIN_X11;
  #elif defined(WINDOWS)
@@ -4282,7 +4302,7 @@ c_msg_format("RLI wx,wy=%d,%d; mmsx,mmsy=%d,%d, mmpx,mmpy=%d,%d, y_offset=%d", p
 				if (c_back == FONT_MAP_SOLID_X11 || c_back == FONT_MAP_SOLID_WIN) c_back = '#';
 				if (c_back == FONT_MAP_VEIN_X11 || c_back == FONT_MAP_VEIN_WIN) c_back = '*';
 			}
-  #ifdef USE_X11
+  #if defined(USE_X11) || defined(USE_SDL2)
 			if (c_back == FONT_MAP_SOLID_WIN) c_back = FONT_MAP_SOLID_X11;
 			if (c_back == FONT_MAP_VEIN_WIN) c_back = FONT_MAP_VEIN_X11;
   #elif defined(WINDOWS)
@@ -8005,7 +8025,7 @@ void update_ticks(void) {
 	newticks = ticks - (ticks % 10);
 
 //#ifdef ENABLE_JUKEBOX
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Track jukebox music position in seconds */
 	if (newticks != oldticks) {
 		oldticks = newticks;
@@ -8242,7 +8262,7 @@ void do_ping(void) {
 		}
 
  #ifdef USE_SOUND_2010
-  #ifdef SOUND_SDL
+  #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 		if (weather_fading) weather_handle_fading();
   #endif
  #endif
@@ -8250,14 +8270,14 @@ void do_ping(void) {
 	}
 
 #ifdef USE_SOUND_2010
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* make sure fading out an ambient sound to zero completes glitch-free */
 	if (ambient_fading) ambient_handle_fading();
 
 	/* change volume of background ambient sound effects or weather (if enabled),
 	   check every 1/10 s (one tick):  */
 	if (last_ping != ticks
-	    && (last_ping + 1) % 10 != ticks) { /* actually skip 2 ticks -> 1/5s */
+			&& (last_ping + 1) % 10 != ticks) { /* actually skip 2 ticks -> 1/5s */
 		bool modified = FALSE;
 
 		if (grid_ambient_volume != grid_ambient_volume_goal) {
@@ -8391,7 +8411,11 @@ static void do_meta_pings(void) {
 			strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 		} else
 #endif
+#ifdef USE_SDL2
+		path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[i]));
+#else
 		path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[i]));
+#endif
 
 		/* Send a ping to each distinct server name, allowing for max 1000ms */
 		if (alt == 2) {
@@ -8785,6 +8809,7 @@ int Send_client_setup(void) {
 
 	char32_t max_char = 0;
 
+	fprintf(stderr, "jezek - Send redefinitions 2\n");
 	/* Send the "unknown" redefinitions */
 	for (i = 0; i < TV_MAX; i++) {
 		/* 4.8.1 and newer servers communicate using 32bit character size. */

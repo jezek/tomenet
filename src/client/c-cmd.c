@@ -1,6 +1,10 @@
 /* $Id$ */
 #include "angband.h"
 
+#ifdef USE_SDL2
+ #include <SDL2/SDL.h>
+#endif
+
 #ifdef REGEX_SEARCH
  #include <regex.h>
 #endif
@@ -6863,12 +6867,17 @@ static void monster_lore(void) {
 //#define SCREENSHOT_TARGET "tomenet-screenshot.png"
 #define SCREENSHOT_TARGET (format("%s.png", screenshot_filename))
 bool png_screenshot(void) {
+#ifdef USE_SDL2
+	//TODO jezek - Try converting last XHTML screenshot to PNG using NetSurf stack.
+	c_msg_print("\377ySorry, converting last XHTML screenshot to PNG is work in progress.");
+	return(FALSE);
+#endif
 #ifdef WINDOWS
 	char path[1024], *c = path, *c2, tmp[1024], executable[1024];
 #endif
 #if !defined(WINDOWS) && !defined(USE_X11)
 	/* Neither WINDOWS nor USE_X11 */
-	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an X11 or Windows system.");
+	c_msg_print("\377ySorry, creating a image file from a screenshot requires an X11 or Windows system.");
 	return(FALSE);
 #else
 	char buf[1024], file_name[1024], command[1024];
@@ -7271,23 +7280,56 @@ static void cmd_notes(void) {
 	Term_clear();
 	topline_icky = TRUE;
 
+//TODO jezek - Test reading notes from user and game storage.
+#ifdef USE_SDL2
+	/* Read all locally available note files from user storage. */
+	path_build(path, 1024, ANGBAND_USER_DIR_USER, "");
+	if (!(dir = opendir(path))) {
+		c_msg_format("Couldn't open user directory (%s).", path);
+		return;
+	}
+	while ((ent = readdir(dir))) {
+		strcpy(tmp_name, ent->d_name);
+		if (strncmp(tmp_name, "notes-", 6)) continue;
+
+		strcpy(notes_fname[notes_files], tmp_name);
+		notes_files++;
+
+		if (notes_files == MAX_NOTES_FILES) {
+			c_msg_format("\377oWARNING: Amount of user 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
+			break;
+		}
+	}
+	closedir(dir);
+#endif
+
 	/* read all locally available note files */
 	path_build(path, 1024, ANGBAND_DIR_USER, "");
 	if (!(dir = opendir(path))) {
 		c_msg_format("Couldn't open user directory (%s).", path);
 		return;
 	}
-
 	while ((ent = readdir(dir))) {
+		if (notes_files == MAX_NOTES_FILES) break;
+
 		strcpy(tmp_name, ent->d_name);
-		if (!strncmp(tmp_name, "notes-", 6)) {
-			strcpy(notes_fname[notes_files], tmp_name);
-			notes_files++;
-			if (notes_files == MAX_NOTES_FILES) {
-				c_msg_format("\377oWARNING: Amount of 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
-				break;
-			}
+		if (strncmp(tmp_name, "notes-", 6)) continue;
+
+#ifdef USE_SDL2
+		int k;
+		/* Check duplicate in notes_fname. */
+		for (k = 0; k < notes_files; k++) if (!strcmp(notes_fname[k], tmp_name)) break;
+		if (k < notes_files) continue; /* duplicate */
+#endif
+
+		strcpy(notes_fname[notes_files], tmp_name);
+		notes_files++;
+
+		if (notes_files == MAX_NOTES_FILES) {
+			c_msg_format("\377oWARNING: Amount of 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
+			break;
 		}
+
 	}
 	closedir(dir);
 
@@ -7435,16 +7477,53 @@ static void cmd_notes(void) {
  #define URLMAN(p) ShellExecute(NULL, "open", p, NULL, NULL, SW_SHOWNORMAL);
  /* ..and according to him this works fine - but it doesn't work in Wine actually -_- : */
  //#define URLMAN(p) (res = system(format("start \"%s\"", p)));
+#elif defined(USE_SDL2)
+/* 
+ * Opens provided filename in OS environment using associated application.
+ * The provided path should be an absolute path. Some detection with warning and fixing is done, but I wouldn't depend on it.
+ * Returns 0 on success, or -1 on error. The error is written as a chat message.
+ */
+static int sdl2_fileman(const char *p) {
+	char url[1032], buf[1032];
+	bool is_abs = FALSE;
+	const char *path = p;
+
+	if (p[0] == '/' || p[0] == '\\') is_abs = TRUE;
+	else if (p[0] && p[1] == ':') is_abs = TRUE;
+	if (!is_abs) {
+		fprintf(stderr, "Warning: sdl2_fileman: File path \"%s\" is not absolute, trying to fix it, but please rewrite the code to call with absolute path.\n", p);
+		strnfmt(buf, sizeof(buf), "%s%s", SDL2_GAME_PATH, p);
+		path = buf;
+	}
+	fprintf(stderr, "jezek - sdl2_fileman: path: %s\n", path);
+	strnfmt(url, sizeof(url), "file://%s", path);
+	int rc = SDL_OpenURL(url);
+	if (rc < 0) c_msg_format("Opening file \"%s\" failed with error: %s", path, SDL_GetError());
+	return rc;
+}
+
+/* 
+ * Opens provided url in default broser.
+ * Returns 0 on success, or -1 on error. The error is written as a chat message.
+ */
+static int sdl2_urlman(const char *p) {
+	fprintf(stderr, "jezek - sdl2_urlman(p: %s)\n", p);
+	int rc = SDL_OpenURL(p);
+	if (rc < 0) c_msg_format("Opening url \"%s\" failed with error: %s", path, SDL_GetError());
+	return rc;
+}
+ #define FILEMAN(p) (res = sdl2_fileman(p))
+ #define URLMAN(p) (res = sdl2_urlman(p))
 #endif
 void cmd_check_misc(void) {
 	char i = 0, choice;
 	int row, res;
 	/* suppress hybrid macros in some submenus */
 	bool inkey_msg_old, uniques, redraw = TRUE;
-#if defined(USE_X11) || defined(WINDOWS)
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 	char path[1024];
 #endif
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 	FILE *fp;
 	char buf[MAX_CHARS];
 #endif
@@ -7509,15 +7588,34 @@ void cmd_check_misc(void) {
 			Term_putstr( 5, row + 1, -1, TERM_WHITE, "(\377UG\377w) Open git repository site");
 			Term_putstr(40, row + 1, -1, TERM_WHITE, "(\377UL\377w) Open oook.cz ladder site");
 			row += 3;
+			//TODO jezek - Converting too complex, open the screenshot.
 			Term_putstr( 5, row, -1, TERM_WHITE, "(\377o~\377w) Convert last screenshot to");
 			Term_putstr( 5, row + 1,   -1, TERM_WHITE, "    a PNG and leave this menu:");
 			Term_putstr( 5, row + 2,   -1, TERM_WHITE, format("    %s", screenshot_filename[0] ? screenshot_filename : "- no screenshot taken -"));
 			Term_putstr(40, row, -1, TERM_WHITE, "(\377oC\377w) Edit the current config file:");
-#ifdef USE_X11
+#if defined(USE_X11)
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
-#endif
-#ifdef WINDOWS
+#elif defined(USE_SDL2)
+			if (strlen(mangrc_filename) <= 35)
+				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
+			else {
+				/* Try to cut line at backslash */
+				i = 35;
+				while (i && mangrc_filename[(int)i] != '\\') i--;
+				if (i != 35) i++;
+				/* ..but don't accept unreasonable lenght */
+				if (i < 20) {
+					/* Cut without regard, ouch */
+					Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename));
+					Term_putstr(40, row + 2,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename + 35));
+				} else {
+					/* Cut nicely & cleanly at backslash */
+					Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %-.*s", i, mangrc_filename));
+					Term_putstr(40, row + 2,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename + i));
+				}
+			}
+#elif defined(WINDOWS)
 			/* The ini file contains a long path (unlike mangrc_filename), so use two lines for it.. */
 			if (strlen(ini_file) <= 35)
 				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", ini_file));
@@ -7684,8 +7782,14 @@ void cmd_check_misc(void) {
 			cmd_message();
 			break;
 
-#if defined(USE_X11) || defined(WINDOWS)
-		case 'T': FILEMAN("."); break;
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
+		case 'T':
+ #ifdef USE_SDL2
+			FILEMAN(SDL2_GAME_PATH);
+ #else
+			FILEMAN(".");
+ #endif
+			break;
 		case 'U': FILEMAN(ANGBAND_DIR_USER); break;
 		case 'S':
 			path_build(path, 1024, ANGBAND_DIR_XTRA, "sound");
@@ -7799,6 +7903,9 @@ void cmd_check_misc(void) {
 			(void)r;
 			(void)c;
 			}
+#endif
+#ifdef USE_SDL2
+			FILEMAN(mangrc_filename);
 #endif
 			break;
 
