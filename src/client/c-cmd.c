@@ -6802,9 +6802,9 @@ bool png_screenshot(void) {
 #ifdef WINDOWS
 	char path[1024], *c = path, *c2, tmp[1024], executable[1024];
 #endif
-#if !defined(WINDOWS) && !defined(USE_X11)
+#if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
 	/* Neither WINDOWS nor USE_X11 */
-	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an X11 or Windows system.");
+	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an SDL2 client or X11 or Windows system.");
 	return(FALSE);
 #else
 	char buf[1024], file_name[1024], command[1024];
@@ -6816,6 +6816,12 @@ bool png_screenshot(void) {
 		c_msg_print("\377yYou have not made a screenshot yet this session (CTRL+T).");
 		return(FALSE);
 	}
+#endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Save screenshot as PNG. (Aren't you doing this already?)
+	c_msg_print("\377ySorry, work in progress.");
+	return(FALSE);
 #endif
 
 #ifdef WINDOWS
@@ -7371,16 +7377,20 @@ static void cmd_notes(void) {
  #define URLMAN(p) ShellExecute(NULL, "open", p, NULL, NULL, SW_SHOWNORMAL);
  /* ..and according to him this works fine - but it doesn't work in Wine actually -_- : */
  //#define URLMAN(p) (res = system(format("start \"%s\"", p)));
+#elif defined(USE_SDL2)
+ //TODO jezek - Implement FILEMAN(p) & URLMAN(p) macros to open files & url links.
+ #define FILEMAN(p) (c_msg_format("Sorry, FILEMAN(%s) not implemented yet.", p));
+ #define URLMAN(p) (c_msg_format("Sorry, URLMAN(%s) not implemented yet.", p));
 #endif
 void cmd_check_misc(void) {
 	char i = 0, choice;
 	int row, res;
 	/* suppress hybrid macros in some submenus */
 	bool inkey_msg_old, uniques, redraw = TRUE;
-#if defined(USE_X11) || defined(WINDOWS)
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 	char path[1024];
 #endif
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 	FILE *fp;
 	char buf[MAX_CHARS];
 #endif
@@ -7449,7 +7459,7 @@ void cmd_check_misc(void) {
 			Term_putstr( 5, row + 1,   -1, TERM_WHITE, "    a PNG and leave this menu:");
 			Term_putstr( 5, row + 2,   -1, TERM_WHITE, format("    %s", screenshot_filename[0] ? screenshot_filename : "- no screenshot taken -"));
 			Term_putstr(40, row, -1, TERM_WHITE, "(\377oC\377w) Edit the current config file:");
-#ifdef USE_X11
+#if defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
 #endif
@@ -7620,7 +7630,7 @@ void cmd_check_misc(void) {
 			cmd_message();
 			break;
 
-#if defined(USE_X11) || defined(WINDOWS)
+#if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 		case 'T': FILEMAN("."); break;
 		case 'U': FILEMAN(ANGBAND_DIR_USER); break;
 		case 'S':
@@ -7735,6 +7745,10 @@ void cmd_check_misc(void) {
 			(void)r;
 			(void)c;
 			}
+#endif
+#ifdef USE_SDL2
+			//TODO jezek - Implement editing config file.
+			c_message_add("\377wSorry, editing config file not implemented yet.");
 #endif
 			break;
 

@@ -112,10 +112,10 @@ static void validate_dir(cptr s) {
 /*
  * Initialize and verify the file paths.
  *
- * Use the ANGBAND_PATH environment var if possible, else use
+ * Use the TOMENET_PATH environment var if possible, else use
  * DEFAULT_PATH, and in either case, branch off appropriately.
  *
- * First, we'll look for the ANGBAND_PATH environment variable,
+ * First, we'll look for the TOMENET_PATH environment variable,
  * and then look for the files in there.  If that doesn't work,
  * we'll try the DEFAULT_PATH constant.  So be sure that one of
  * these two things works...
@@ -133,6 +133,9 @@ void init_stuff(void) {
 	strcpy(path, "TomeNET:");
  #else /* All systems except Amiga / VM: */
 	/* Change current directory to the location of the binary - mikaelh */
+  #if defined(USE_SDL2)
+	if (chdir(SDL2_GAME_PATH) == -1) plog_fmt("init_stuff: chdir(\"%s\") failed", SDL2_GAME_PATH);
+  #else
 	if (argv0) {
 		char *app_path = strdup(argv0);
 		char *app_dir;
@@ -143,6 +146,7 @@ void init_stuff(void) {
 
 		free(app_path);
 	}
+  #endif
 	/* Obtain our path */
 	if (!strlen(path)) {
 		cptr tail;
@@ -155,7 +159,11 @@ void init_stuff(void) {
 	}
 
 	/* Hack -- Add a path separator (only if needed) */
+  #if defined(USE_SDL2)
+	if (!suffix(path, SDL2_PATH_SEP)) strcat(path, SDL2_PATH_SEP);
+  #else
 	if (!suffix(path, PATH_SEP)) strcat(path, PATH_SEP);
+  #endif
 
 	/* Validate the path */
 	validate_dir(path);
@@ -3104,7 +3112,7 @@ static void Input_loop(void) {
 #if 0 /* 0: moved to a hack 'fix_custom_font_after_startup'. */
 	/* requires in_game == TRUE in handle_process_font_file() */
 	/* ---- TODO: A little order glitch, that we workaround here - should fix this in a cleaner manner probably: ----     - C. Blue
-	        The visual modules (init_x11() / init_gcu() / init_windows()) are loaded BEFORE client_init() is called.
+	        The visual modules (init_x11() / init_gcu() / init_windows() / init_sdl2()) are loaded BEFORE client_init() is called.
 	        That means the init_stuff()->init_file_paths() has't been done yet, and and custom fonts won't initialize their
 	        custom mapping .prf files either. Also, custom fonts are apparently reset even if this is put as far down as
 	        into Input_loop() (after client_init() has finished already), so for now until someone sorts this out cleanly,
@@ -3184,8 +3192,11 @@ static void Input_loop(void) {
 		 */
 		update_ticks();
 
+/* Don't flush events in SDL2. Flushing it will fail to register some key presses. */
+#ifndef USE_SDL2
 		/* Flush input (now!) */
 		flush_now();
+#endif
 
 		/* Redraw windows if necessary */
 		window_stuff();
@@ -3580,7 +3591,7 @@ void client_init(char *argv1, bool skip) {
 	FILE *fp;
 	char buf[1024];
 
-#if defined(USE_X11) || defined(USE_GCU)
+#if defined(USE_X11) || defined(USE_GCU) || defined(USE_SDL2)
 	/* Force creation of fresh .tomenetrc file in case none existed yet.
 	   The reason we do it *right now* is that it generates visual glitches later
 	   and prevents plog() output from being displayed.
@@ -3778,6 +3789,27 @@ void client_init(char *argv1, bool skip) {
 			}
 			WSACleanup( );
 		}
+#elif defined(USE_SDL2)
+ #include <SDL2/SDL_net.h>
+		//TODO jezek - Test ip_iface result against WINDOWS version.
+		// Do the same as WINDOWS version, but use SDL_net functions to be OS independent.
+		// Use SDL_net to get local IP address and assign to ip_iface.
+		IPaddress addrs[16];
+		int count = SDLNet_GetLocalAddresses(addrs, 16);
+		if (count < 0) {
+			c_msg_format("SDLNet_GetLocalAddresses failed: %s\n", SDLNet_GetError());
+		} else {
+			for (int i = 0; i < count; ++i) {
+				if (addrs[i].host != INADDR_NONE && addrs[i].host != INADDR_ANY) {
+					const char* txt = SDLNet_ResolveIP(&addrs[i]);
+					if (txt) {
+						strncpy(ip_iface, txt, MAX_CHARS);
+						ip_iface[MAX_CHARS - 1] = '\0';
+						break;
+					}
+				}
+			}
+		}
 #endif
 
 #if defined(USE_X11) || defined(USE_GCU)
@@ -3931,9 +3963,25 @@ again:
 		}
 		remove(pathbat);
  #endif
+#elif defined(USE_SDL2)
+ #include <stdlib.h>
+ #include <SDL2/SDL_timer.h>
+		// Getting MAC address is not possible using only SDL2. For now generate fake MAC.
+		// Generate fake MAC address: first half constant "F4K", second half random.
+		//TODO jezek - Is MAC address needed? Retrieve ip_addr instead of generating a fake MAC.
+		uint8_t fake_prefix[3] = { 'F', '4', 'K' };
+		for (int i = 0; i < 3; ++i) {
+			ip_iaddr[i] = fake_prefix[i];
+		}
+		srand((unsigned int)SDL_GetTicks());
+		for (int i = 3; i < 6; ++i) {
+			ip_iaddr[i] = (uint8_t)(rand() & 0xFF);
+		}
+		c_msg_print("Generating fake MAC address with prefix 'F4K' and random suffix\n");
 #endif
 	}
 
+	fprintf(stderr, "jezek - client_init: Socket: %u\n", Socket);
 	/* Create a socket buffer */
 	if (Sockbuf_init(&ibuf, Socket, CLIENT_SEND_SIZE,
 	    SOCKBUF_READ | SOCKBUF_WRITE) == -1) {

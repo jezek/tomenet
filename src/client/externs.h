@@ -40,6 +40,27 @@ extern void get_palette(byte c, byte *r, byte *g, byte *b);
 extern void refresh_palette(void);
 extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
 extern void set_window_title_x11(int term_idx, cptr title);
+#elif defined(USE_SDL2)
+extern errr init_sdl2(void);
+
+extern void change_font(int s);
+extern const char* get_font_name(int term_idx);
+extern void set_font_name(int term_idx, char* fnt);
+extern void term_toggle_visibility(int term_idx);
+extern bool term_get_visibility(int term_idx);
+
+extern void resize_main_window_sdl2(int cols, int rows);
+extern bool ask_for_bigmap(void);
+extern void get_term_main_font_name(char *buf);
+extern void animate_palette(void);
+extern void set_palette(byte c, byte r, byte g, byte b);
+extern void get_palette(byte c, byte *r, byte *g, byte *b);
+extern void refresh_palette(void);
+extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
+extern void set_window_title_sdl2(int term_idx, cptr title);
+
+extern char *SDL2_USER_PATH, *SDL2_GAME_PATH;
+extern char SDL2_PATH_SEP[2];
 #elif defined(USE_GCU)
 extern bool term_get_visibility(int term_idx);
 #endif
@@ -863,7 +884,7 @@ typedef struct {
 	char font[256]; /* Paranoia: actually, 6 should be sufficient */
 } generic_term_info;
 extern generic_term_info term_prefs[10];
-extern char mangrc_filename[100];
+extern char mangrc_filename[MAX_PATH_LENGTH];
 
 /* nclient.c (former netclient.c) */
 extern int ticks, ticks10, existing_characters, command_confirmed;
@@ -1111,8 +1132,18 @@ extern int stricmp(cptr a, cptr b);
 
 #ifdef USE_X11
 /* main-x11.c */
-void all_term_data_to_term_prefs(void);
+extern void all_term_data_to_term_prefs(void);
 extern long x11_win_term_main;
+#endif
+
+#ifdef USE_SDL2
+/* main-sdl2.c */
+extern void all_term_data_to_term_prefs(void);
+extern errr sdl2_win_term_main_screenshot(cptr name);
+ #ifdef USE_GRAPHICS
+extern void sdl2_graphics_pref_file_processed();
+extern uint32_t graphics_image_masks_colors[GRAPHICS_MAX_MPT];
+ #endif
 #endif
 
 #ifdef WINDOWS
@@ -1267,6 +1298,8 @@ extern void enable_readability_blue_win(void);
 #else
  #ifdef USE_X11
 extern void enable_readability_blue_x11(void);
+ #elif defined(USE_SDL2)
+extern void enable_readability_blue_sdl2(void);
  #else
 extern void enable_readability_blue_gcu(void);
 extern void set_palette(byte c, byte r, byte g, byte b);

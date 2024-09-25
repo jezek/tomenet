@@ -22,35 +22,37 @@
  */
 
 #ifdef WIN32
-
-# include <winsock.h>
+ #include <winsock.h>
 /* Hack - my errno doesn't include EWOULDBLOCK * - GP */
-#ifndef DUMB_WIN
-# define EWOULDBLOCK WSAEWOULDBLOCK
-/* this next one redefines va_start and va_end, but it is necessary -GP*/
-#ifndef _WINDOWS
-# include <varargs.h>
-#endif
-#endif
+ #ifndef DUMB_WIN
+  #define EWOULDBLOCK WSAEWOULDBLOCK
+  /* this next one redefines va_start and va_end, but it is necessary -GP*/
+  #ifndef _WINDOWS
+   #include <varargs.h>
+  #endif
+ #endif
 #else
-# include <unistd.h>
-# include <stdlib.h>
-# include <stdio.h>
-# include <errno.h>
-# include <sys/types.h>
-# if defined(__hpux)
-#  include <time.h>
-# else
-#  include <sys/time.h>
-# endif
-# ifdef __sgi
-#  include <bstring.h>
-# endif
+ #include <unistd.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <errno.h>
+ #include <sys/types.h>
+ #if defined(__hpux)
+  #include <time.h>
+ #else
+  #include <sys/time.h>
+ #endif
+ #ifdef __sgi
+  #include <bstring.h>
+ #endif
 #endif
 
 /* MinGW doesn't have EWOULDBLOCK either - mikaelh */
 #ifdef MINGW
-#define EWOULDBLOCK WSAEWOULDBLOCK
+ /* SDL2 clients don't use EWOULDBLOCK. */
+ #ifndef USE_SDL2
+  #define EWOULDBLOCK WSAEWOULDBLOCK
+ #endif
 #endif
 
 
@@ -63,14 +65,14 @@
 #include "bit.h"
 
 #ifdef MSDOS
-#include "net-ibm.h"
+ #include "net-ibm.h"
+#elif defined(WIN32)
+ #include "net-win.h"
+#elif defined(USE_SDL2)
+ #include "net-sdl2.h"
 #else
-# ifdef WIN32
-#  include "net-win.h"
-# else
-#  include "net-unix.h"
-# endif /* WIN32 */
-#endif /* MSDOS */
+ #include "net-unix.h"
+#endif 
 
 char net_version[] = VERSION;
 

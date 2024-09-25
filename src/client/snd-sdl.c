@@ -589,7 +589,8 @@ static bool open_audio(void) {
 	return(TRUE);
 }
 
-#ifndef WINDOWS //assume POSIX
+//TODO jezek - Figure out what they do with sound here so it needs these functions.
+#if !defined(WINDOWS) && !defined(USE_SDL2) //assume POSIX
  #include <sys/resource.h> /* for rlimit et al */
 static int get_filedescriptor_limit(void) {
 	struct rlimit limit;
@@ -676,7 +677,7 @@ static bool sound_sdl_init(bool no_cache) {
 	bool reference_initial[REFERENCES_MAX];
 	char referenced_event[REFERENCES_MAX][MAX_CHARS_WIDE];
 
-#ifndef WINDOWS //assume POSIX
+#if !defined(WINDOWS) && !defined(USE_SDL2) //assume POSIX
 	/* for checking whether we have enough available file descriptors for loading a lot of audio files */
 	int max_files = get_filedescriptor_limit(), cur_files1 = count_open_fds1(), cur_files2 = count_open_fds2(max_files);
 

@@ -1221,7 +1221,7 @@ void gcu_restore_colours(void) {
 	for (i = 0; i < BASE_PALETTE_SIZE; i++) init_color(i, cor[i], cog[i], cob[i]);
 }
 
-#ifndef USE_X11
+#if !defined(USE_X11) && !defined(USE_SDL2)
 /* Returns true if terminal window specified by term_idx is currently visible. */
 bool term_get_visibility(int term_idx) {
 	if (term_idx < 0 || term_idx >= ANGBAND_TERM_MAX) return(false);
@@ -1268,7 +1268,7 @@ void resize_main_window_gcu(int cols, int rows) {
 #endif
 }
 
-#ifndef USE_X11
+#if !defined(USE_X11) && !defined(USE_SDL2)
 /* automatically store name+password to ini file if we're a new player? */
 void store_crecedentials(void) {
 	write_mangrc(TRUE, TRUE, FALSE);
