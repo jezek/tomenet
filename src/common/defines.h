@@ -42,8 +42,8 @@
 #define VERSION_MINOR		9
 #define VERSION_PATCH		3
 #define VERSION_EXTRA		0
-#define VERSION_BRANCH		0
-#define VERSION_BUILD		3
+#define VERSION_BRANCH		1
+#define VERSION_BUILD		0
 
 /* MAJOR/MINOR/PATCH version that counts as 'latest' (should be 0-15).
    If a player is online with a version > this && <= current version (VERSION_)
@@ -125,6 +125,8 @@
 #define OS_ANDROID	6
 #define OS_IPHONE	7
 #define OS_IPAD		8
+#define OS_SDL2		9
+#define OS_GCU_SDL2		10
 
 /* Set new VERSION_OS (after 4.4.8.1.0.0) for client - C. Blue */
 #ifdef CLIENT_SIDE
@@ -140,10 +142,14 @@
   #define VERSION_OS		OS_IPAD
  #elif defined(USE_X11) && defined(USE_GCU)
   #define VERSION_OS		OS_GCU_X11
+ #elif defined(USE_SDL2) && defined(USE_GCU)
+  #define VERSION_OS		OS_GCU_SDL2
  #elif defined(USE_GCU)
   #define VERSION_OS		OS_GCU
  #elif defined(USE_X11)
   #define VERSION_OS		OS_X11
+ #elif defined(USE_SDL2)
+  #define VERSION_OS		OS_SDL2
  #else
   #define VERSION_OS		OS_UNKNOWN
  #endif
@@ -639,7 +645,7 @@
   #define NAVI_KEY_PAGEDOWN	-122
   #define NAVI_KEY_POS1		-121
   #define NAVI_KEY_END		-120
-  #define NAVI_KEY_DEL		-119	/* Windows only, not available on POSIX (there DEL is same as BACKSPACE) */
+  #define NAVI_KEY_DEL		-119	/* Windows and SDL2 clients only, not available on POSIX (there DEL is same as BACKSPACE) */
 #endif
 
 
