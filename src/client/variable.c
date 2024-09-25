@@ -214,10 +214,22 @@ cptr ANGBAND_DIR_USER;
 cptr ANGBAND_DIR_XTRA;
 cptr ANGBAND_DIR_GAME;
 
+#ifdef USE_SDL2
+cptr ANGBAND_USER_DIR;
+cptr ANGBAND_USER_DIR_SCPT;
+cptr ANGBAND_USER_DIR_TEXT;
+cptr ANGBAND_USER_DIR_USER;
+cptr ANGBAND_USER_DIR_XTRA;
+cptr ANGBAND_USER_DIR_GAME;
+#endif
+
 bool disable_numlock = FALSE;
 bool bad_solid_mapping = FALSE;
 #ifdef WINDOWS
 bool use_logfont = FALSE, use_logfont_ini;
+#endif
+#ifdef USE_SDL2
+bool window_decorations = FALSE;
 #endif
 byte use_graphics = FALSE, use_graphics_new = FALSE, use_graphics_err = 0;
 int override_graphics = -1; /* For '-a', '-g' and '-G' command-line parameters: These override the settings in the prf! */

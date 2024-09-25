@@ -125,6 +125,7 @@
 #define OS_ANDROID	6
 #define OS_IPHONE	7
 #define OS_IPAD		8
+#define OS_SDL2		9
 
 /* Set new VERSION_OS (after 4.4.8.1.0.0) for client - C. Blue */
 #ifdef CLIENT_SIDE
@@ -144,6 +145,8 @@
   #define VERSION_OS		OS_GCU
  #elif defined(USE_X11)
   #define VERSION_OS		OS_X11
+ #elif defined(USE_SDL2)
+  #define VERSION_OS		OS_SDL2
  #else
   #define VERSION_OS		OS_UNKNOWN
  #endif

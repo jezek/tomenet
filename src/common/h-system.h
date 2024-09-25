@@ -58,6 +58,20 @@
 # endif
 #endif
 
+#if defined(USE_SDL2)
+#ifdef USE_SDL2
+ #include <unistd.h>
+ /* I don't like this hack, but mingw has other mkdir definition than linux. */
+ #ifdef MINGW
+  #define MKDIR(p) mkdir(p)
+ #else
+  #include <sys/stat.h>
+  #define MKDIR(p) mkdir(p, 0775)
+ #endif
+#endif
+#endif
+
+
 #ifdef AMIGA
 # include <pwd.h>
 #endif
@@ -119,7 +133,7 @@ extern char *strrchr();
 
 
 
-#if !defined(linux) && !defined(__MWERKS__) && !defined(ACORN) && !defined(USE_GCU) && !defined(USE_X11) && !defined(__FreeBSD__)
+#if !defined(linux) && !defined(__MWERKS__) && !defined(ACORN) && !defined(USE_GCU) && !defined(USE_X11) && !defined(__FreeBSD__) && !defined(USE_SDL2)
 extern long atol();
 #endif
 

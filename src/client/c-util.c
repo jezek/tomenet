@@ -6,7 +6,17 @@
 
 #include <sys/time.h>
 #ifndef WINDOWS
- #include <glob.h>
+ #ifndef USE_SDL2
+  #include <glob.h>
+ #endif
+#endif
+
+#ifdef USE_SDL2
+ #include <SDL2/SDL.h>
+ #ifdef SDL2_ARCHIVE
+  #include <archive.h>
+  #include <archive_entry.h>
+ #endif
 #endif
 
 #define ENABLE_SUBWINDOW_MENU /* allow =f menu function for setting fonts/visibility of term windows */
@@ -153,10 +163,12 @@ int usleep(huge microSeconds) {
 #endif /* SET_UID */
 
 #ifdef WIN32
+ #ifndef USE_SDL2
 int usleep(long microSeconds) {
 	Sleep(microSeconds / 1000); /* meassured in milliseconds not microseconds*/
 	return(0);
 }
+ #endif /* USE_SDL2 */
 #endif /* WIN32 */
 
 
@@ -1950,12 +1962,12 @@ void bell(void) {
 	/* Make a bell noise (if allowed) */
 	if (c_cfg.ring_bell) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 		/* Try to beep via bell sfx of the SDL audio system first */
 		if (!sound_bell()
-		    //&& !(c_cfg.audio_paging && sound_page())
-		    )
-#endif
+				//&& !(c_cfg.audio_paging && sound_page())
+			 )
+ #endif
 #endif
 		if (!c_cfg.quiet_os) Term_xtra(TERM_XTRA_NOISE, 0);
 	}
@@ -1989,10 +2001,10 @@ void bell_silent(void) {
 /* Generate a page sfx (beep) */
 int page(void) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Try to beep via page sfx of the SDL audio system first */
 	if (c_cfg.audio_paging && sound_page()) return(1);
-#endif
+ #endif
 #endif
 
 	/* Fall back on system-specific default beeps */
@@ -2005,11 +2017,11 @@ int page(void) {
 /* Generate a warning sfx (beep) or if it's missing then a page sfx */
 int warning_page(void) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Try to beep via warning sfx of the SDL audio system first */
 	if (sound_warning()) return(1);
 	//if (c_cfg.audio_paging && sound_page()) return(1);
-#endif
+ #endif
 #endif
 
 	/* Fall back on system-specific default beeps */
@@ -2078,7 +2090,7 @@ static void c_prt_n(byte attr, char *str, int y, int x, int n) {
 	Term_putstr(x, y, -1, attr, tmp);
 }
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 /* Helper function for copy_to_clipboard */
 static void extract_url(char *buf_esc, char *buf_prev, int end_of_name) {
 	char *c, *c2, *be = NULL;
@@ -2339,12 +2351,60 @@ void copy_to_clipboard(char *buf, bool chat_input) {
 	if (r) c_msg_print("Copy failed, make sure xclip is installed.");
 	else strcpy(buf_prev, buf_esc);
 #endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Test copy-to-clipboard using only SDL2.
+	int pos = 0, end_of_name = 0;
+	char *c, *c2, buf_esc[MSG_LEN + 10];
+	static char buf_prev[MSG_LEN + 10];
+
+	c  = buf;
+	c2 = buf_esc;
+	while (*c && (size_t)(c2 - buf_esc) < MSG_LEN + 9) {
+		switch (*c) {
+			case ':':
+				if (pos != 0 && pos <= NAME_LEN) {
+					if (*(c + 1) == ':') c++;
+				} else if (pos != 0) {
+					if (*(c + 1) == ':') c++;
+				}
+				break;
+			case '{':
+				if (chat_input) {
+					switch (*(c + 1)) {
+						case '{':  c++;              break;
+						case 0:    c++;  continue;
+						default:   c += 2; continue;
+					}
+				}
+				break;
+			case '\376': case '\375': case '\374':  c++; continue;
+			case '\377':
+				switch (*(c + 1)) {
+					case 0:   c++; continue;
+					default:  c += 2; continue;
+				}
+				break;
+		}
+		*c2++ = *c++;
+		pos++;
+	}
+	*c2 = 0;
+
+	extract_url(buf_esc, buf_prev, end_of_name);
+
+	if (SDL_SetClipboardText(buf_esc) == 0) {
+		strcpy(buf_prev, buf_esc);
+	} else {
+		c_msg_print("Copy failed, SDL clipboard error.");
+	}
+#endif
 }
 /* Paste current clipboard into active chat input.
    'global': paste goes to global chat (including /say and /whisper)? (not private/party/guild/floor chat) -
    For the latter four the line already started with a ':' for the chat prefix and we don't need to duplicate the first ':' anymore. */
 bool paste_from_clipboard(char *buf, bool global) {
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	bool no_slash_command;
 	int pos = 0;
 	char *c, *c2, buf_esc[MSG_LEN + 15];
@@ -2456,6 +2516,59 @@ bool paste_from_clipboard(char *buf, bool global) {
 	*c2 = 0;
 
 	fclose(fp);
+	return(TRUE);
+#endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Test paste-from-clipboard using only SDL2.
+	char *clip = SDL_GetClipboardText();
+	if (!clip) return(FALSE);
+
+	/* combine multi-line text into one line, replacing newlines by spaces */
+	buf_esc[0] = 0;
+	for (int i = 0; clip[i] && strlen(buf_esc) < MSG_LEN - NAME_LEN - 13; ++i) {
+		char ch = clip[i];
+		if (ch == '\r' || ch == '\n') {
+			if (buf_esc[0] && buf_esc[strlen(buf_esc) - 1] != ' ')
+				strcat(buf_esc, " ");
+		} else {
+			int len = strlen(buf_esc);
+			buf_esc[len] = ch;
+			buf_esc[len + 1] = '\0';
+		}
+	}
+	SDL_free(clip);
+
+	/* treat { and : and also strip away all control chars (like 0x0A aka RETURN) */
+	c = buf_esc;
+	c2 = buf;
+	no_slash_command = buf_esc[0] != '/';
+	pos = 0;
+	while (*c) {
+		if (*c < 32) {
+			c++;
+			continue;
+		}
+		switch (*c) {
+			case ':':
+				if (global && no_slash_command && pos != 0 && pos <= NAME_LEN) {
+					*c2 = ':';
+					c2++;
+					global = FALSE; /* only the first ':' needs duplication */
+				}
+				break;
+			case '{':
+				*c2 = '{';
+				c2++;
+				break;
+		}
+		*c2 = *c;
+		c++;
+		c2++;
+		pos++;
+	}
+	*c2 = 0;
+
 	return(TRUE);
 #endif
 
@@ -3789,10 +3902,17 @@ byte get_3way(cptr prompt, bool default_no) {
 /* Kurzel reported that on Windows 10/11, printf() output is not shown in the terminal for unknown reason. So we need a log file, alternatively, as workaround: */
 void logprint(const char *out) {
 	static FILE *fp = NULL;
+	char path[1024];
+
+#ifdef USE_SDL2
+	path_build(path, 1024, os_temp_path, "tomenet-stdout.log");
+#else
+	strcpy(path, "tomenet-stdout.log");
+#endif
 
 	/* Atomic append, in case things go really wrong (paranoia) */
-	if (!fp) fp = fopen("tomenet-stdout.log", "w");
-	else fp = fopen("tomenet-stdout.log", "a");
+	if (!fp) fp = fopen(path, "w");
+	else fp = fopen(path, "a");
 
 	if (fp) {
 		fprintf(fp, "%s", out);
@@ -4777,7 +4897,11 @@ void c_msg_print(cptr msg) {
 		char path[1024];
 
 		/* Build the filename */
+#ifdef USE_SDL2
+		path_build(path, 1024, os_temp_path, "stdout.txt");
+#else
 		path_build(path, 1024, ANGBAND_DIR_USER, "stdout.txt");
+#endif
 
 		fp = my_fopen(path, "a");
 		/* success */
@@ -5369,7 +5493,7 @@ int macroset_scan(void) {
 	char buf_basename[1024], tmpbuf[1024];
 #ifndef WINDOWS
 	size_t glob_size;
-	glob_t glob_res;
+	glob_t glob_res = {0};
 	char **p;
 #else
 	WIN32_FIND_DATA FindFileData;
@@ -5532,7 +5656,17 @@ int macroset_scan(void) {
 	for (k = 0; k < filesets_found; k++) {
 #ifndef WINDOWS
 c_msg_format("(1)scan disk for set (%d) <%s>", k, fileset[k].basefilename);
+ #ifdef USE_SDL2
+		//TODO jezek - Test glob fileset w/wo brace.
+  #ifdef GLOB_BRACE
+		glob(format("{%s,%s}%s%s-FS?.prf", ANGBAND_USER_DIR_USER, ANGBAND_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), GLOB_BRACE, NULL, &glob_res);
+  #else
+		glob(format("%s%s%s-FS?.prf", ANGBAND_USER_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), 0, NULL, &glob_res);
+		glob(format("%s%s%s-FS?.prf", ANGBAND_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), ((glob_res.gl_pathc > 0) ? GLOB_APPEND : 0), NULL, &glob_res);
+  #endif
+ #else
 		glob(format("%s-FS?.prf", fileset[k].basefilename), 0, 0, &glob_res);
+ #endif
 		glob_size = glob_res.gl_pathc;
 		if (glob_size < 1) { /* No macro files found at all, ew. */
 			/* -- this warning is redundant with 'has no stage file(s)' warning further down ---
@@ -5590,7 +5724,17 @@ c_msg_format("(1)set (%d) <%s> registered stage %d", k, fileset[k].basefilename,
 	/* ---------- (c) Now also scan user folder for any macro sets that aren't referenced by our currently loaded macros: ---------- */
 
 #ifndef WINDOWS
+ #ifdef USE_SDL2
+	//TODO jezek - Test glob fileset w/wo brace.
+  #ifdef GLOB_BRACE
+	glob(format("{%s,%s}%s*-FS?.prf", ANGBAND_USER_DIR_USER, ANGBAND_DIR_USER, SDL2_PATH_SEP), GLOB_BRACE, NULL, &glob_res);
+  #else
+	glob(format("%s%s*-FS?.prf", ANGBAND_USER_DIR_USER, SDL2_PATH_SEP), 0, NULL, &glob_res);
+	glob(format("%s%s*-FS?.prf", ANGBAND_DIR_USER, SDL2_PATH_SEP), ((glob_res.gl_pathc > 0) ? GLOB_APPEND : 0), NULL, &glob_res);
+  #endif
+ #else
 	glob("*-FS?.prf", 0, 0, &glob_res);
+ #endif
 	glob_size = glob_res.gl_pathc;
 	if (glob_size < 1) //; /* No macro files found at all */
 c_msg_print("(2)nothing");
@@ -10453,7 +10597,7 @@ void options_immediate(bool init) {
 	static bool changed7, changed8;
 	static bool changed9a, changed9b, changed9c, changed9d;
 
-#if !defined(WINDOWS) && !defined(USE_X11)
+#if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
 	/* Assume GCU-only client - terminal will break with "^B" visuals if font_map_solid_walls is on, so disable it always: */
 	if (c_cfg.font_map_solid_walls) {
 		c_msg_print("\377yOption 'font_map_solid_walls' is not supported on GCU-only client.");
@@ -10586,9 +10730,9 @@ static bool do_cmd_options_aux(int page, cptr info, int select) {
 
 			/* Display the option text */
 			sprintf(buf, "%-49s: %s  (%s)",
-			        option_info[opt[i]].o_desc,
-			        (*option_info[opt[i]].o_var ? "yes" : "no "),
-			        option_info[opt[i]].o_text);
+				option_info[opt[i]].o_desc,
+				(*option_info[opt[i]].o_var ? "yes" : "no "),
+				option_info[opt[i]].o_text);
 			c_prt(a, buf, i + 2, 0);
 		}
 
@@ -10881,7 +11025,7 @@ static void do_cmd_options_acc(void) {
  * Modify the "window" options
  */
 static void do_cmd_options_win(void) {
-	int i, j, d, vertikal_offset = 4;
+	int i, j, d, vertical_offset = 4;
 
 	int y = 0;
 	int x = 1;
@@ -10906,7 +11050,13 @@ static void do_cmd_options_win(void) {
 	while (go) {
 		/* Prompt XXX XXX XXX */
 		Term_putstr(0, 0, -1, TERM_WHITE, "Window flags (<\377ydir\377w>, \377yt\377w (take), \377yy\377w (set), \377yn\377w (clear), \377yENTER\377w (toggle), \377yESC\377w) ");
+#ifdef USE_SDL2
+		Term_putstr(0, 1, -1, TERM_WHITE, format("\377yd\377w toggle window decorations (%s)   ", window_decorations ? "on" : "off"));
+		Term_putstr(0, 3, -1, TERM_SLATE, "-Contents to be displayed-                      -Window names-");
+		vertical_offset = 5;
+#else
 		Term_putstr(0, 2, -1, TERM_SLATE, "-Contents to be displayed-                      -Window names-");
+#endif
 
 		/* Display the windows */
 		for (j = 1; j < ANGBAND_TERM_MAX; j++) {
@@ -10917,7 +11067,7 @@ static void do_cmd_options_win(void) {
 			if (c_cfg.use_color && (j == x)) a = TERM_L_BLUE;
 
 			/* Window name, staggered, centered */
-			Term_putstr(30 + j * 5 - strlen(s) / 2, vertikal_offset + j % 2, -1, a, (char*)s);
+			Term_putstr(30 + j * 5 - strlen(s) / 2, vertical_offset + j % 2, -1, a, (char*)s);
 		}
 
 		/* Display the options */
@@ -10932,7 +11082,7 @@ static void do_cmd_options_win(void) {
 			if (!str) str = "\377D(Unused option)\377w";
 
 			/* Flag name */
-			Term_putstr(0, i + vertikal_offset + 2, -1, a, (char*)str);
+			Term_putstr(0, i + vertical_offset + 2, -1, a, (char*)str);
 
 			/* Display the windows */
 			for (j = 1; j < ANGBAND_TERM_MAX; j++) {
@@ -10949,12 +11099,12 @@ static void do_cmd_options_win(void) {
 				}
 
 				/* Flag value */
-				Term_putch(30 + j * 5, i + vertikal_offset + 2, a, c);
+				Term_putch(30 + j * 5, i + vertical_offset + 2, a, c);
 			}
 		}
 
 		/* Place Cursor */
-		Term_gotoxy(30 + x * 5, y + vertikal_offset + 2);
+		Term_gotoxy(30 + x * 5, y + vertical_offset + 2);
 
 		/* Get key */
 		ch = inkey();
@@ -10969,6 +11119,14 @@ static void do_cmd_options_win(void) {
 			/* Take a screenshot */
 			xhtml_screenshot("screenshot????", 2);
 			break;
+
+#ifdef USE_SDL2
+		case 'd':
+			window_decorations = !window_decorations;
+			apply_window_decorations();
+			Term_putstr(0, 1, -1, TERM_WHITE, format("  d toggle window decorations (%s)", window_decorations ? "on" : "off"));
+			break;
+#endif
 
 		/* specialty: allow chatting from within here */
 		case ':': {
@@ -11093,7 +11251,7 @@ static void do_cmd_options_win(void) {
 }
 
 #ifdef ENABLE_SUBWINDOW_MENU
- #if defined(WINDOWS) || defined(USE_X11)
+ #if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 static int font_name_cmp(const void *a, const void *b) {
    #if 0 /* simple way */
 	return(strcmp((const char*)a, (const char*)b));
@@ -11130,7 +11288,7 @@ static int font_name_cmp(const void *a, const void *b) {
 //  #endif
 
 static void do_cmd_options_fonts(void) {
-	int j, d, vertikal_offset = 6;
+	int j, d, vertical_offset = 6;
 	int y = 0;
 	char ch;
 	bool go = TRUE, inkey_msg_old;
@@ -11141,14 +11299,14 @@ static void do_cmd_options_fonts(void) {
 	char graphic_font_name[MAX_FONTS][256];
 	int graphic_fonts = 0;
 
-  #ifndef WINDOWS
+   #ifdef USE_X11
 	int x11_refresh = 50;
 	FILE *fff;
-  #else
+   #elif defined(WINDOWS)
 	char *cp, *cpp;
-  #endif
+   #endif
 
-  #ifdef WINDOWS /* Windows uses the .FON files */
+   #ifdef WINDOWS /* Windows uses the .FON files */
 	DIR *dir;
 	struct dirent *ent;
 
@@ -11181,9 +11339,87 @@ static void do_cmd_options_fonts(void) {
 		}
 	}
 	closedir(dir);
-  #endif
+   #elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
+  //TODO jezek - Test loading fonts from user & game dir.
+	DIR *dir;
+	struct dirent *ent;
+	char base_name[256];
+	int k;
 
-  #ifdef USE_X11 /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
+	/* Prepare font arrays. */
+	memset(font_name, 0, sizeof(char) * (MAX_FONTS * 256));
+	memset(graphic_font_name, 0, sizeof(char) * (MAX_FONTS * 256));
+
+	/* Read all locally available fonts, first from user storage, then from game storage. */
+	/* First user-specific fonts. */
+	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "font");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".pcf")) {
+				if (graphic_fonts == MAX_FONTS) continue;
+
+				/* PCF font is stored without extenstion. */
+				strcpy(graphic_font_name[graphic_fonts], ent->d_name);
+				graphic_font_name[graphic_fonts][strlen(tmp_name) - 4] = '\0';
+				graphic_fonts++;
+
+				if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			} else if (strstr(tmp_name, ".ttf")) {
+				if (fonts == MAX_FONTS) continue;
+
+				/* Just store the font. */
+				strcpy(font_name[fonts], ent->d_name);
+				fonts++;
+
+				if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
+		}
+		closedir(dir);
+	}
+
+	/* Then game fonts (fallback), skipping duplicates. */
+	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".pcf")) {
+				if (graphic_fonts == MAX_FONTS) continue;
+
+				/* Get PCF font file name without extension. */
+				strncpy(base_name, ent->d_name, sizeof(base_name) - 1);
+				base_name[sizeof(base_name) - 1] = '\0';
+				if (strlen(base_name) >= 4) base_name[strlen(base_name) - 4] = '\0';
+
+				/* Check duplicate in graphic_font_name */
+				for (k = 0; k < graphic_fonts; k++) if (!strcmp(graphic_font_name[k], base_name)) break;
+				if (k < graphic_fonts) continue; /* duplicate */
+
+				/* Not duplicate, store font. */
+				strcpy(graphic_font_name[graphic_fonts], base_name);
+				graphic_fonts++;
+				if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			} else if (strstr(tmp_name, ".ttf")) {
+				if (fonts == MAX_FONTS) continue;
+
+				/* Check duplicate in font_name */
+				for (k = 0; k < fonts; k++) if (!strcmp(font_name[k], ent->d_name)) break;
+				if (k < fonts) continue; /* duplicate */
+
+				/* Not a duplicate, store. */
+				strcpy(font_name[fonts], ent->d_name);
+				fonts++;
+
+				if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
+		}
+		closedir(dir);
+	}
+   #elif defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
 	if (fonts < MAX_FONTS) {
@@ -11233,19 +11469,21 @@ static void do_cmd_options_fonts(void) {
 		}
 		fclose(fff);
 	}
-  #endif
+   #endif
 
-	if (!fonts) {
-		c_msg_format("No .fon font files found in directory (%s).", path);
+	if (!fonts && !graphic_fonts) {
+   #ifdef USE_SDL2
+		c_msg_format("No .pcf or .ttf font files found in user (%s%sfont) nor in game (%s%sfont) font directory.", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ANGBAND_DIR_XTRA, SDL2_PATH_SEP);
+   #else
+		c_msg_format("No font files found in directory (%s).", path);
+   #endif
 		return;
 	}
 
-//  #ifdef WINDOWS /* actually never sort fonts on X11, because they come in a sorted manner from fonts.alias and fonts.txt files already. */
 	qsort(font_name, fonts, sizeof(char[256]), font_name_cmp);
-   #ifdef WINDOWS /* Windows supports graphic fonts for the clone-map */
+   #if defined(WINDOWS) || defined(USE_SDL2)
 	qsort(graphic_font_name, graphic_fonts, sizeof(char[256]), font_name_cmp);
    #endif
-//  #endif
 
    #ifdef WINDOWS /* windows client currently saves full paths (todo: just change to filename only) */
 	for (j = 0; j < fonts; j++) {
@@ -11277,21 +11515,21 @@ static void do_cmd_options_fonts(void) {
 	/* Interact */
 	while (go) {
 		/* Prompt XXX XXX XXX */
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 		if (use_logfont)
 			Term_putstr(0, 0, -1, TERM_WHITE, "  <\377yup\377w/\377ydown\377w> select window, \377yv\377w visibility, \377y-\377w,\377y+\377w/\377y,\377w,\377y.\377w height/width, \377ya\377w antialiasing");
 		else
-  #endif
+   #endif
 		Term_putstr(0, 0, -1, TERM_WHITE, "  <\377yup\377w/\377ydown\377w> to select window, \377yv\377w toggle visibility, \377y-\377w/\377y+\377w,\377y=\377w smaller/bigger font");
 		Term_putstr(0, 1, -1, TERM_WHITE, "  \377ySPACE\377w enter new window title, \377yr\377w reset window title to default, \377yR\377w reset all");
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 		if (use_logfont)
 			Term_putstr(0, 2, -1, TERM_WHITE, format("  \377yENTER\377w enter new logfont size, \377yL\377w %s logfont, \377yESC\377w keep changes and exit", use_logfont_ini ? "disable" : "enable"));
 		else
 			Term_putstr(0, 2, -1, TERM_WHITE, format("  \377yENTER\377w enter a specific font name, \377yL\377w %s logfont, \377yESC\377w keep changes and exit", use_logfont_ini ? "disable" : "enable"));
-  #else
+   #else
 		Term_putstr(0, 2, -1, TERM_WHITE, "  \377yENTER\377w enter a specific font name, \377yESC\377w keep changes and exit");
-  #endif
+   #endif
 		Term_putstr(0, 4, -1, TERM_WHITE, format("  %d font%s and %d graphic font%s available, \377yl\377w to list in message window", fonts, fonts == 1 ? "" : "s", graphic_fonts, graphic_fonts == 1 ? "" : "s"));
 
 		/* Display the windows */
@@ -11304,24 +11542,24 @@ static void do_cmd_options_fonts(void) {
 			if (c_cfg.use_color && (j == y)) a = TERM_L_BLUE;
 
 			/* Window name, staggered, centered */
-			Term_putstr(1, vertikal_offset + j, -1, a, (char*)s);
+			Term_putstr(1, vertical_offset + j, -1, a, (char*)s);
 			/* Titles may be up to 40 characters long, in that case, shorten */
-			if (strlen(s) > 19) Term_putstr(18, vertikal_offset + j, -1, a, "..");
+			if (strlen(s) > 19) Term_putstr(18, vertical_offset + j, -1, a, "..");
 
 			/* Display the font of this window */
 			if (c_cfg.use_color && !term_get_visibility(j)) a = TERM_L_DARK;
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont && win_logfont_get_aa(j)) sprintf(buf, "%-19s (antialiased)", get_font_name(j));
 			else
-  #endif
+   #endif
 			strcpy(buf, get_font_name(j));
 			buf[59] = 0;
 			while (strlen(buf) < 59) strcat(buf, " ");
-			Term_putstr(20, vertikal_offset + j, -1, a, buf);
+			Term_putstr(20, vertical_offset + j, -1, a, buf);
 		}
 
 		/* Place Cursor */
-		//Term_gotoxy(20, vertikal_offset + y);
+		//Term_gotoxy(20, vertical_offset + y);
 		/* hack: hide cursor */
 		Term->scr->cx = Term->wid;
 		Term->scr->cu = 1;
@@ -11368,19 +11606,21 @@ static void do_cmd_options_fonts(void) {
 			clear_from(20);
 			if (!tmp_name[0]) break;
 
-			Term_putstr(1, vertikal_offset + y, -1, TERM_DARK, "                                       ");
+			Term_putstr(1, vertical_offset + y, -1, TERM_DARK, "                                       ");
 			strcpy(ang_term_name[y], tmp_name);
 
 			/* Immediately change live window title */
-  #ifdef WINDOWS
+   #ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
-  #else /* assume POSIX */
+   #elif defined(USE_SDL2)
+			set_window_title_sdl2(y, ang_term_name[y]);
+   #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
-  #endif
+   #endif
 			break;
 
 		case 'r':
-			Term_putstr(1, vertikal_offset + y, -1, TERM_DARK, "                                       ");
+			Term_putstr(1, vertical_offset + y, -1, TERM_DARK, "                                       ");
 
 			/* Keep consistent with c-tables.c! */
 			switch (y) {
@@ -11397,11 +11637,13 @@ static void do_cmd_options_fonts(void) {
 			}
 
 			/* Immediately change live window title */
-  #ifdef WINDOWS
+   #ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
-  #else /* assume POSIX */
+   #elif defined(USE_SDL2)
+			set_window_title_sdl2(y, ang_term_name[y]);
+   #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
-  #endif
+   #endif
 			break;
 
 		case 'R':
@@ -11419,39 +11661,64 @@ static void do_cmd_options_fonts(void) {
 
 			/* Immediately change live window title */
 			for (j = 0; j < ANGBAND_TERM_MAX; j++) {
-				Term_putstr(1, vertikal_offset + j, -1, TERM_DARK, "                                       ");
-  #ifdef WINDOWS
+				Term_putstr(1, vertical_offset + j, -1, TERM_DARK, "                                       ");
+   #ifdef WINDOWS
 				set_window_title_win(j, ang_term_name[j]);
-  #else /* assume POSIX */
+   #elif defined(USE_SDL2)
+				set_window_title_sdl2(j, ang_term_name[j]);
+   #else /* assume POSIX */
 				set_window_title_x11(j, ang_term_name[j]);
-  #endif
+   #endif
 			}
 			break;
 
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case '.':
 			if (use_logfont) win_logfont_inc(y, FALSE);
 			else bell();
 			break;
-  #endif
+   #endif
 		case '=':
 		case '+':
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #ifdef USE_SDL2
+			{
+				//TODO jezek - cleanup.
+				const char *cur = get_font_name(y);
+				char font_base[256];
+				int8_t size = 0;
+				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
+					if (size == -1) size = SDL2_DEFAULT_TTF_FONT_SIZE;
+					size++;
+					if (size > SDL2_MAX_TTF_FONT_SIZE) size = SDL2_MAX_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
+					set_font_name(y, new_fnt);
+				} else {
+					for (j = 0; j < graphic_fonts - 1; j++) {
+						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
+							set_font_name(y, graphic_font_name[j + 1]);
+							break;
+						}
+					}
+				}
+			}
+			break;
+   #endif
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_inc(y, TRUE);
 				break;
 			}
-  #endif
+   #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
-				//Include the graphic fonts, because we are cycling the clone-map
+				/* Include the graphic fonts, because we are cycling the clone-map */
 				for (j = 0; j < graphic_fonts - 1; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
-						/* advance to next font file in lib/xtra/font */
 						set_font_name(y, graphic_font_name[j + 1]);
-  #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
-  #endif
+   #endif
 						break;
 					}
 				}
@@ -11460,49 +11727,72 @@ static void do_cmd_options_fonts(void) {
 					if (!strcasecmp(font_name[j], get_font_name(y))) {
 						/* advance to next font file in lib/xtra/font */
 						set_font_name(y, font_name[j + 1]);
-  #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
-  #endif
+   #endif
 						break;
 					}
 				}
 			}
 			break;
 
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case ',':
 			if (use_logfont) win_logfont_dec(y, FALSE);
 			else bell();
 			break;
-  #endif
+   #endif
 		case '-':
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #ifdef USE_SDL2
+			{
+				//TODO jezek - cleanup.
+				const char *cur = get_font_name(y);
+				char font_base[256];
+				int8_t size = 0;
+				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
+					if (size == -1) size = SDL2_DEFAULT_TTF_FONT_SIZE;
+					size--;
+					if (size < SDL2_MIN_TTF_FONT_SIZE) size = SDL2_MIN_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
+					set_font_name(y, new_fnt);
+				} else {
+					for (j = 1; j < graphic_fonts; j++) {
+						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
+							set_font_name(y, graphic_font_name[j - 1]);
+							break;
+						}
+					}
+				}
+			}
+			break;
+   #endif
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_dec(y, TRUE);
 				break;
 			}
-  #endif
+   #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
-				//Include the graphic fonts, because we are cycling the clone-map
+				/* Include the graphic fonts, because we are cycling the clone-map. */
 				for (j = 1; j < graphic_fonts; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 						/* retreat to previous font file in lib/xtra/font */
 						set_font_name(y, graphic_font_name[j - 1]);
-  #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
-  #endif
+   #endif
 						break;
 					}
 				}
 			} else {
 				for (j = 1; j < fonts; j++) {
 					if (!strcasecmp(font_name[j], get_font_name(y))) {
-						/* retreat to previous font file in lib/xtra/font */
 						set_font_name(y, font_name[j - 1]);
-  #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
-  #endif
+   #endif
 						break;
 					}
 				}
@@ -11510,7 +11800,7 @@ static void do_cmd_options_fonts(void) {
 			break;
 
 		case '\r':
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter new size in format '<width>x<height>' (eg \"9x15\"):");
 				Term_gotoxy(0, 21);
@@ -11524,7 +11814,7 @@ static void do_cmd_options_fonts(void) {
 				win_logfont_set(y, tmp_name);
 				break;
 			}
-  #endif
+   #endif
 			Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter a font name:");
 			Term_gotoxy(0, 21);
 			strcpy(tmp_name, "");
@@ -11535,9 +11825,9 @@ static void do_cmd_options_fonts(void) {
 			clear_from(20);
 			if (!tmp_name[0]) break;
 			set_font_name(y, tmp_name);
-  #ifndef WINDOWS
+   #ifdef USE_X11
 			sync_sleep(x11_refresh);
-  #endif
+   #endif
 			break;
 
 		case 'l':
@@ -11552,14 +11842,14 @@ static void do_cmd_options_fonts(void) {
 				c_message_add(format("-- Fonts (%d): --", fonts));
 				tmp_name2[0] = 0;
 				for (j = 0; j < fonts; j++) {
-  #ifdef WINDOWS
+   #ifdef WINDOWS
 					/* Windows font names contain the whole .\lib\xtra\fonts\xxx, crop that */
 					cpp = font_name[j];
 					while ((cp = strchr(cpp, '\\'))) cpp = cp + 1;
 					sprintf(tmp_name, "%-18s", cpp);
-  #else
+   #else
 					sprintf(tmp_name, "%-18s", font_name[j]);
-  #endif
+   #endif
 
 					/* print up to 4 font names per line */
 					c++;
@@ -11581,7 +11871,7 @@ static void do_cmd_options_fonts(void) {
 			c_message_add(""); //linefeed
 			break;
 
-  #if defined(WINDOWS) && defined(USE_LOGFONT)
+   #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case 'L':
 			/* We cannot live-change 'use_logfont' itself, as that'd render the client effectively frozen, just toggle the ini setting for next startup: */
 			use_logfont_ini = !use_logfont_ini;
@@ -11597,7 +11887,7 @@ static void do_cmd_options_fonts(void) {
 			/* if (win_logfont_get_aa(y)) c_msg_format("\377yLogfont-antialiasing is now on for window #%d.", y);
 			else c_msg_format("\377yLogfont-antialiasing is now off for window #%d", y); */
 			break;
-  #endif
+   #endif
 
 		default:
 			d = keymap_dirs[ch & 0x7F];
@@ -11631,6 +11921,9 @@ static void do_cmd_options_tilesets(void) {
 
 	DIR *dir;
 	struct dirent *ent;
+  #ifdef USE_SDL2
+	int k;
+  #endif
 
 
 	/* Paranoia: 0 tileset allowed? */
@@ -11639,10 +11932,55 @@ static void do_cmd_options_tilesets(void) {
 	/* read all locally available tilesets */
 	memset(tileset_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
+	//TODO jezek - Test loading tilesets from user and game dir.
+  #ifdef USE_SDL2
+  /* In SDL2 client, look for tilesets in user storage first. */
+	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "graphics");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (!strstr(tmp_name, ".bmp")) continue;
+
+			strcpy(tileset_name[tilesets], ent->d_name);
+			tilesets++;
+
+			if (tilesets == MAX_FONTS) {
+				c_msg_format("Warning: Number of user tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+				break;
+			}
+
+		}
+		closedir(dir);
+	}
+  #endif
+
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
-	if (!(dir = opendir(path))) {
-		c_msg_format("Couldn't open tilesets directory (%s).", path);
-		return;
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			if (tilesets == MAX_FONTS) break;
+
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (!strstr(tmp_name, ".bmp")) continue;
+
+  #ifdef USE_SDL2
+			/* Check duplicate in tileset_name. */
+			for (k = 0; k < tilesets; k++) if (!strcmp(tileset_name[k], ent->d_name)) break;
+			if (k < tilesets) continue; /* duplicate */
+  #endif
+
+			strcpy(tileset_name[tilesets], ent->d_name);
+			tilesets++;
+
+			if (tilesets == MAX_FONTS) {
+				c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+				break;
+			}
+		}
+		closedir(dir);
 	}
 
 	/* Read all eligible filenames (*.bmp), ... */
@@ -11748,11 +12086,11 @@ static void do_cmd_options_tilesets(void) {
 		/* Prompt XXX XXX XXX */
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset (requires restart), \377yENTER\377w enter a specific tileset name,");
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y0\377w...\377y9\377w to enable/disable subset of currently selected tileset, if available,");
-  #ifdef GRAPHICS_BG_MASK
+   #ifdef GRAPHICS_BG_MASK
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode - requires client restart! \377yESC\377w keep changes and exit.");
-  #else
+   #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off - requires client restart! \377yESC\377w keep changes and exit.");
-  #endif
+   #endif
 		l++;
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377sTilesets AUTO-ZOOM to font size which you can change in Window Fonts menu (\377yf\377s).");
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377sSo for graphics to look good, you should selected a font size that matches it");
@@ -11763,13 +12101,13 @@ static void do_cmd_options_tilesets(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, format("%d graphical tileset%s available, \377yl\377w to list in message window", tilesets, tilesets == 1 ? "" : "s"));
 
 		//GRAPHICS_BG_MASK @ UG_2MASK:
-  #ifdef GRAPHICS_BG_MASK
+   #ifdef GRAPHICS_BG_MASK
 		Term_putstr(1, l++, -1, TERM_WHITE, format("Graphical tileset mode is %s\377w ('\377yv\377w' %s).",
 		    use_graphics_new == UG_2MASK ? "\377Genabled (dual-mask mode)" : (use_graphics_new ? "\377Genabled (standard)\377-" : "\377sdisabled\377-"),
 		    use_graphics_new == UG_2MASK ? "to disable" : (use_graphics_new ? "to enable 2-mask mode" : "to enable standard graphics mode")));
-  #else
+   #else
 		Term_putstr(1, l++, -1, TERM_WHITE, format("Graphical tilesets are currently %s ('v' to toggle).", use_graphics_new == UG_2MASK ? "\377Genabled (dual)" : (use_graphics_new ? "\377Genabled\377-" : "\377sdisabled\377-")));
-  #endif
+   #endif
 		l++;
 
 		/* Tilesets are atm a global setting, not depending on terminal window */
@@ -11792,7 +12130,7 @@ static void do_cmd_options_tilesets(void) {
 		if (found_subset) Term_putstr(40, l2 - 1 - found_subset, -1, TERM_WHITE, format("Available subsets of the selected set: "));
 		else Term_putstr(40, l2 - 1, -1, TERM_WHITE, format("(No subsets availabley)"));
 
-  #ifdef GFXERR_FALLBACK
+   #ifdef GFXERR_FALLBACK
 		if (use_graphics_err) {
 			Term_putstr(2, l + 0, -1, TERM_WHITE, "\377RClient was unable to startup with graphics and fell back to text mode.");
 			Term_putstr(2, l + 1, -1, TERM_WHITE, "\377RIf you re-enable graphics, ensure tileset is valid and its file name correct!");
@@ -11811,10 +12149,10 @@ static void do_cmd_options_tilesets(void) {
 				Term_putstr(0, l + 4, -1, TERM_RED, line2);
 			}
 		}
-  #endif
+   #endif
 
 		/* Place Cursor */
-		//Term_gotoxy(20, vertikal_offset + y);
+		//Term_gotoxy(20, vertical_offset + y);
 		/* hack: hide cursor */
 		Term->scr->cx = Term->wid;
 		Term->scr->cu = 1;
@@ -11863,16 +12201,16 @@ static void do_cmd_options_tilesets(void) {
 			/* Hack: Never switch graphics settings, especially UG_2MASK, live,
 			   as it will cause instant packet corruption due to missing server-client synchronisation.
 			   So we just switch the savegame-affecting 'use_graphics_new' instead of actual 'use_graphics'. */
-  #ifdef GRAPHICS_BG_MASK
+   #ifdef GRAPHICS_BG_MASK
 			use_graphics_new = (use_graphics_new + 1) % 3;
 			if (use_graphics_new == UG_2MASK) c_msg_print("\377yGraphical tileset usage \377Genabled (dual)\377-. Requires client restart (use CTRL+Q).");
 			else
-  #else
+   #else
 			use_graphics_new = !use_graphics_new;
-  #endif
+   #endif
 			if (use_graphics_new) {
 				c_msg_print("\377yGraphical tileset usage \377Genabled\377-. Requires client restart (use CTRL+Q).");
-  #if 0 /* not really needed here, if gfx_autooff_fmsw is enabled it will be applied on next login anyway, and the warning about fmsw breaking gfx is good to read so the player knows about it. */
+   #if 0 /* not really needed here, if gfx_autooff_fmsw is enabled it will be applied on next login anyway, and the warning about fmsw breaking gfx is good to read so the player knows about it. */
 				if (c_cfg.gfx_autooff_fmsw) {
 					c_msg_print("Option 'font_map_solid_walls' was auto-disabled as graphics are enabled.");
 					c_cfg.font_map_solid_walls = FALSE;
@@ -11881,7 +12219,7 @@ static void do_cmd_options_tilesets(void) {
 					options_immediate(FALSE);
 					Send_options();
 				}
-  #endif
+   #endif
 			} else c_msg_print("\377yGraphical tileset usage \377sdisabled\377-. Requires client restart (use CTRL+Q).");
 			break;
 
@@ -11986,17 +12324,17 @@ static void do_cmd_options_tilesets(void) {
 
 	check_for_playerlist();
 }
- #endif /* WINDOWS || USE_X11 */
+ #endif /* defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2) */
 #endif /* ENABLE_SUBWINDOW_MENU */
 
 #ifdef USE_SOUND_2010
 static void do_cmd_options_sfx(void) {
- #if SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	do_cmd_options_sfx_sdl();
  #endif
 }
 static void do_cmd_options_mus(void) {
- #if SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	do_cmd_options_mus_sdl();
  #endif
 }
@@ -12092,6 +12430,170 @@ errr options_dump(cptr fname) {
 }
 
 /* For installing audio packs via = I menu: */
+
+#ifdef USE_SDL2
+ #ifdef SDL2_ARCHIVE
+static int archive_copy_data(struct archive *ar, struct archive *aw) {
+	const void *buff;
+	size_t size;
+	la_int64_t offset;
+	int r;
+
+	for (;;) {
+		r = archive_read_data_block(ar, &buff, &size, &offset);
+		if (r == ARCHIVE_EOF)
+			return ARCHIVE_OK;
+		if (r < ARCHIVE_OK)
+			return r;
+		r = archive_write_data_block(aw, buff, size, offset);
+		if (r < ARCHIVE_OK)
+			return r;
+	}
+}
+
+/* Helper function to extract a 7z archive into a target directory using
+ * libarchive. Returns TRUE on success. */
+static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
+	struct archive *ar;
+	struct archive *aw;
+	struct archive_entry *entry;
+	int r;
+	char cwd[1024];
+
+	if (!getcwd(cwd, sizeof(cwd))) return FALSE;
+
+	ar = archive_read_new();
+	archive_read_support_format_7zip(ar);
+	archive_read_support_filter_all(ar);
+	if (password && password[0]) archive_read_add_passphrase(ar, password);
+	if ((r = archive_read_open_filename(ar, archive_path, 10240))) {
+		archive_read_free(ar);
+		return FALSE;
+	}
+
+	if (chdir(dest)) return FALSE;
+
+	aw = archive_write_disk_new();
+	archive_write_disk_set_options(aw, ARCHIVE_EXTRACT_TIME |
+			ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL |
+			ARCHIVE_EXTRACT_FFLAGS);
+	archive_write_disk_set_standard_lookup(aw);
+
+	while (archive_read_next_header(ar, &entry) == ARCHIVE_OK) {
+		r = archive_write_header(aw, entry);
+		if (r == ARCHIVE_OK)
+			r = archive_copy_data(ar, aw);
+		if (r < ARCHIVE_WARN) {
+			archive_write_free(aw);
+			archive_read_free(ar);
+			(void)chdir(cwd);
+			return FALSE;
+		}
+	}
+
+	archive_write_free(aw);
+	archive_read_free(ar);
+	(void)chdir(cwd);
+	return TRUE;
+}
+
+/* Inspect a 7z archive and determine whether it contains a top level
+ * "sound" or "music" directory. If a password is required and not
+ * supplied this function returns -1. On success it returns 1 and sets
+ * the appropriate flags and top folder name. */
+static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack_top_folder, bool *sound_pack, bool *music_pack) {
+	struct archive *ar;
+	struct archive_entry *entry;
+	int r;
+	bool tarfile = FALSE;
+
+	pack_top_folder[0] = 0;
+	*sound_pack = FALSE;
+	*music_pack = FALSE;
+
+	ar = archive_read_new();
+	archive_read_support_format_7zip(ar);
+	archive_read_support_filter_all(ar);
+	if (password && password[0])
+		archive_read_add_passphrase(ar, password);
+	if ((r = archive_read_open_filename(ar, archive_path, 10240))) {
+		archive_read_free(ar);
+		return -1;
+	}
+
+	while ((r = archive_read_next_header(ar, &entry)) == ARCHIVE_OK) {
+		const char *name = archive_entry_pathname(entry);
+
+		if (archive_entry_filetype(entry) == AE_IFDIR) {
+			const char *slash = strchr(name, '/');
+			size_t len = slash ? (size_t)(slash - name) : strlen(name);
+			if (len > 1023) len = 1023;
+			strncpy(pack_top_folder, name, len);
+			pack_top_folder[len] = '\0';
+			if (prefix_case(pack_top_folder, "music")) {
+				*music_pack = TRUE;
+				break;
+			}
+			if (prefix_case(pack_top_folder, "sound")) {
+				*sound_pack = TRUE;
+				break;
+			}
+		} else if (!tarfile && suffix_case(name, ".tar")) {
+			size_t size = archive_entry_size(entry);
+			char *data = malloc(size);
+			if (!data) {
+				archive_read_free(ar);
+				return 0;
+			}
+			size_t off = 0;
+			const void *buff; size_t bytes; la_int64_t o;
+			while (archive_read_data_block(ar, &buff, &bytes, &o) == ARCHIVE_OK) {
+				memcpy(data + off, buff, bytes);
+				off += bytes;
+			}
+			struct archive *tar = archive_read_new();
+			archive_read_support_format_tar(tar);
+			archive_read_support_filter_all(tar);
+			if (!archive_read_open_memory(tar, data, size)) {
+				struct archive_entry *te;
+				while (archive_read_next_header(tar, &te) == ARCHIVE_OK) {
+					const char *tname = archive_entry_pathname(te);
+					if (archive_entry_filetype(te) == AE_IFDIR) {
+						const char *tslash = strchr(tname, '/');
+						size_t tlen = tslash ? (size_t)(tslash - tname) : strlen(tname);
+						if (tlen > 1023) tlen = 1023;
+						strncpy(pack_top_folder, tname, tlen);
+						pack_top_folder[tlen] = '\0';
+						if (prefix_case(pack_top_folder, "music")) {
+							*music_pack = TRUE;
+							break;
+						}
+						if (prefix_case(pack_top_folder, "sound")) {
+							*sound_pack = TRUE;
+							break;
+						}
+					}
+					archive_read_data_skip(tar);
+				}
+				archive_read_free(tar);
+			}
+			free(data);
+			if (*music_pack || *sound_pack)
+				break;
+			tarfile = TRUE;
+			continue;
+		}
+
+		archive_read_data_skip(ar);
+	}
+
+	archive_read_free(ar);
+	if (*music_pack || *sound_pack)
+		return 1;
+	return 0;
+}
+ #endif /* SDL2_ARCHIVE */
+#endif /* USE_SDL2 */
 
 #ifdef WINDOWS
  #include <winreg.h>	/* remote control of installed 7-zip via registry approach */
@@ -12466,6 +12968,16 @@ static void do_cmd_options_install_audio_packs(void) {
 		inkey();
 		return;
 	}
+	fclose(fff);
+	remove("tmp.7z");
+#elif(USE_SDL2)
+ #ifndef SDL2_ARCHIVE
+	//TODO jezek - Write info about downloading client with archive support or manual unpacking.
+	Term_putstr(0, 1, -1, TERM_RED, "This SDL2 client doesn't support unzipping.");
+	Term_putstr(0, 9, -1, TERM_WHITE, "Press any key to return to options menu...");
+	inkey();
+	return;
+ #endif
 #else /* assume posix */
 	fff = fopen("tmp", "w");
 	fclose(fff);
@@ -12483,10 +12995,10 @@ static void do_cmd_options_install_audio_packs(void) {
 		inkey();
 		return;
 	}
-#endif
-	Term_fresh();
 	fclose(fff);
 	remove("tmp.7z");
+#endif
+	Term_fresh();
 
 #ifdef WINDOWS
 	{ /* Use native Windows functions from dirent to query directory structure directly */
@@ -12637,6 +13149,85 @@ static void do_cmd_options_install_audio_packs(void) {
 	}
 	closedir(dr);
 	}
+#elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
+	{
+	struct dirent *de;
+	DIR *dr;
+
+	//TODO jezek - Test extracting again.
+	if (!(dr = opendir(ANGBAND_USER_DIR))) {
+		c_message_add("\377oError: Couldn't scan TomeNET user folder.");
+		return;
+	}
+	while ((de = readdir(dr))) {
+		strcpy(pack_name, de->d_name);
+		pack_top_folder[0] = 0;
+		passworded = FALSE;
+		maybe_sound_pack = !strncmp(pack_name, "TomeNET-soundpack", 17) || prefix_case(pack_name, "sound");
+		maybe_music_pack = !strncmp(pack_name, "TomeNET-musicpack", 17) || prefix_case(pack_name, "music");
+		if (!maybe_sound_pack && !maybe_music_pack) continue;
+
+		/* Clear screen */
+		Term_clear();
+		Term_putstr(0, 0, -1, TERM_WHITE, "Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
+		Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver support found.");
+
+		r = sdl2_identify_audio_pack(pack_name, NULL, pack_top_folder,
+				&sound_pack, &music_pack);
+		if (r < 0) passworded = TRUE;
+
+		/* If passworded, ask user for the password: */
+		if (passworded) {
+			bool retry_pw = TRUE;
+
+			Term_putstr(0, 3, -1, TERM_ORANGE, format("Found file '\377y%s\377o'", pack_name));
+			Term_putstr(0, 4, -1, TERM_ORANGE, "which is password-protected. Enter the password:   ");
+			while (retry_pw) {
+				Term_gotoxy(49, 4);
+				password[0] = 0;
+				if (!askfor_aux(password, MAX_CHARS - 1, 0) || !password[0]) {
+					c_msg_format("\377yNo password entered for '%s', skipping.", pack_name);
+					retry_pw = FALSE;
+					continue;
+				}
+				r = sdl2_identify_audio_pack(pack_name, password,
+						pack_top_folder, &sound_pack, &music_pack);
+				if (r > 0) {
+					Term_putstr(0, 5, -1, TERM_L_RED, "                                               ");
+					break;
+				}
+				Term_putstr(0, 5, -1, TERM_L_RED, "You entered a wrong password. Please try again.");
+			}
+			if (!retry_pw) continue;
+		}
+
+		if (!sound_pack && !music_pack) continue;
+
+		if (passworded)
+			Term_putstr(0, 5, -1, TERM_ORANGE, "File is eligible. Install it? [Y/n]");
+		else
+			Term_putstr(0, 5, -1, TERM_ORANGE, format("Found file '\377y%s\377o'. Install? [Y/n]", pack_name));
+
+		picked = FALSE;
+		while (!picked) {
+			c = inkey();
+			switch (c) {
+			case 'n': case 'N':
+				c = 0;
+				picked = TRUE;
+				break;
+			case 'y': case 'Y': case ' ': case '\r': case '\n':
+				picked = TRUE;
+				break;
+			}
+		}
+		if (c) break;
+		picked = FALSE;
+	}
+	closedir(dr);
+	}
+ #endif
 #else /* assume POSIX */
 	{
 	FILE *fff_ls;
@@ -12795,6 +13386,8 @@ static void do_cmd_options_install_audio_packs(void) {
 	Term_putstr(0, 6, -1, TERM_ORANGE, "That pack wants to install to this target folder. Is that ok? (y/n):");
 #ifdef WINDOWS
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s\\%s'", ANGBAND_DIR_XTRA, ins_path));
+#elif defined(USE_SDL2)
+	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s%s%s'", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ins_path));
 #else
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s/%s'", ANGBAND_DIR_XTRA, ins_path));
 #endif
@@ -12807,7 +13400,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		if (c == 'y' || c == 'Y') break;
 	}
 
-#ifdef SOUND_SDL
+#if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Windows OS: Need to close all related files so they can actually be overwritten, esp. the .cfg files */
 	if (!quiet_mode) close_audio_sdl();
 #endif
@@ -12824,6 +13417,12 @@ static void do_cmd_options_install_audio_packs(void) {
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-p\"%s\"", password), format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
+#elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
+		//TODO jezek - Test unpacking sound pack with password, zipped tar, overwrites.
+		if (!sdl2_extract_7z(format("%s%s%s", ANGBAND_USER_DIR, SDL2_PATH_SEP, pack_name), ANGBAND_USER_DIR_XTRA, passworded ? password : NULL))
+			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
+ #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -12833,7 +13432,11 @@ static void do_cmd_options_install_audio_packs(void) {
 
 		/* Verify installation */
 		password_ok = TRUE;
+#ifdef USE_SDL2
+		if (!(fff = fopen(format("%s%s%s%ssound.cfg", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, pack_top_folder, SDL2_PATH_SEP), "r"))) password_ok = FALSE;
+#else
 		if (!(fff = fopen(format("%s/%s/sound.cfg", ANGBAND_DIR_XTRA, pack_top_folder), "r"))) password_ok = FALSE;
+#endif
 		else if (fgetc(fff) == EOF) { //paranoia
 			password_ok = FALSE;
 			fclose(fff);
@@ -12856,6 +13459,12 @@ static void do_cmd_options_install_audio_packs(void) {
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-p\"%s\"", password), format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
+#elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
+		//TODO jezek - Test unpacking music pack.
+		if (!sdl2_extract_7z(format("%s%s%s", ANGBAND_USER_DIR, SDL2_PATH_SEP, pack_name), ANGBAND_USER_DIR_XTRA, passworded ? password : NULL))
+			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Music pack not correctly installed!");
+ #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -12865,7 +13474,11 @@ static void do_cmd_options_install_audio_packs(void) {
 
 		/* Verify installation */
 		password_ok = TRUE;
+#ifdef USE_SDL2
+		if (!(fff = fopen(format("%s%s%s%smusic.cfg", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, pack_top_folder, SDL2_PATH_SEP), "r"))) password_ok = FALSE;
+#else
 		if (!(fff = fopen(format("%s/%s/music.cfg", ANGBAND_DIR_XTRA, pack_top_folder), "r"))) password_ok = FALSE;
+#endif
 		else if (fgetc(fff) == EOF) { //paranoia
 			password_ok = FALSE;
 			fclose(fff);
@@ -12960,7 +13573,11 @@ static void do_cmd_options_colourblindness(void) {
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current INI file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current INI file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", ini_file));
-#elif USE_X11
+#elif defined(USE_SDL2)
+			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current cfg file");
+			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current cfg file");
+			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", mangrc_filename));
+#elif defined(USE_X11)
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current rc-file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current rc-file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", mangrc_filename));
@@ -13104,6 +13721,8 @@ static void do_cmd_options_colourblindness(void) {
 #else
  #ifdef USE_X11
 					enable_readability_blue_x11();
+ #elif defined(USE_SDL2)
+					enable_readability_blue_sdl2();
  #else
 					enable_readability_blue_gcu();
  #endif
@@ -13171,6 +13790,8 @@ static void do_cmd_options_colourblindness(void) {
 #else
  #ifdef USE_X11
 					enable_readability_blue_x11();
+ #elif defined(USE_SDL2)
+					enable_readability_blue_sdl2();
  #else
 					enable_readability_blue_gcu();
  #endif
@@ -13250,7 +13871,7 @@ void do_cmd_options(void) {
 
 #ifdef WINDOWS
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", ini_file));
-#elif USE_X11
+#elif defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", mangrc_filename));
 #else
 			l++; //paranoia
@@ -13273,7 +13894,7 @@ void do_cmd_options(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377yn\377w/\377yN\377w) Jukebox, listen to and disable/reenable specific sound effects/music");
 #endif
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 		/* Font (and window) settings aren't available in command-line mode */
 		if (strcmp(ANGBAND_SYS, "gcu")) {
  #ifdef ENABLE_SUBWINDOW_MENU
@@ -13433,7 +14054,7 @@ void do_cmd_options(void) {
 #ifdef WINDOWS
 			save_term_data_to_term_prefs();
 			c_msg_format("\377wSaved current configuration to %s.", ini_file);
-#elif USE_X11
+#elif defined(USE_X11) || defined(USE_SDL2)
 			all_term_data_to_term_prefs();
 			write_mangrc(FALSE, FALSE, FALSE);
 			c_msg_format("\377wSaved current configuration to %s.", mangrc_filename);
@@ -13580,7 +14201,7 @@ void do_cmd_options(void) {
 		}
 #endif
 
-#if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
  #ifdef ENABLE_SUBWINDOW_MENU
 		/* Change fonts separately and manually */
 		else if (k == 'f') do_cmd_options_fonts();
@@ -13870,20 +14491,20 @@ static void print_tomb(cptr reason) {
 
 				strcpy(buf, reason2);
 
-				/* 1st: Try to end name at a comma, skipping the additional description.
-				        "Gothmog, the High Captain of Balrogs" -> "Gothmog". */
+				/* 1st: Try to end name at a comma, skipping the additional description. */
+				/* "Gothmog, the High Captain of Balrogs" -> "Gothmog". */
 				if ((cp = strchr(buf, ','))) *cp = 0;
 
-				/* 2nd: Try to end name at a relative word such as "that", "which" etc.
-				        "The disembodied hand that strangled people" -> "The disembodied hand". */
+				/* 2nd: Try to end name at a relative word such as "that", "which" etc. */
+				/* "The disembodied hand that strangled people" -> "The disembodied hand". */
 				else if ((cp = strstr(buf, " that "))) *cp = 0;
 				else if ((cp = strstr(buf, " who "))) *cp = 0;
 				else if ((cp = strstr(buf, " which "))) *cp = 0;
 				else if ((cp = strstr(buf, " whose "))) *cp = 0;
 				else if ((cp = strstr(buf, " what "))) *cp = 0;
 
-				/* 3rd: Try to end name at lineage descriptions aka " of ".
-				        "Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
+				/* 3rd: Try to end name at lineage descriptions aka " of ". */
+				/* "Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
 				else if ((cp = strstr(buf, " of "))) *cp = 0;
 
 				strcpy(reason2, buf);
@@ -15286,6 +15907,10 @@ static void handle_process_graphics_file(void) {
 	 * there is no need to update graphics files after MAX_FONT_CHAR is changed. */
 	char_map_offset = MAX_FONT_CHAR + 1;
 	if (process_pref_file(fname) == -1) logprint(format("ERROR: Can't read graphics preferences file: %s\n", fname));
+ #if defined(USE_SDL2)
+	/* If the file is successfully processed, send info to SDL2 client. */
+	else sdl2_graphics_pref_file_processed();
+ #endif
 	char_map_offset = 0;
 
 	/* Initialize pseudo-features and pseudo-objects that don't exist in the game world but are just used for graphical tilesets */
@@ -15356,7 +15981,7 @@ void handle_process_font_file(void) {
 	char_map_offset = 0; //paranoia
 
 	/* Actually try to load a custom font-xxx.prf file, depending on the main screen font */
- #if defined(WINDOWS) || defined(USE_X11)
+#if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	get_term_main_font_name(fname);
  #endif
 	if (fname[0]) {
@@ -15925,3 +16550,45 @@ bool my_fexists(const char *fname) {
 	default: return(FALSE);
 	}
 }
+
+#ifdef USE_SDL2
+/**
+ * my_fcopy - Copy the contents of one file to another.
+ *
+ * This function opens the given source file for reading in binary mode
+ * and creates or overwrites the destination file for writing in binary mode.
+ * It reads the source file in 4096-byte chunks and writes them to the destination.
+ *
+ * @param source:      Path to the source file.
+ * @param destination: Path to the destination file.
+ *
+ * @return 0 on success, -1 on error (e.g., file not found or permission denied).
+ */
+int my_fcopy(const char *source, const char *destination) {
+	FILE *src;
+	FILE *dest;
+	char buffer[4096];
+	size_t bytes;
+
+	src = fopen(source, "rb");
+	if (!src) {
+		fprintf(stderr, "my_fcopy: Error opening source file: %s\n", source);
+		return -1;
+	}
+
+	dest = fopen(destination, "wb");
+	if (!dest) {
+		fprintf(stderr, "my_fcopy: Error opening destination file: %s\n", destination);
+		fclose(src);
+		return -1;
+	}
+
+	while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+		fwrite(buffer, 1, bytes, dest);
+	}
+
+	fclose(src);
+	fclose(dest);
+	return 0;  // Success
+}
+#endif
