@@ -6804,7 +6804,7 @@ bool png_screenshot(void) {
 #endif
 #if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
 	/* Neither WINDOWS nor USE_X11 */
-	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an X11 or Windows system.");
+	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an SDL2 client or X11 or Windows system.");
 	return(FALSE);
 #else
 	char buf[1024], file_name[1024], command[1024];
@@ -6816,6 +6816,12 @@ bool png_screenshot(void) {
 		c_msg_print("\377yYou have not made a screenshot yet this session (CTRL+T).");
 		return(FALSE);
 	}
+#endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Save screenshot as PNG. (Aren't you doing this already?)
+	c_msg_print("\377ySorry, work in progress.");
+	return(FALSE);
 #endif
 
 #ifdef WINDOWS
@@ -7008,7 +7014,7 @@ bool png_screenshot(void) {
 	return(FALSE);
 #endif
 
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
+#ifdef USE_X11
 	/* Use chrome, chromium or firefox to create a png screenshot from xhtml
 	   We prefer chrome/chromium since it allows setting background to transparent (or black) instead of white.
 	   BIG_MAP: 640x750, normal map: 640x420.  - C. Blue */
@@ -7352,7 +7358,7 @@ static void cmd_notes(void) {
  * it sends a letter in place of cur_line...		- Jir -
  */
 //(Linux file managers: Dolphin, Konqueror, Thunar, Caja, Nautilus, Nemo /// generic desktop environments: xdg-open)
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
+#if defined(USE_X11)
  /* '&' for async - actually not needed on X11 though, program will still continue to execute
     because xdg-open spawns the file manager asynchronously and returns right away */
  #ifdef OSX
@@ -7371,6 +7377,10 @@ static void cmd_notes(void) {
  #define URLMAN(p) ShellExecute(NULL, "open", p, NULL, NULL, SW_SHOWNORMAL);
  /* ..and according to him this works fine - but it doesn't work in Wine actually -_- : */
  //#define URLMAN(p) (res = system(format("start \"%s\"", p)));
+#elif defined(USE_SDL2)
+ //TODO jezek - Implement FILEMAN(p) & URLMAN(p) macros to open files & url links.
+ #define FILEMAN(p) (c_msg_format("Sorry, FILEMAN(%s) not implemented yet.", p));
+ #define URLMAN(p) (c_msg_format("Sorry, URLMAN(%s) not implemented yet.", p));
 #endif
 void cmd_check_misc(void) {
 	char i = 0, choice;
@@ -7380,7 +7390,7 @@ void cmd_check_misc(void) {
 #if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
 	char path[1024];
 #endif
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
+#if defined(USE_X11) || defined(USE_SDL2)
 	FILE *fp;
 	char buf[MAX_CHARS];
 #endif
@@ -7449,11 +7459,11 @@ void cmd_check_misc(void) {
 			Term_putstr( 5, row + 1,   -1, TERM_WHITE, "    a PNG and leave this menu:");
 			Term_putstr( 5, row + 2,   -1, TERM_WHITE, format("    %s", screenshot_filename[0] ? screenshot_filename : "- no screenshot taken -"));
 			Term_putstr(40, row, -1, TERM_WHITE, "(\377oC\377w) Edit the current config file:");
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
+#if defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
 #endif
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 			/* The ini file contains a long path (unlike mangrc_filename), so use two lines for it.. */
 			if (strlen(ini_file) <= 35)
 				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", ini_file));
@@ -7676,7 +7686,7 @@ void cmd_check_misc(void) {
 			if (png_screenshot()) i = ESCAPE; /* quit knowledge menu on success */
 			break;
 		case 'C':
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 			//FILEMAN(ini_file);
 			{
 			/* check registry for default text editor: HKEY_CLASSES_ROOT\txtfile\shell\open\command */
@@ -7716,7 +7726,7 @@ void cmd_check_misc(void) {
 			}
 			}
 #endif
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) )
+#ifdef USE_X11
 			{
 			//system(format("xdg-open %s &", mangrc_filename));
 			//FILEMAN(mangrc_filename);
@@ -7735,6 +7745,10 @@ void cmd_check_misc(void) {
 			(void)r;
 			(void)c;
 			}
+#endif
+#ifdef USE_SDL2
+			//TODO jezek - Implement editing config file.
+			c_message_add("\377wSorry, editing config file not implemented yet.");
 #endif
 			break;
 

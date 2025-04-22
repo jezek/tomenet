@@ -222,9 +222,9 @@ static errr path_parse(char *buf, cptr file) {
 	cptr	    u, s;
 	struct passwd   *pw;
 	char	    user[128];
-#endif
+#endif /* AMIGA */
 #endif /* WIN32 */
-#endif
+#endif /* USE_SDL2 */
 
 
 	/* Assume no result */
@@ -239,7 +239,7 @@ static errr path_parse(char *buf, cptr file) {
 		return(0);
 	}
 
-	/* Windows should never have ~ in filename */
+	/* SDL2, Windows and Amiga clients should never have ~ in filename */
 #ifndef USE_SDL2
 #ifndef WIN32
 #ifndef AMIGA
@@ -278,9 +278,9 @@ static errr path_parse(char *buf, cptr file) {
 	/* Append the rest of the filename, if any */
 	if (s) (void)strcat(buf, s);
 
-#endif
+#endif /* AMIGA */
 #endif /* WIN32 */
-#endif
+#endif /* USE_SDL2 */
 	/* Success */
 	return(0);
 }
@@ -1314,10 +1314,8 @@ errr load_charspec_macros(cptr cname) {
  *
  * It is given in the "Setup" info sent by the server.
  */
-#ifndef USE_SDL2
 #ifdef WIN32
 extern int usleep(long microSeconds);
-#endif
 #endif
 void show_motd(int delay) {
 	int i;
@@ -2144,6 +2142,7 @@ void xhtml_screenshot(cptr name, byte redux) {
 			return;
 		}
  #elif defined(USE_SDL2)
+		//TODO jezek - Test PNG screenshot generations using shift special keys.
 		char buf2[1028];
 		strcpy(buf2, buf);
 		buf2[strlen(buf2) - 5] = 0;
