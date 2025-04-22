@@ -102,7 +102,7 @@ bool check_dir2(cptr s) {
 	}
 }
 
-#if defined(USE_SDL2) || !defined(WINDOWS)
+#ifndef WINDOWS
 static void validate_dir(cptr s) {
 	/* Verify or fail */
 	if (!check_dir2(s))
@@ -3628,7 +3628,6 @@ void client_init(char *argv1, bool skip) {
 	init_guide();
 
 	GetLocalHostName(host_name, 80);
-	fprintf(stderr, "jezek - client_init: host_name: %s\n", host_name);
 
 	/* Set the "quit hook" */
 	if (!quit_aux) quit_aux = quit_hook;
@@ -3735,7 +3734,6 @@ void client_init(char *argv1, bool skip) {
 
 	/* Capitalize the name */
 	nick[0] = toupper(nick[0]);
-	fprintf(stderr, "jezek - client_init: nick: %s\n", nick);
 
 	/* Create the net socket and make the TCP connection */
 	if ((Socket = CreateClientSocket(server_name, cfg_game_port)) == -1)
@@ -3787,7 +3785,26 @@ void client_init(char *argv1, bool skip) {
 			WSACleanup( );
 		}
 #elif defined(USE_SDL2)
-		//TODO jezek - This is new, figure out what to do here.
+ #include <SDL2/SDL_net.h>
+		//TODO jezek - Test ip_iface result against WINDOWS version.
+		// Do the same as WINDOWS version, but use SDL_net functions to be OS independent.
+		// Use SDL_net to get local IP address and assign to ip_iface.
+		IPaddress addrs[16];
+		int count = SDLNet_GetLocalAddresses(addrs, 16);
+		if (count < 0) {
+			c_msg_format("SDLNet_GetLocalAddresses failed: %s\n", SDLNet_GetError());
+		} else {
+			for (int i = 0; i < count; ++i) {
+				if (addrs[i].host != INADDR_NONE && addrs[i].host != INADDR_ANY) {
+					const char* txt = SDLNet_ResolveIP(&addrs[i]);
+					if (txt) {
+						strncpy(ip_iface, txt, MAX_CHARS);
+						ip_iface[MAX_CHARS - 1] = '\0';
+						break;
+					}
+				}
+			}
+		}
 #endif
 
 #if defined(USE_X11) || defined(USE_GCU)
@@ -3923,7 +3940,20 @@ again:
 		remove("__ipc");
  #endif
 #elif defined(USE_SDL2)
-		//TODO jezek - This is new, figure out what to do here.
+ #include <stdlib.h>
+ #include <SDL2/SDL_timer.h>
+		// Getting MAC address is not possible using only SDL2. For now generate fake MAC.
+		// Generate fake MAC address: first half constant "F4K", second half random.
+		//TODO jezek - Is MAC address needed? Retrieve ip_addr instead of generating a fake MAC.
+		uint8_t fake_prefix[3] = { 'F', '4', 'K' };
+		for (int i = 0; i < 3; ++i) {
+			ip_iaddr[i] = fake_prefix[i];
+		}
+		srand((unsigned int)SDL_GetTicks());
+		for (int i = 3; i < 6; ++i) {
+			ip_iaddr[i] = (uint8_t)(rand() & 0xFF);
+		}
+		c_msg_print("Generating fake MAC address with prefix 'F4K' and random suffix\n");
 #endif
 	}
 
@@ -3933,7 +3963,6 @@ again:
 	    SOCKBUF_READ | SOCKBUF_WRITE) == -1) {
 		quit("No memory for socket buffer\n");
 	}
-	fprintf(stderr, "jezek - client_init: Sockbuf_init\n");
 
 	/* Clear it */
 	Sockbuf_clear(&ibuf);
@@ -3941,21 +3970,15 @@ again:
 	/* Extended version */
 	if (server_protocol >= 2) version = 0xFFFFU;
 
-	fprintf(stderr, "jezek - client_init: version: %u\n", version);
-	fprintf(stderr, "jezek - client_init: before1 ibuf.len: %d\n", ibuf.len);
 	/* Put the contact info in it */
 	Packet_printf(&ibuf, "%u", magic);
-	fprintf(stderr, "jezek - client_init: before2 ibuf.len: %d\n", ibuf.len);
 	Packet_printf(&ibuf, "%s%hu%c", real_name, GetPortNum(ibuf.sock), 0xFF);
-	fprintf(stderr, "jezek - client_init: before3 ibuf.len: %d\n", ibuf.len);
 	Packet_printf(&ibuf, "%s%s%hu", nick, host_name, version);
-	fprintf(stderr, "jezek - client_init: before4 ibuf.len: %d\n", ibuf.len);
 
 	/* Extended version */
 	if (server_protocol >= 2)
 		Packet_printf(&ibuf, "%d%d%d%d%d%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_EXTRA, VERSION_BRANCH, VERSION_BUILD + (VERSION_OS) * 1000000);
 
-	fprintf(stderr, "jezek - client_init: before ibuf.len: %d\n", ibuf.len);
 	/* Connect to server */
 #ifdef UNIX_SOCKETS
 	if ((DgramConnect(Socket, server_name, cfg_game_port)) == -1)
@@ -3965,7 +3988,6 @@ again:
 	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len) == -1))
 		quit("Couldn't send contact information\n");
 
-	fprintf(stderr, "jezek - client_init: after ibuf.len: %d\n", ibuf.len);
 	/* Listen for reply */
 	for (retries = 0; retries < 10; retries++) {
 		/* Set timeout */
