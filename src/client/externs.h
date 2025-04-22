@@ -1127,11 +1127,13 @@ extern int stricmp(cptr a, cptr b);
 /* extern void main(void); */
 #endif
 
-#if defined(USE_X11)
+#ifdef USE_X11
 /* main-x11.c */
 extern void all_term_data_to_term_prefs(void);
 extern long x11_win_term_main;
-#elif defined(USE_SDL2)
+#endif
+
+#ifdef USE_SDL2
 /* main-sdl2.c */
 extern void all_term_data_to_term_prefs(void);
 extern errr sdl2_win_term_main_screenshot(cptr name);
@@ -1139,7 +1141,9 @@ extern errr sdl2_win_term_main_screenshot(cptr name);
 extern void sdl2_graphics_pref_file_processed();
 extern uint32_t graphics_image_masks_colors[GRAPHICS_MAX_MPT];
  #endif
-#elif defined(WINDOWS)
+#endif
+
+#ifdef WINDOWS
 /* main-win.c */
 /* extern int FAR PASCAL WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, ...); */
 extern void change_font(int s);
@@ -1285,7 +1289,7 @@ extern u32b client_ext_color_map[TERMX_AMT][2];
 #endif
 extern const char colour_name[BASE_PALETTE_SIZE][9];
 extern bool lighterdarkblue;
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 extern void enable_readability_blue_win(void);
 #else
  #ifdef USE_X11
