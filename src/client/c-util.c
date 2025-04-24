@@ -9,6 +9,10 @@
  #include <glob.h>
 #endif
 
+#ifdef USE_SDL2
+ #include <SDL2/SDL.h>
+#endif
+
 #define ENABLE_SUBWINDOW_MENU /* allow =f menu function for setting fonts/visibility of term windows */
 //#ifdef ENABLE_SUBWINDOW_MENU
  #include <dirent.h> /* we now need it for scanning for audio packs too */
@@ -158,7 +162,7 @@ int usleep(long microSeconds) {
 	Sleep(microSeconds / 1000); /* meassured in milliseconds not microseconds*/
 	return(0);
 }
- #endif
+ #endif /* USE_SDL2 */
 #endif /* WIN32 */
 
 
@@ -2251,7 +2255,7 @@ void copy_to_clipboard(char *buf, bool chat_input) {
 	strcpy(buf_prev, buf_esc);
 #endif
 
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) ) /* relies on xclip being installed! */
+#ifdef USE_X11 /* relies on xclip being installed! */
 	int r, pos = 0, end_of_name = 0;
 	char *c, *c2, buf_esc[MSG_LEN + 10]; //+10: room for turning '/' occurances into '//'
 	static char buf_prev[MSG_LEN + 10];
@@ -2327,6 +2331,54 @@ void copy_to_clipboard(char *buf, bool chat_input) {
 	if (r) c_msg_print("Copy failed, make sure xclip is installed.");
 	else strcpy(buf_prev, buf_esc);
 #endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Test copy-to-clipboard using only SDL2.
+	int pos = 0, end_of_name = 0;
+	char *c, *c2, buf_esc[MSG_LEN + 10];
+	static char buf_prev[MSG_LEN + 10];
+
+	c  = buf;
+	c2 = buf_esc;
+	while (*c && (size_t)(c2 - buf_esc) < MSG_LEN + 9) {
+		switch (*c) {
+			case ':':
+				if (pos != 0 && pos <= NAME_LEN) {
+					if (*(c + 1) == ':') c++;
+				} else if (pos != 0) {
+					if (*(c + 1) == ':') c++;
+				}
+				break;
+			case '{':
+				if (chat_input) {
+					switch (*(c + 1)) {
+						case '{':  c++;              break;
+						case 0:    c++;  continue;
+						default:   c += 2; continue;
+					}
+				}
+				break;
+			case '\376': case '\375': case '\374':  c++; continue;
+			case '\377':
+				switch (*(c + 1)) {
+					case 0:   c++; continue;
+					default:  c += 2; continue;
+				}
+				break;
+		}
+		*c2++ = *c++;
+		pos++;
+	}
+	*c2 = 0;
+
+	extract_url(buf_esc, buf_prev, end_of_name);
+
+	if (SDL_SetClipboardText(buf_esc) == 0) {
+		strcpy(buf_prev, buf_esc);
+	} else {
+		c_msg_print("Copy failed, SDL clipboard error.");
+	}
+#endif
 }
 /* Paste current clipboard into active chat input.
    'global': paste goes to global chat (including /say and /whisper)? (not private/party/guild/floor chat) -
@@ -2388,7 +2440,7 @@ bool paste_from_clipboard(char *buf, bool global) {
 	return(TRUE);
 #endif
 
-#if defined(USE_X11) || ( defined(USE_SDL2) && !defined(WINDOWS) ) /* relies on xclip being installed! */
+#ifdef USE_X11 /* relies on xclip being installed! */
 	FILE *fp;
 	int r;
 	char buf_line[MSG_LEN];
@@ -2444,6 +2496,59 @@ bool paste_from_clipboard(char *buf, bool global) {
 	*c2 = 0;
 
 	fclose(fp);
+	return(TRUE);
+#endif
+
+#ifdef USE_SDL2
+	//TODO jezek - Test paste-from-clipboard using only SDL2.
+	char *clip = SDL_GetClipboardText();
+	if (!clip) return(FALSE);
+
+	/* combine multi-line text into one line, replacing newlines by spaces */
+	buf_esc[0] = 0;
+	for (int i = 0; clip[i] && strlen(buf_esc) < MSG_LEN - NAME_LEN - 13; ++i) {
+		char ch = clip[i];
+		if (ch == '\r' || ch == '\n') {
+			if (buf_esc[0] && buf_esc[strlen(buf_esc) - 1] != ' ')
+				strcat(buf_esc, " ");
+		} else {
+			int len = strlen(buf_esc);
+			buf_esc[len] = ch;
+			buf_esc[len + 1] = '\0';
+		}
+	}
+	SDL_free(clip);
+
+	/* treat { and : and also strip away all control chars (like 0x0A aka RETURN) */
+	c = buf_esc;
+	c2 = buf;
+	no_slash_command = buf_esc[0] != '/';
+	pos = 0;
+	while (*c) {
+		if (*c < 32) {
+			c++;
+			continue;
+		}
+		switch (*c) {
+			case ':':
+				if (global && no_slash_command && pos != 0 && pos <= NAME_LEN) {
+					*c2 = ':';
+					c2++;
+					global = FALSE; /* only the first ':' needs duplication */
+				}
+				break;
+			case '{':
+				*c2 = '{';
+				c2++;
+				break;
+		}
+		*c2 = *c;
+		c++;
+		c2++;
+		pos++;
+	}
+	*c2 = 0;
+
 	return(TRUE);
 #endif
 
@@ -11031,7 +11136,7 @@ static void do_cmd_options_fonts(void) {
 	closedir(dir);
   #endif
 
-  //TODO jezek - TTF font detection for SDL2.
+  //TODO jezek - TTF & PCF font detection for SDL2.
   #if defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
@@ -11159,7 +11264,7 @@ static void do_cmd_options_fonts(void) {
 
 			/* Display the font of this window */
 			if (c_cfg.use_color && !term_get_visibility(j)) a = TERM_L_DARK;
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont && win_logfont_get_aa(j)) sprintf(buf, "%-19s (antialiased)", get_font_name(j));
 			else
 #endif
@@ -11221,7 +11326,7 @@ static void do_cmd_options_fonts(void) {
 			strcpy(ang_term_name[y], tmp_name);
 
 			/* Immediately change live window title */
-#if defined(WINDOWS) && !defined(USE_SDL2)
+#ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
 #elif defined(USE_SDL2)
 			set_window_title_sdl2(y, ang_term_name[y]);
@@ -11248,7 +11353,7 @@ static void do_cmd_options_fonts(void) {
 			}
 
 			/* Immediately change live window title */
-#if defined(WINDOWS) && !defined(USE_SDL2)
+#ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
 #elif defined(USE_SDL2)
 			set_window_title_sdl2(y, ang_term_name[y]);
@@ -11273,7 +11378,7 @@ static void do_cmd_options_fonts(void) {
 			/* Immediately change live window title */
 			for (j = 0; j < ANGBAND_TERM_MAX; j++) {
 				Term_putstr(1, vertikal_offset + j, -1, TERM_DARK, "                                       ");
-#if defined(WINDOWS) && !defined(USE_SDL2)
+#ifdef WINDOWS
 				set_window_title_win(j, ang_term_name[j]);
 #elif defined(USE_SDL2)
 				set_window_title_sdl2(j, ang_term_name[j]);
@@ -11283,7 +11388,7 @@ static void do_cmd_options_fonts(void) {
 			}
 			break;
 
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 		case '.':
 			if (use_logfont) win_logfont_inc(y, FALSE);
 			else bell();
@@ -11291,7 +11396,7 @@ static void do_cmd_options_fonts(void) {
 #endif
 		case '=':
 		case '+':
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_inc(y, TRUE);
 				break;
@@ -11324,14 +11429,14 @@ static void do_cmd_options_fonts(void) {
 			}
 			break;
 
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 		case ',':
 			if (use_logfont) win_logfont_dec(y, FALSE);
 			else bell();
 			break;
 #endif
 		case '-':
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_dec(y, TRUE);
 				break;
@@ -11365,7 +11470,7 @@ static void do_cmd_options_fonts(void) {
 			break;
 
 		case '\r':
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter new size in format '<width>x<height>' (eg \"9x15\"):");
 				Term_gotoxy(0, 21);
@@ -11436,7 +11541,7 @@ static void do_cmd_options_fonts(void) {
 			c_message_add(""); //linefeed
 			break;
 
-#if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+#if defined(WINDOWS) && defined(USE_LOGFONT)
 		case 'L':
 			/* We cannot live-change 'use_logfont' itself, as that'd render the client effectively frozen, just toggle the ini setting for next startup: */
 			use_logfont_ini = !use_logfont_ini;
@@ -12256,7 +12361,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		return;
 	}
 #elif(USE_SDL2)
-	//TODO jezek - Unzip somehow!.
+	//TODO jezek - Unzipping support for SDL2 client.
 	Term_putstr(0, 1, -1, TERM_RED, "SDL2 client doesn't support unzipping yet.");
 	Term_putstr(0, 9, -1, TERM_WHITE, "Press any key to return to options menu...");
 	inkey();
@@ -12622,7 +12727,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
-		//TODO jezek - Extract somehow.
+		//TODO jezek - Unzipping support for SDL2 client.
 		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Sound pack not correctly installed!");
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
@@ -12657,7 +12762,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
-		//TODO jezek - Extract somehow.
+		//TODO jezek - Unzipping support for SDL2 client.
 		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Music pack not correctly installed!");
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
@@ -12759,7 +12864,7 @@ static void do_cmd_options_colourblindness(void) {
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yt\377w) Set palette to Tritanopia colours");
 			l++;
 
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current INI file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current INI file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", ini_file));
@@ -12902,7 +13007,7 @@ static void do_cmd_options_colourblindness(void) {
 			for (i = 0; i < CLIENT_PALETTE_SIZE; i++) {
 				client_color_map[i] = client_color_map_org[i];
 				if ((i == 6 || i == BASE_PALETTE_SIZE + 6) && lighterdarkblue && client_color_map[i] == 0x0000ff)
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 					enable_readability_blue_win();
 #else
  #ifdef USE_X11
@@ -12947,7 +13052,7 @@ static void do_cmd_options_colourblindness(void) {
 
 		case 's':
 			if (!c_cfg.palette_animation) continue;
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
  #ifndef CUSTOMIZE_COLOURS_FREELY
 			for (i = 1; i < BASE_PALETTE_SIZE; i++) {
  #else
@@ -12971,7 +13076,7 @@ static void do_cmd_options_colourblindness(void) {
 			for (i = 0; i < CLIENT_PALETTE_SIZE; i++) {
 				client_color_map[i] = client_color_map_org[i];
 				if ((i == 6 || i == BASE_PALETTE_SIZE + 6) && lighterdarkblue && client_color_map[i] == 0x0000ff)
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 					enable_readability_blue_win();
 #else
  #ifdef USE_X11
@@ -13036,7 +13141,7 @@ void do_cmd_options(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y1\377w-\377y5\377w)   User interface options (Base+Vis/Visuals/Format/Notifications/Messages)");
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y6\377w-\377y7\377w)   Audio options (SFX+Music/Paging+OS)");
 		Term_putstr(1, l++, -1, TERM_WHITE, "(\377y8\377w-\377y0\377w)   Gameplay options (Actions+Safety/Disturbances/Items)");
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 		Term_putstr(1, l++, -1, TERM_WHITE, format("(\377yw\377w/\377yE\377w)  Window flags / %s%s",
 		    disable_CS_IME ? "Force IME on" : (enable_CS_IME ? "Auto-IME" : "Force IME off"),
 		    (disable_CS_IME || enable_CS_IME) ? "" : (suggest_IME ? " (Currently Auto-ON)" : " (Currently Auto-OFF)")));
@@ -13055,7 +13160,7 @@ void do_cmd_options(void) {
 		if (strcmp(ANGBAND_SYS, "gcu")) {
 			Term_putstr(1, l++, -1, TERM_WHITE, "(\377oT\377w)     Save current window, positions and sizes to current config file");
 
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", ini_file));
 #elif defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(1, l++, -1, TERM_SLATE, format("        (Filename: %s)", mangrc_filename));
@@ -13225,7 +13330,7 @@ void do_cmd_options(void) {
 				c_message_add("\377ySorry, windows are not available in the GCU (command-line) client.");
 				continue;
 			}
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 			save_term_data_to_term_prefs();
 			c_msg_format("\377wSaved current configuration to %s.", ini_file);
 #elif defined(USE_X11) || defined(USE_SDL2)
@@ -13354,8 +13459,7 @@ void do_cmd_options(void) {
 		else if (k == 'm') set_bigmap(0, FALSE);
 #endif
 
-//TODO jezek - Search for WINDOWS and add !def USE_SDL2.
-#if defined(WINDOWS) && !defined(USE_SDL2)
+#ifdef WINDOWS
 		else if (k == 'E') {
 			/* Cycle 3 steps in order: */
 			if (disable_CS_IME) { // force off? -> force on
@@ -14776,7 +14880,7 @@ void audio_pack_selector(void) {
 		strcpy(cfg_musicpack_version, mp_version[cur_mp]);
 	}
 
-#if !defined(USE_SDL2) && defined(WINDOWS)
+#ifdef WINDOWS
 	store_audiopackfolders();
 #else /* assume POSIX */
 	write_mangrc(FALSE, FALSE, TRUE);
