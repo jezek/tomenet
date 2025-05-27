@@ -1669,42 +1669,36 @@ int SLGetPeerName(int fd, char *name, int namelen) {
  * Originally coded by Arne Helme
  */
 int CreateClientSocket(char *host, int port) {
-	struct sockaddr_in	peer;
-	struct hostent	*hp;
-	int			fd;
- #ifdef USE_SDL2
-	/* jezek - Hack for SDL2 client. This function is called first from this file, so initalize winsock here. Find a better place in the future. */
-	/* Initialize WinSock */
-	WSADATA  wsadata;
-	WSAStartup(MAKEWORD(1, 1), &wsadata);
- #endif
+    struct sockaddr_in	peer;
+    struct hostent	*hp;
+    int			fd;
 
-	memset((char *)&peer, 0, sizeof(struct sockaddr_in));
-	peer.sin_family = AF_INET;
-	peer.sin_port   = htons(port);
+    memset((char *)&peer, 0, sizeof(struct sockaddr_in));
+    peer.sin_family = AF_INET;
+    peer.sin_port   = htons(port);
 
-	peer.sin_addr.s_addr = inet_addr(host);
-	if (peer.sin_addr.s_addr == (int)-1) {
-		hp = gethostbyname(host);
-		if (hp == NULL) {
-			sl_errno = SL_EHOSTNAME;
-			return (-1);
-		} else peer.sin_addr.s_addr = ((struct in_addr*)(hp->h_addr))->s_addr;
-	}
+    peer.sin_addr.s_addr = inet_addr(host);
+    if (peer.sin_addr.s_addr == (int)-1) {
+	hp = gethostbyname(host);
+	if (hp == NULL) {
+	    sl_errno = SL_EHOSTNAME;
+	    return (-1);
+	} else peer.sin_addr.s_addr = ((struct in_addr*)(hp->h_addr))->s_addr;
+    }
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd == INVALID_SOCKET) {
-		sl_errno = SL_ESOCKET;
-		return (-1);
-	}
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET) {
+	sl_errno = SL_ESOCKET;
+	return (-1);
+    }
 
-	if (connect(fd, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == SOCKET_ERROR) {
-		sl_errno = SL_ECONNECT;
-		(void) closesocket(fd);
-		return (-1);
-	}
+    if (connect(fd, (struct sockaddr *)&peer, sizeof(struct sockaddr_in)) == SOCKET_ERROR) {
+	sl_errno = SL_ECONNECT;
+	(void) closesocket(fd);
+	return (-1);
+    }
 
-	return (fd);
+    return (fd);
 } /* CreateClientSocket */
 
 

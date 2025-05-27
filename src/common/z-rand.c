@@ -81,8 +81,7 @@ u32b Rand_state[RAND_DEG];
  */
 void Rand_state_init(u32b seed) {
 #ifdef USE_SFMT
-#ifndef USE_SDL2
-#ifndef WIN32
+#if !defined(WIN32) && !defined(USE_SDL2)
 	/* SFMT initialization using /dev/urandom if possible */
 	const int seed_bytes = 2496;
 	char *seed_array[seed_bytes];
@@ -101,7 +100,6 @@ void Rand_state_init(u32b seed) {
 			fprintf(stderr, "Failed to read from /dev/urandom (errno = %d)", errno);
 		}
 	}
-#endif
 #endif
 	/* SFMT initialization */
 	init_gen_rand(seed);

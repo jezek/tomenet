@@ -49,9 +49,10 @@
 
 /* MinGW doesn't have EWOULDBLOCK either - mikaelh */
 #ifdef MINGW
-#ifndef USE_SDL2
- #define EWOULDBLOCK WSAEWOULDBLOCK
-#endif
+ /* SDL2 clients don't use EWOULDBLOCK. */
+ #ifndef USE_SDL2
+  #define EWOULDBLOCK WSAEWOULDBLOCK
+ #endif
 #endif
 
 

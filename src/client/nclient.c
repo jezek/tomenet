@@ -281,7 +281,7 @@ void draw_huge_stun_bar(byte attr) {
 
 #if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 	if (!force_cui && c_cfg.solid_bars)
- #if defined(WINDOWS) && !defined(USE_SDL2)
+ #ifdef WINDOWS
 		c = FONT_MAP_SOLID_WIN;
  #elif defined(USE_X11) || defined(USE_SDL2)
 		c = FONT_MAP_SOLID_X11;
@@ -1637,7 +1637,7 @@ int Net_start(int sex, int race, int class) {
 	Packet_printf(&wbuf, "%c", PKT_PLAY);
 
 #if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
- #if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+ #if defined(WINDOWS) && defined(USE_LOGFONT)
 	if (use_logfont) sprintf(fname, "<LOGFONT>%dx%d", win_get_logfont_w(0), win_get_logfont_h(0));
 	else
  #endif
@@ -5744,7 +5744,6 @@ int Receive_pause(void) {
 	Term_fresh();
 
 	/* Flush any pending keystrokes */
-	if (Term->keys->length) fprintf(stderr, "Receive_pause\n");
 	Term_flush();
 
 	/* Wait */
@@ -8525,7 +8524,7 @@ int Send_font(void) {
 	if (is_older_than(&server_version, 4, 8, 1, 2, 0, 0)) return(-1);
 
 #if defined(WINDOWS) || defined(USE_X11)
- #if !defined(USE_SDL2) && defined(WINDOWS) && defined(USE_LOGFONT)
+ #if defined(WINDOWS) && defined(USE_LOGFONT)
 	if (use_logfont) sprintf(fname, "<LOGFONT>%dx%d", win_get_logfont_w(0), win_get_logfont_h(0));
 	else
  #endif

@@ -9,9 +9,7 @@
 #ifdef WIN32
  #include <winsock.h> /* For htonl and ntohl */
 #elif defined(USE_SDL2)
- #ifndef __MAKEDEPEND__
-  #include <SDL2/SDL.h>
- #endif
+ #include <SDL2/SDL.h>
 
 static inline uint32_t htonl(uint32_t hostlong) {
     return SDL_SwapBE32(hostlong);
@@ -432,7 +430,7 @@ int local_file_init(int ind, unsigned short fnum, char *fname) {
 	c_fd->state = FS_READY;
 	c_fd->chunksize = OLD_TNF_SEND;	/* doesn't matter when receiving, use the old value of MAX_TNF_SEND */
 	if (c_fd->fp) {
-#if defined(MINGW) || defined(USE_SDL2)
+#if !defined(MINGW) && !defined(USE_SDL2)
 		unlink(tname);		/* don't fill up /tmp */
 #endif
 		c_fd->id = fnum;
@@ -462,7 +460,7 @@ int local_file_write(int ind, unsigned short fnum, unsigned long len) {
 		fprintf(stderr, "Error: fwrite failed in local_file_write\n");
 		fclose(c_fd->fp);	/* close & remove temp file */
 #if defined(MINGW) || defined(USE_SDL2)
-		unlink(c_fd->tname);	/* remove it on Windows OS */
+		unlink(c_fd->tname);	/* remove it on Windows OS or SDL2 client */
 #endif
 		remove_ft(c_fd);
 		return -2;
@@ -502,7 +500,7 @@ int local_file_close(int ind, unsigned short fnum) {
 
 	fclose(c_fd->fp);	/* close & remove temp file */
 #if defined(MINGW) || defined(USE_SDL2)
-	unlink(c_fd->tname);	/* remove it on Windows OS */
+	unlink(c_fd->tname);	/* remove it on Windows OS or SDL2 client */
 #endif
 	remove_ft(c_fd);
 

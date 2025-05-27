@@ -126,7 +126,7 @@ void show_done(gpointer window) {
 	gtk_widget_destroy(dialog);
 }
 
-#if defined(WINDOWS) && !defined(USE_SDL2)
+#ifdef WINDOWS
  /* 'start' for async */
 void web_tomenet(GtkButton *button, gpointer label) {
 	ShellExecute(NULL, "open", "https://www.tomenet.eu/", NULL, NULL, SW_SHOWNORMAL);
@@ -158,7 +158,7 @@ void web_music(GtkButton *button, gpointer label) {
 	sprintf(tmp, "open \"%s\"", _musicpack);
 	system(tmp);
 }
-#else /* assume USE_X11 || USE_SDL2 */
+#else /* assume USE_X11 */
  /* '&' for async - actually not needed on X11 though, program will still continue to execute
     because xdg-open spawns the file manager asynchronously and returns right away */
 void web_tomenet(GtkButton *button, gpointer label) {

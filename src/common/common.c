@@ -10,10 +10,9 @@
 #endif
 
 #ifdef USE_SDL2
- #ifndef __MAKEDEPEND__
-  #include "SDL2/SDL.h"
- #endif
+ #include "SDL2/SDL.h"
 #endif
+
 /*
  * XXX XXX XXX Important note about "colors" XXX XXX XXX
  *
@@ -273,9 +272,9 @@ char SDL2_PATH_SEP[2] = {0};
  * using the "parse" function above.
  */
 errr path_build(char *buf, int max, cptr path, cptr file) {
-	char *sep= PATH_SEP;
+	char *sep = PATH_SEP;
 #ifdef USE_SDL2
-	sep= &SDL2_PATH_SEP[0];
+	sep = &SDL2_PATH_SEP[0];
 #endif
 	/* Special file */
 	if (file[0] == '~') {
@@ -311,22 +310,23 @@ char os_temp_path[1024];
 void init_temp_path(void) {
 	char *c;
 
-#ifdef USE_SDL2
-	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
-	else {
-		strcpy(os_temp_path, SDL2_USER_PATH);
-		strcat(os_temp_path, "temp");
-		strcat(os_temp_path, SDL2_PATH_SEP);
-	}
-#elif defined(WINDOWS)
+#ifdef WINDOWS
 	if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
 	else strcpy(os_temp_path, ".");
+#elif defined(USE_SDL2)
+	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
+	else if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
+	else {
+		/* Use `temp` directory in SDL2 preferences location. */
+		strcpy(os_temp_path, SDL2_USER_PATH);
+		strcat(os_temp_path, "temp");
+		strcat(os_temp_path, SDL2_PATH_SEP);
+	}
 #elif defined(USE_X11) || defined(USE_GCU)
 	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
@@ -372,10 +372,10 @@ void version_build() {
 
 	/* Append the date of build */
 	strcat(temp, format(" %s (Compiled %s %s for %s)", is_client_side ? "client" : "server", __DATE__, __TIME__,
-#ifdef USE_SDL2
-	    "SDL2"
-#elif defined(WINDOWS)
+#ifdef WINDOWS
 	    "WINDOWS"
+#elif defined(USE_SDL2)
+	    "SDL2"
 #else /* Assume POSIX */
 	    "POSIX"
 #endif

@@ -211,7 +211,7 @@ static errr Infowin_set_name(cptr name) {
  *
  */
 static errr Infowin_init(int x, int y, int w, int h, unsigned int b, Pixel b_color, Pixel bg_color) {
-	fprintf(stderr, "Infowin_init(int x: %d, int y: %d, int w: %d, int h: %d, unsigned int b: %d, Pixel b_color: %x, Pixel bg_color: %x)\n", x, y, w, h, b, *(uint32_t*)&b_color, *(uint32_t*)&bg_color);
+	fprintf(stderr, "jezek - Infowin_init(int x: %d, int y: %d, int w: %d, int h: %d, unsigned int b: %d, Pixel b_color: %x, Pixel bg_color: %x)\n", x, y, w, h, b, *(uint32_t*)&b_color, *(uint32_t*)&bg_color);
 
 	/* Wipe it clean */
 	WIPE(Infowin, infowin);
@@ -219,7 +219,7 @@ static errr Infowin_init(int x, int y, int w, int h, unsigned int b, Pixel b_col
 	/*** Create the SDL_Window* 'window' from data ***/
 
 	/* Create the Window. */
-	//TODO jezek - Pridaj "window_decorations" do configu a najdi kde v menu ich vypinat/zapinat.
+	//TODO jezek - Add "window_decorations" into config and allow to toggle in game menu.
 	SDL_Window *window = SDL_CreateWindow("", x, y, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
 
 	if (window == NULL) {
@@ -362,7 +362,7 @@ static cptr ANGBAND_DIR_XTRA_FONT;
  *	name: The name of the requested Font followed by a space and a number, which defines the size of font to load.
  */
 static errr Infofnt_init_ttf(cptr name) {
-	//fprintf(stderr, "Infofnt_init_ttf(cptr name: \"%s\"\n", name);
+	//fprintf(stderr, "jezek - Infofnt_init_ttf(cptr name: \"%s\"\n", name);
 	/*** Load the info Fresh, using the name ***/
 
 	/* If the name is not given, report an error */
@@ -378,12 +378,12 @@ static errr Infofnt_init_ttf(cptr name) {
 		fprintf(stderr, "Font \"%s\" does not match pattern \"<font_name> <font_size>\"", name);
 		return(-1);
 	}
-	//fprintf(stderr, " Infofnt_init_ttf: load font %s, size %d\n", font_name, font_size);
+	//fprintf(stderr, "jezek -  Infofnt_init_ttf: load font %s, size %d\n", font_name, font_size);
 
 	char buf[1024];
 	path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
 
-	//fprintf(stderr, " Infofnt_init_ttf: load font path %s\n", buf);
+	//fprintf(stderr, "jezek -  Infofnt_init_ttf: load font path %s\n", buf);
 	/* Attempt to load the font with the given size */
 	font = TTF_OpenFont(buf, font_size);
 
@@ -444,7 +444,7 @@ static errr Infofnt_init_ttf(cptr name) {
 			Infofnt->emulateMonospace=true;
 		}
 	}
-	//fprintf(stderr, " Infofnt_prepare: hgt: %d, wid: %d, emulateMonospace: %b\n", Infofnt->hgt, Infofnt->wid, Infofnt->emulateMonospace);
+	//fprintf(stderr, "jezek - Infofnt_prepare: hgt: %d, wid: %d, emulateMonospace: %b\n", Infofnt->hgt, Infofnt->wid, Infofnt->emulateMonospace);
 
 	/* Save a copy of the font name */
 	Infofnt->name = string_make(name);
@@ -476,7 +476,7 @@ SDL_Surface* PCF_RenderText(PCF_Font* font, const char* str, SDL_Color bg_color,
  *	name: The name of the requested Font without extension.
  */
 static errr Infofnt_init_pcf(cptr name) {
-	fprintf(stderr, "Infofnt_init_pcf(name: \"%s\"\n", name);
+	fprintf(stderr, "jezek - Infofnt_init_pcf(name: \"%s\"\n", name);
 	/*** Load the info Fresh, using the name ***/
 
 	/* If the name is not given, report an error */
@@ -487,7 +487,7 @@ static errr Infofnt_init_pcf(cptr name) {
 
 	// Add .pcf extension.
 	sprintf(font_name, "%s.pcf", name);
-	fprintf(stderr, " Infofnt_init_pcf: load font %s\n", font_name);
+	fprintf(stderr, "jezek -  Infofnt_init_pcf: load font %s\n", font_name);
 
 	char buf[1024];
 	path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
@@ -501,7 +501,7 @@ static errr Infofnt_init_pcf(cptr name) {
 		return(-1);
 	}
 
-	fprintf(stderr, "PCF font %s loaded w: %d, h: %d\n", buf, font->glyphWidth, font->glyphHeight);
+	fprintf(stderr, "jezek - PCF font %s loaded w: %d, h: %d\n", buf, font->glyphWidth, font->glyphHeight);
 
 	/*** Init the font ***/
 
@@ -604,39 +604,31 @@ static errr Infowin_wipe(void) {
 	uint8_t g = Infowin->b_color.g;
 	uint8_t b = Infowin->b_color.b;
 	uint8_t a = Infowin->b_color.a;
-	//if (stickyKeys && Infowin == &term_main->win) {
-	//	if (ctrlForced) r ^= 0xFF;
-	//	if (shiftForced) g ^= 0xFF;
-	//}
 	uint32_t bc = SDL_MapRGBA(Infowin->surface->format, r, g, b, a);
-	// Draw borders.
-	// Top.
+	// Draw top border.
 	SDL_FillRect(Infowin->surface, &(SDL_Rect){0, 0, Infowin->wb, Infowin->bh}, bc);
-	// Bottom.
+	// Draw bottom border.
 	SDL_FillRect(Infowin->surface, &(SDL_Rect){0, Infowin->bh + Infowin->hd, Infowin->wb, (Infowin->hb - Infowin->hd - Infowin->bh)}, bc);
-	// Left.
+	// Draw left border.
 	SDL_FillRect(Infowin->surface, &(SDL_Rect){0, Infowin->bh + 1, Infowin->bw, Infowin->hd}, bc);
-	// Right.
+	// Draw right border.
 	SDL_FillRect(Infowin->surface, &(SDL_Rect){Infowin->bw + Infowin->wd, Infowin->bh + 1, Infowin->wb - Infowin->wd - Infowin->bw, Infowin->hd}, bc);
 
+	// Wipe drawing field.
 	SDL_FillRect(Infowin->surface, &(SDL_Rect){Infowin->bw, Infowin->bh, Infowin->wd, Infowin->hd}, SDL_MapRGBA(Infowin->surface->format, Pixel_quadruplet(Infowin->bg_color)));
 
 	/* Success */
 	return(0);
 }
 
-//jezek
-static errr Infofnt_text_non(int x, int y, cptr str, int len);
 /*
  * Standard Text
  */
 static errr Infofnt_text_std(int x, int y, cptr str, int len) {
 	//int ty = y;
-	//if (ty==0) fprintf(stderr, "Infofnt_text_std(int x: %d, int y: %d, cptr str: \"%s\", int len: %d)\n", x, y, str, len);
+	//if (ty==0) fprintf(stderr, "jezek - Infofnt_text_std(int x: %d, int y: %d, cptr str: \"%s\", int len: %d)\n", x, y, str, len);
 	if (!str || !*str) return(-1);
 
-	//jezek
-	//return Infofnt_text_non(x, y, str, len);
 
 	if (len < 0) len = strlen (str);
 	//if (len < strlen(str)) str[len]='\0';
@@ -652,7 +644,7 @@ static errr Infofnt_text_std(int x, int y, cptr str, int len) {
 		return(0);
 	}
 
-	//if (ty==0) fprintf(stderr, "Infofnt_text_std: hgt: %d, wid: %d\n", Infofnt->hgt, Infofnt->wid);
+	//if (ty==0) fprintf(stderr, "jezek - Infofnt_text_std: hgt: %d, wid: %d\n", Infofnt->hgt, Infofnt->wid);
 	x = Infowin->bw + (x * Infofnt->wid);
 	y = Infowin->bh + (y * Infofnt->hgt);
 
@@ -672,7 +664,7 @@ static errr Infofnt_text_std(int x, int y, cptr str, int len) {
 	}
 
 
-	//if (ty==0) fprintf(stderr, " Infofnt_text_std: x: %d, y: %d, w: %d, h: %d, sw: %d, sh: %d\n", x, y, Infofnt->wid, Infofnt->hgt, surface->w, surface->h);
+	//if (ty==0) fprintf(stderr, "jezek -  Infofnt_text_std: x: %d, y: %d, w: %d, h: %d, sw: %d, sh: %d\n", x, y, Infofnt->wid, Infofnt->hgt, surface->w, surface->h);
 	SDL_Rect srcRect = {0, 0, Infofnt->wid*len, Infofnt->hgt};
 	//SDL_Rect dstRect = {x, y, surface->w, surface->h};
 	SDL_Rect dstRect = {x, y, Infofnt->wid*len, Infofnt->hgt};
@@ -690,7 +682,7 @@ static errr Infofnt_text_std(int x, int y, cptr str, int len) {
 	return(0);
 }
 
-//TODO jezek - No xor. Remove xor, find out other way to draw cursor.
+//TODO jezek - Remove SDL_xor_rect function after removing xor painting.
 void SDL_xor_rect(SDL_Surface *surface, SDL_Rect rect, Uint32 color) {
     // Lock the surface if required
     if (SDL_MUSTLOCK(surface) && SDL_LockSurface(surface) < 0) {
@@ -769,7 +761,7 @@ void SDL_xor_rect(SDL_Surface *surface, SDL_Rect rect, Uint32 color) {
  * Painting where text would be
  */
 static errr Infofnt_text_non(int x, int y, cptr str, int len) {
-	//fprintf(stderr, "Infofnt_text_non(int x: %d, int y: %d, cptr str: \"%s\", int len: %d)\n", x, y, str, len);
+	//fprintf(stderr, "jezek - Infofnt_text_non(int x: %d, int y: %d, cptr str: \"%s\", int len: %d)\n", x, y, str, len);
 
 	// Negative length is a flag to count the characters in str.
 	if (len <= 0) len = strlen(str);
@@ -787,7 +779,7 @@ static errr Infofnt_text_non(int x, int y, cptr str, int len) {
 
 
 	/*** Actually 'paint' the area ***/
-	//fprintf(stderr, " Infofnt_text_non: x: %d, y: %d, w: %d, h: %d\n", x, y, w, h);
+	//fprintf(stderr, "jezek -  Infofnt_text_non: x: %d, y: %d, w: %d, h: %d\n", x, y, w, h);
 
 	if (Infoclr->xor) {
 		SDL_xor_rect(Infowin->surface, (SDL_Rect){x, y, w, h}, SDL_MapRGBA(Infowin->surface->format, Pixel_quadruplet(Infoclr->fg)));
@@ -824,7 +816,7 @@ void resize_main_window_sdl2(int cols, int rows);
 void resize_window_sdl2(int term_idx, int cols, int rows);
 static term_data* term_idx_to_term_data(int term_idx);
 
-//TODO jezek - Hide into TILE_CACHE_SIZE ifdef everywhere in code.
+//TODO jezek - Hide `disable_tile_cache` into TILE_CACHE_SIZE ifdef everywhere in code.
 bool disable_tile_cache = FALSE;
 #if defined(USE_GRAPHICS) && defined(TILE_CACHE_SIZE)
 
@@ -912,7 +904,7 @@ const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN"
      (keycode) == SDLK_PAGEDOWN || (keycode) == SDLK_INSERT || \
      (keycode) == SDLK_PRINTSCREEN || (keycode) == SDLK_PAUSE)
 
-//TODO jezek - Into options file.
+//TODO jezek - Allow sticky keys be configured in config file and toggled from game menu.Into options file.
 bool stickyKeys = true;
 bool ctrlForced = false;
 bool shiftForced = false;
@@ -1020,7 +1012,7 @@ static void react_keypress(SDL_Event *event) {
 				scancode, 13);
 
 		for (int i = 0; msg[i]; i++) {
-			fprintf(stderr," unknown Term_keypress(msg[i]: %d = '%c')\n", msg[i], msg[i]);
+			fprintf(stderr,"jezek -  unknown Term_keypress(msg[i]: %d = '%c')\n", msg[i], msg[i]);
 			Term_keypress(msg[i]);
 		}
 		return;
@@ -1034,7 +1026,7 @@ static void react_keypress(SDL_Event *event) {
 	if (!mc && !mo && keycode < 256) {
 		// No ctrl nor alt modifier keys are pressed, send the pressed keycode.
 		// Keycode is already shifted, if shift is pressed.
-		fprintf(stderr," plain Term_keypress(%d = '%c')\n", keycode, (char)(keycode));
+		fprintf(stderr,"jezek -  plain Term_keypress(%d = '%c')\n", keycode, (char)(keycode));
 		Term_keypress((char)(keycode));
 		return;
 	}
@@ -1047,7 +1039,7 @@ static void react_keypress(SDL_Event *event) {
 	}
 
 	int ks = -1;
-	//fprintf(stderr, " ks: %d\n", ks);
+	//fprintf(stderr, "jezek -  ks: %d\n", ks);
 
 	/* Handle a few standard keys */
 	switch (keycode) {
@@ -1097,7 +1089,7 @@ static void react_keypress(SDL_Event *event) {
 	}
 
 	if (ks > 0) {
-		fprintf(stderr, " ks: %d\n", ks);
+		fprintf(stderr, "jezek -  ks: %d\n", ks);
 		sprintf(msg, "%c%s%s%s%s_%lX%c", 31,
 		        mc ? "N" : "", ms ? "S" : "",
 		        mo ? "O" : "", mx ? "M" : "",
@@ -1111,7 +1103,7 @@ static void react_keypress(SDL_Event *event) {
 
 	// Enqueue the special key sequence.
 	for (int i = 0; msg[i]; i++) {
-		fprintf(stderr," last Term_keypress(msg[i]: %d = '%c')\n", msg[i], msg[i]);
+		fprintf(stderr,"jezek -  last Term_keypress(msg[i]: %d = '%c')\n", msg[i], msg[i]);
 		Term_keypress(msg[i]);
 	}
 
@@ -1187,7 +1179,7 @@ static int CheckEvent(bool wait) {
 
 	switch (event.type) {
 		case SDL_QUIT:
-			fprintf(stderr, "Got SDL_QUIT event\n");
+			fprintf(stderr, "jezek - Got SDL_QUIT event\n");
 			return 1; // Signal to exit
 
 		case SDL_KEYDOWN:
@@ -1240,7 +1232,7 @@ static int CheckEvent(bool wait) {
 			}
 
 		//default:
-			//fprintf(stderr, "Got unknown event type: %d\n", event.type);
+			//fprintf(stderr, "jezek - Got unknown event type: %d\n", event.type);
 
 	}
 
@@ -1290,7 +1282,7 @@ static void free_graphics(term_data *td) {
 
 /* Closes all SDL2 windows and frees all allocated data structures for input parameter. */
 static errr term_data_nuke(term_data *td) {
-	//fprintf(stderr, "term_data_nuke(term_data *td: %p)\n", td);
+	//fprintf(stderr, "jezek - term_data_nuke(term_data *td: %p)\n", td);
 	if (td == NULL) return(0);
 
 #ifdef USE_GRAPHICS
@@ -1367,7 +1359,7 @@ void all_term_data_to_term_prefs(void) {
  * But after this the whole client ends (should not recover), so just use it for filling terminal preferences, which will be saved after all terminals are nuked.
  */
 static void Term_nuke_sdl2(term *t) {
-	fprintf(stderr, "Term_nuke_sdl2(tidx: %d)\n", term_data_to_term_idx((term_data*)(t->data)));
+	fprintf(stderr, "jezek - Term_nuke_sdl2(tidx: %d)\n", term_data_to_term_idx((term_data*)(t->data)));
 	term_data *td = (term_data*)(t->data);
 	int term_idx;
 
@@ -1446,12 +1438,12 @@ static int Term_win_update(int flush, int sync, int discard) {
 	if (sync) {
 		/* Call SDL_PumpEvents to update the input state, which can be analogous to sync operations */
 		SDL_PumpEvents();
-		//fprintf(stderr, "SDL_PumpEvents()\n");
+		//fprintf(stderr, "jezek - SDL_PumpEvents()\n");
 
 		if (discard) {
 			/* If we want to discard events, we can clear the event queue */
 			SDL_FlushEvent(SDL_FIRSTEVENT);
-			//fprintf(stderr, "SDL_FlushEvent(SDL_FIRSTEVENT)");
+			//fprintf(stderr, "jezek - SDL_FlushEvent(SDL_FIRSTEVENT)");
 		}
 	}
 
@@ -2058,7 +2050,7 @@ static errr term_data_init(int index, term_data *td, bool fixed, cptr name, cptr
 			return(1);
 		}
 	}
-	//fprintf(stderr, " term_data_init: font initialized\n");
+	//fprintf(stderr, "jezek -  term_data_init: font initialized\n");
 
 
 
@@ -2494,7 +2486,7 @@ errr init_sdl2(void) {
 	MAKE(xor, infoclr);
 	Infoclr_set (xor);
 	Infoclr_init_parse("fg", "bg", true);
-	//fprintf(stderr, "xor->fg: %x, xor->bg: %x, xor->xor: %b\n", xor->fg, xor->bg, xor->xor);
+	//fprintf(stderr, "jezek - xor->fg: %x, xor->bg: %x, xor->xor: %b\n", xor->fg, xor->bg, xor->xor);
 
 	/* Prepare the colors (including "black") */
 	for (i = 0; i < CLIENT_PALETTE_SIZE; ++i) {
@@ -2531,7 +2523,7 @@ errr init_sdl2(void) {
 	// Build the "font" path
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
 	ANGBAND_DIR_XTRA_FONT = string_make(path);
-	//fprintf(stderr, "init_sdl2: ANGBAND_DIR_XTRA_FONT: %s\n", ANGBAND_DIR_XTRA_FONT);
+	//fprintf(stderr, "jezek - init_sdl2: ANGBAND_DIR_XTRA_FONT: %s\n", ANGBAND_DIR_XTRA_FONT);
 
 #ifdef USE_GRAPHICS
 	fprintf(stderr, "jezek - use_graphics: %u\n", use_graphics);

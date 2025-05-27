@@ -11,10 +11,7 @@
 #include "angband.h"
 
 #ifdef USE_SDL2
-
- #ifndef __MAKEDEPEND__
-  #include <SDL2/SDL.h>
- #endif
+ #include <SDL2/SDL.h>
 
 /* For readability purposes, the function body is implemented at the end of this file. */
 static int copy_file(const char *source, const char *destination);
@@ -107,6 +104,7 @@ static bool read_mangrc(cptr filename) {
 #endif
 
 #ifdef USE_SDL2
+		/* Get configuration file name with path. */
 		if (snprintf(mangrc_filename, MAX_PATH_LENGTH, "%s%s", SDL2_USER_PATH, filename) > MAX_PATH_LENGTH) {
 			fprintf(stderr, "read_mangrc: mangrc_filename exceeded length of %d characters\n", MAX_PATH_LENGTH);
 			return(skip);
@@ -119,7 +117,7 @@ static bool read_mangrc(cptr filename) {
 		}
 		/* Otherwise use current directory */
 		else {
-/* Current directory */
+			/* Current directory */
 			strcpy(mangrc_filename, ".");
 		}
 
@@ -150,11 +148,16 @@ static bool read_mangrc(cptr filename) {
 		/* Attempt to open file again. */
 		config = fopen(mangrc_filename, "r");
 		if (config == NULL) {
+#ifdef USE_SDL2
+			fprintf(stderr, "Warning: Cannot read stock '%s' or cannot write to target '%s'\n", default_config_path, mangrc_filename);
+#else
 			fprintf(stderr, "Warning: Cannot read stock .tomenetrc in CWD or cannot write to target '%s'\n", mangrc_filename);
+#endif
 			return(skip);
 		} 
 	}
-	/* Read until end */
+
+	/* Read until end. */
 	while (!feof(config)) {
 		/* Get a line */
 		if (!fgets(buf, 1024, config)) break;
@@ -310,17 +313,17 @@ static bool read_mangrc(cptr filename) {
 		if (!strncmp(buf, "graphic_tiles", 13)) {
 			char *p;
 
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (p) strcpy(graphic_tiles, p);
-			}
-			if (!strncmp(buf, "disableGfxCache", 15)) { //TILE_CACHE_SIZE
-				char *p;
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) strcpy(graphic_tiles, p);
+		}
+		if (!strncmp(buf, "disableGfxCache", 15)) { //TILE_CACHE_SIZE
+			char *p;
 
-				p = strtok(buf, " \t\n");
-				p = strtok(NULL, "\t\n");
-				if (atoi(p) != 0) disable_tile_cache = TRUE;
-			}
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (atoi(p) != 0) disable_tile_cache = TRUE;
+		}
 #endif
 #ifdef USE_SOUND
 		/* sound */
@@ -1178,7 +1181,7 @@ int main(int argc, char **argv) {
 			/* Also reset main window to non-big_map */
 			global_c_cfg_big_map = FALSE;
 			screen_hgt = SCREEN_HGT;
- #if !defined(USE_SDL2) && defined(WINDOWS)
+ #ifdef WINDOWS
 			data[0].rows = screen_hgt + SCREEN_PAD_Y;
  #else /* POSIX or SDL2 */
 			//screen->rows = screen_hgt + SCREEN_PAD_Y;
@@ -1225,7 +1228,6 @@ int main(int argc, char **argv) {
 		case 'V': save_chat = 2; break;
 		case 'x': save_chat = 3; break;
 		case 'e': {
-			//TODO jezek - test this.
 			/* Since ALSA might spam underrun errors.. */
 			FILE *fr = freopen("tomenet.log", "w", stderr);
 			if (!fr) {
@@ -1433,7 +1435,7 @@ int main(int argc, char **argv) {
 }
 
 #ifdef USE_SDL2
-//TODO jezek - Move elsewhere?
+//TODO jezek - Move copy_file function elsewhere?
 static int copy_file(const char *source, const char *destination) {
 	FILE *src;
 	FILE *dest;
