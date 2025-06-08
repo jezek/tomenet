@@ -904,7 +904,7 @@ const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN"
      (keycode) == SDLK_PAGEDOWN || (keycode) == SDLK_INSERT || \
      (keycode) == SDLK_PRINTSCREEN || (keycode) == SDLK_PAUSE)
 
-//TODO jezek - Allow sticky keys be configured in config file and toggled from game menu.Into options file.
+//TODO jezek - Allow sticky keys be configured in config file and toggled from game menu.
 bool stickyKeys = true;
 bool ctrlForced = false;
 bool shiftForced = false;
@@ -1066,7 +1066,7 @@ static void react_keypress(SDL_Event *event) {
 
 		case SDLK_BACKSPACE:
 			fprintf(stderr, "jezek -  react_keypress: backspace key\n");
-			//TODO jezek - Differentiate.
+			//TODO jezek - Differentiate between delete and backspace key.
 			Term_keypress('\010');
 			return;
 
@@ -1088,6 +1088,7 @@ static void react_keypress(SDL_Event *event) {
 
 	}
 
+	//TODO jezek - Shift + arrows don't work? Test.
 	if (ks > 0) {
 		fprintf(stderr, "jezek -  ks: %d\n", ks);
 		sprintf(msg, "%c%s%s%s%s_%lX%c", 31,
@@ -1609,6 +1610,7 @@ void sdl2_graphics_pref_file_processed() {
 				fprintf(stderr, "Warning: Mask color for mask no %d is not set in pref file. Using default value #%06x.\n", i, graphics_image_masks_colors[i]);
 			}
 		}
+		//TODO jezek - If UG_2MASK and (only 2 mask colors or empty outline mask or forced outline creatio), create outline mask from background.
 
 		// Initialize graphics for each initialized term.
 		for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
@@ -1630,7 +1632,6 @@ void sdl2_graphics_pref_file_processed() {
 				td->t.higher_pict = TRUE;
 			}
 			else {
-				//TODO jezek - mingw catches this error, gcc doesn't even produce a warning. (i -> index)
 				fprintf(stderr, "Couldn't prepare images for terminal %d\n", i);
 			}
 		}
@@ -1864,7 +1865,7 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
 	// Foreground color.
 	colors[graphics_image_mpt + 1] = Infoclr->fg;
 	// Outline color. Set to background color of the bottom tile.
-	//TODO jezek - Try semi-transparent black.
+	//TODO jezek - Try semi-transparent black for outline colors.
 	colors[graphics_image_mpt + 2] = colors[0];
 
 	if (Pixel_equal(Infoclr->fg, Infoclr->bg)) {
@@ -2665,7 +2666,7 @@ void change_font(int s) {
 		else if (strstr(tmp, " 16")) s = 0;
 	}
 
-	//TODO jezek - Just do cycling, don't change names.
+	//TODO jezek - Just do cycling, don't change font names.
 	/* Force the font */
 	switch (s) {
 	case 0:
@@ -3290,7 +3291,7 @@ void set_window_title_sdl2(int term_idx, cptr title) {
 }
 
 errr sdl2_win_term_main_screenshot(cptr name) {
-	//TODO jezek - Implement.
+	//TODO jezek - Implement taking a screenshot of main window.
 	fprintf(stderr, "jezek - sdl2_win_term_main_screenshot: Implement screenshot!\n");
 	return 1;
 }
