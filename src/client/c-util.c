@@ -6,7 +6,9 @@
 
 #include <sys/time.h>
 #ifndef WINDOWS
- #include <glob.h>
+ #ifndef USE_SDL2
+  #include <glob.h>
+ #endif
 #endif
 
 #ifdef USE_SDL2
