@@ -16,10 +16,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifndef __MAKEDEPEND__
- #include <SDL2/SDL.h>
- #include <SDL2/SDL_net.h>
-#endif
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_net.h>
 
 /* Debug macro */
 #ifdef DEBUG
@@ -175,53 +173,6 @@ int GetPortNum(int fd)
 	Uint16 port = SDL_SwapBE16(ip->port);
 	return port;
 } /* GetPortNum */
-
-
-/*
- *******************************************************************************
- *
- *	GetSockAddr()
- *
- *******************************************************************************
- * Description:
- *	Returns the address of a TCP socket as a string.
- *
- * Input Parameters:
- *	fd	- The file descriptor (index in our mapping table).
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	A pointer to a static string containing the IP address.
- *
- */
-char *GetSockAddr(int fd)
-{
-	static char addr_str[64];
-	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		strncpy(addr_str, "unknown", sizeof(addr_str));
-		addr_str[sizeof(addr_str) - 1] = '\0';
-		return addr_str;
-	}
-	IPaddress *ip = SDLNet_TCP_GetPeerAddress(sock);
-	if (ip == NULL) {
-		strncpy(addr_str, "unknown", sizeof(addr_str));
-		addr_str[sizeof(addr_str) - 1] = '\0';
-		return addr_str;
-	}
-	/* Resolve the IP address to a string */
-	const char *ip_str = SDLNet_ResolveIP(ip);
-	if (ip_str) {
-		strncpy(addr_str, ip_str, sizeof(addr_str));
-		addr_str[sizeof(addr_str) - 1] = '\0';
-	} else {
-		strncpy(addr_str, "unknown", sizeof(addr_str));
-		addr_str[sizeof(addr_str) - 1] = '\0';
-	}
-	return addr_str;
-} /* GetSockAddr */
 
 
 /*
@@ -498,30 +449,6 @@ int SocketWrite(int fd, char *wbuf, int size)
 int DgramRead(int fd, char *rbuf, int size)
 {
 	return SocketRead(fd, rbuf, size);
-
-	/* Ensure we have a UDP socket for this fd (lazy open if needed). */
-	if (ensureUdpSocket(fd) < 0) {
-		return -1;
-	}
-
-	UDPsocket udp = fd2UDPsocket(fd);
-	if (udp == NULL) {
-		return -1;
-	}
-	UDPpacket *packet = SDLNet_AllocPacket(size);
-	if (packet == NULL) {
-		return -1;
-	}
-	int ret = SDLNet_UDP_Recv(udp, packet);
-	if (ret > 0) {
-		int len = (packet->len < (Uint16)size) ? packet->len : size;
-		memcpy(rbuf, packet->data, len);
-		SDLNet_FreePacket(packet);
-		return len;
-	} else {
-		SDLNet_FreePacket(packet);
-		return -1;
-	}
 } /* DgramRead */
 
 
@@ -549,34 +476,6 @@ int DgramRead(int fd, char *rbuf, int size)
 int DgramWrite(int fd, char *wbuf, int size)
 {
 	return SocketWrite(fd, wbuf, size);
-
-	/* Ensure we have a UDP socket for this fd (lazy open if needed). */
-	if (ensureUdpSocket(fd) < 0) {
-		fprintf(stderr, "jezek - DgramWrite: ensureUdpSocket error\n");
-		return -1;
-	}
-
-	UDPsocket udp = fd2UDPsocket(fd);
-	if (udp == NULL) {
-		fprintf(stderr, "jezek - DgramWrite: udp is null\n");
-		return -1;
-	}
-	UDPpacket *packet = SDLNet_AllocPacket(size);
-	if (packet == NULL) {
-		fprintf(stderr, "jezek - DgramWrite: udp packet is null\n");
-		return -1;
-	}
-	memcpy(packet->data, wbuf, size);
-	packet->len = size;
-	/* Send on channel 0 as set in ensureUdpSocket. */
-	int num = SDLNet_UDP_Send(udp, 0, packet);
-	if (num == 0) {
-		fprintf(stderr, "jezek - DgramWrite: udp packet not sent: %s\n", SDLNet_GetError());
-		SDLNet_FreePacket(packet);
-		return -1;
-	}
-	SDLNet_FreePacket(packet);
-	return size;
 } /* DgramWrite */
 
 
