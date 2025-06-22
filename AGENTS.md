@@ -6,10 +6,15 @@ This repository contains the source code of the TomeNET SDL2 client for Linux. T
 
 **Key directories**
 
-- `src/client/` – main client implementation. SDL2 specific code is in `main-sdl2.c`.
-- `src/common/` – shared utilities used by both client and server.
-- `src/server/`, `src/world/`, and related directories – server side code; usually not needed when working on the client.
-- `lib/` – data files (fonts, graphics, configs) used at runtime.
+- `src/` – C source tree.
+  - `client/` – cross-platform client code (SDL2 entry `main-sdl2.c`, X11 in `main-x11.c`, Windows in `main-win.c`).
+  - `common/` – utilities and networking shared between client and server.
+  - `server/`, `world/`, `account/` – server and gameplay code not needed for the client build.
+  - `console/` – console client.
+  - `preproc/` – custom Lua preprocessor used during the build.
+- `lib/` – runtime data: configs, fonts, graphics.
+- Documentation: `README.md`, `TomeNET-Guide.txt` and PDF versions.
+- Scripts such as `runserv`, `tomenet-direct-*.sh` help run the game.
 
 **Building**
 
@@ -20,9 +25,20 @@ This repository contains the source code of the TomeNET SDL2 client for Linux. T
 cd src
 make -f makefile.sdl2 tomenet
 ```
-
 The resulting `tomenet` binary will appear in `src/`.
+**Running**
 
+Execute the binary from the `src/` directory or run `make install` to copy it to the repository root.
+Configuration is read from `~/.tomenetrc` (copy `tomenet.cfg` there if needed).
+In headless containers SDL2 may fail to open a window, but you can still debug other code.
+**Compilation macros**
+
+The same client sources build multiple front-ends. Important macros include:
+- `USE_SDL2` – SDL2 renderer for Linux and Windows (`makefile.sdl2`).
+- `USE_X11` – X11 windowing (`makefile`, `makefile.osx`).
+- `WINDOWS` – Windows build (`makefile.win`).
+- `USE_GCU` – console client using ncurses (`makefile.gcu`).
+Other legacy macros (e.g. Amiga) also exist. SDL2 code is intended to remain OS independent.
 **Code style**
 
 - Source files are written in C.
