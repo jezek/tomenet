@@ -28,9 +28,10 @@ make -f makefile.sdl2 tomenet
 The resulting `tomenet` binary will appear in `src/`.
 **Running**
 
-Execute the binary from the `src/` directory or run `make install` to copy it to the repository root.
+The executable needs to be run from repository root folder.
+After building copy `tomenet` out from `src/` directory to the repository root or run `make install`.
 Configuration is read from `~/.tomenetrc` (copy `tomenet.cfg` there if needed).
-In headless containers SDL2 may fail to open a window, but you can still debug other code.
+In headless containers SDL2 will fail to open a window, but you can still debug other code.
 **Compilation macros**
 
 The same client sources build multiple front-ends. Important macros include:
