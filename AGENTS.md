@@ -26,18 +26,19 @@ cd src
 make -f makefile.sdl2 tomenet
 ```
 The resulting `tomenet` binary will appear in `src/`.
+
 **Running**
 
-Copy the binary from `src/` to the repository root (or run `make install`), then
-run it from the project root so that resources load correctly.
-- SDL2 builds load `tomenet.cfg` from the SDL2 preferences directory obtained via
-  `SDL_GetPrefPath(SDL2_ORG_NAME, SDL2_GAME_NAME)`. On Linux this typically
-  resolves to `~/.local/share/TomenetGame/tomenet/`.
-- X11 builds read `~/.tomenetrc` (copy `tomenet.cfg` there if needed). This is
-  only relevant if you compile the X11 client.
+Copy the binary from `src/` to the repository root (or run `make install`) before run,
+so that resources load correctly.
+
+SDL2 builds load `tomenet.cfg` from the SDL2 preferences directory obtained via
+`SDL_GetPrefPath(SDL2_ORG_NAME, SDL2_GAME_NAME)`. On Linux this typically
+resolves to `~/.local/share/TomenetGame/tomenet/`. The `tomenet.cfg` will be copied there
+automatically, but you may copy and edit `tomenet.cfg` there if needed for debugging.
+
 In headless containers SDL2 will fail to open a window, but you can still debug other code.
-Configuration is read from `~/.tomenetrc` (copy `tomenet.cfg` there if needed).
-In headless containers SDL2 will fail to open a window, but you can still debug other code.
+
 **Compilation macros**
 
 The same client sources build multiple front-ends. Important macros include:
@@ -46,6 +47,7 @@ The same client sources build multiple front-ends. Important macros include:
 - `WINDOWS` – Windows build (`makefile.win`).
 - `USE_GCU` – console client using ncurses (`makefile.gcu`).
 Other legacy macros (e.g. Amiga) also exist. SDL2 code is intended to remain OS independent.
+
 **Code style**
 
 - Source files are written in C.
