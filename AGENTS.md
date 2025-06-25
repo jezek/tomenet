@@ -28,10 +28,14 @@ make -f makefile.sdl2 tomenet
 The resulting `tomenet` binary will appear in `src/`.
 **Running**
 
-Configuration path differs by client:
-- SDL2 builds load `tomenet.cfg` from the SDL2 preferences directory obtained via `SDL_GetPrefPath(SDL2_ORG_NAME, SDL2_GAME_NAME)`.
-- X11 builds read `~/.tomenetrc` (copy `tomenet.cfg` there if needed).
-After building copy `tomenet` out from `src/` directory to the repository root or run `make install`.
+Copy the binary from `src/` to the repository root (or run `make install`), then
+run it from the project root so that resources load correctly.
+- SDL2 builds load `tomenet.cfg` from the SDL2 preferences directory obtained via
+  `SDL_GetPrefPath(SDL2_ORG_NAME, SDL2_GAME_NAME)`. On Linux this typically
+  resolves to `~/.local/share/TomenetGame/tomenet/`.
+- X11 builds read `~/.tomenetrc` (copy `tomenet.cfg` there if needed). This is
+  only relevant if you compile the X11 client.
+In headless containers SDL2 will fail to open a window, but you can still debug other code.
 Configuration is read from `~/.tomenetrc` (copy `tomenet.cfg` there if needed).
 In headless containers SDL2 will fail to open a window, but you can still debug other code.
 **Compilation macros**
