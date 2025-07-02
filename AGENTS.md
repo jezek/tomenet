@@ -18,7 +18,7 @@ This repository contains the source code of the TomeNET SDL2 client for Linux. T
 
 **Building**
 
-1. Ensure SDL2, SDL2_mixer, SDL2_ttf and SDL2_net development headers are installed.
+1. Ensure SDL2, SDL2_mixer, SDL2_ttf, SDL2_net and SDL2_image development headers are installed.
 2. From the repository root, run:
 
 ```bash
