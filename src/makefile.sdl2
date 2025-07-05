@@ -4,7 +4,9 @@
 #
 # This file allows compiling TomeNET binaries for Linux and Windows.
 #
-# Compiling for the Windows platform is using the MinGW cross-compiler running on Linux. You must install the MinGW cross compiler and Wine first. Wine is used for running server/tolua.exe during compilation.
+# Compiling for the Windows platform is using the MinGW cross-compiler running on Linux. You must install the MinGW cross compiler first.
+# If you want to use tolua.exe for .mingw.c file generation from .pkg files, wine must be installed to run the tolua.exe during compilation.
+# TODO jezek - Add flag to use wine & tolua.exe.
 #
 # Also you need to install the headers for SDL2, SDL_mixer, SDL_ttf and SDL_net in your (cross) compiling environment.
 #
@@ -157,14 +159,25 @@ COMMON_FLAGS_MINGW = -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501 -DMI
 #
 # Lua convertor and flags
 #
+TOLUA_CC_LINUX = $(CC_LINUX)
 TOLUA_LINUX = server/tolua
-TOLUAFLAGS_LINUX = $(COMMON_FLAGS_LINUX)
-TOLUALIBS_LINUX = -lm
+TOLUA_FLAGS_LINUX = $(COMMON_FLAGS_LINUX)
+TOLUA_LIBS_LINUX = -lm
+TOLUA_TOLUAOBJS_LINUX= $(TOLUAOBJS_LINUX)
 
-TOLUA_MINGW = server/tolua.exe
-TOLUAFLAGS_MINGW = $(COMMON_FLAGS_MINGW)
-TOLUALIBS_MINGW =
-WINE = wine
+# No need to use wine and tolua.exe to generate the .mingw.c files from .pkg files..
+#TOLUA_CC_MINGW = $(CC_MINGW)
+#TOLUA_MINGW = server/tolua.exe
+#TOLUA_FLAGS_MINGW = $(COMMON_FLAGS_MINGW)
+#TOLUA_LIBS_MINGW =
+#TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_MINGW)
+#WINE = wine
+TOLUA_CC_MINGW = $(TOLUA_CC_LINUX)
+TOLUA_MINGW = $(TOLUA_LINUX).linux.exe
+TOLUA_FLAGS_MINGW = $(TOLUA_FLAGS_LINUX)
+TOLUA_LIBS_MINGW= $(TOLUA_LIBS_LINUX)
+TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_LINUX)
+WINE =
 
 
 #
@@ -223,15 +236,15 @@ tomenet.test.exe: $(CLI_OBJS_MINGW) $(CLI_LUAOBJS_MINGW) $(TOLUAOBJS_MINGW)
 #
 # Rules for building the tolua convertor
 #
-$(TOLUA_LINUX): CFLAGS = -Djezek_tl $(TOLUAFLAGS_LINUX)
-$(TOLUA_LINUX): LIBS = $(TOLUALIBS_LINUX)
-$(TOLUA_LINUX): $(TOLUAOBJS_LINUX) server/lua/tolua.c server/lua/tolualua.c
-	$(CC_LINUX) $(CFLAGS) -o $@ $(TOLUAOBJS_LINUX) server/lua/tolua.c server/lua/tolualua.c $(LIBS)
+$(TOLUA_LINUX): CFLAGS = -Djezek_tl $(TOLUA_FLAGS_LINUX)
+$(TOLUA_LINUX): LIBS = $(TOLUA_LIBS_LINUX)
+$(TOLUA_LINUX): $(TOLUA_TOLUAOBJS_LINUX) server/lua/tolua.c server/lua/tolualua.c
+	$(TOLUA_CC_LINUX) $(CFLAGS) -o $@ $(TOLUA_TOLUAOBJS_LINUX) server/lua/tolua.c server/lua/tolualua.c $(LIBS)
 
-$(TOLUA_MINGW): CFLAGS = -Djezek_tl $(TOLUAFLAGS_MINGW)
-$(TOLUA_MINGW): LIBS = $(TOLUALIBS_MINGW)
-$(TOLUA_MINGW): $(TOLUAOBJS_MINGW) server/lua/tolua.c server/lua/tolualua.c
-	$(CC_MINGW) $(CFLAGS) -o $@ $(TOLUAOBJS_MINGW) server/lua/tolua.c server/lua/tolualua.c $(LIBS)
+$(TOLUA_MINGW): CFLAGS = -Djezek_tl $(TOLUA_FLAGS_MINGW)
+$(TOLUA_MINGW): LIBS = $(TOLUA_LIBS_MINGW)
+$(TOLUA_MINGW): $(TOLUA_TOLUAOBJS_MINGW) server/lua/tolua.c server/lua/tolualua.c
+	$(TOLUA_CC_MINGW) $(CFLAGS) -o $@ $(TOLUA_TOLUAOBJS_MINGW) server/lua/tolua.c server/lua/tolualua.c $(LIBS)
 
 #
 # Rules for building the custom LUA preprocessor
@@ -319,7 +332,31 @@ client/w_spells.linux.c: client/spells.pkg $(TOLUA_LINUX)
 	cd client; ../$(TOLUA_LINUX) -n spells -o w_spells.linux.c spells.pkg; cd ..
 
 
-#TODO jezek - no need for tolua.exe, the .c files are the same as generated with linux
+# No need to use wine and tolua.exe to generate the .mingw.c files from .pkg files..
+# The .mingw.c files are as same as the generated .linux.c files on linux (except newline).
+# Use TOLUA_LINUX to generate .mingw.c files from .pkg
+#server/w_util.mingw.c: server/util.pkg $(TOLUA_LINUX)
+#	cd server; ../$(TOLUA_LINUX) -n util -o w_util.mingw.c util.pkg; cd ..
+#
+#server/w_play.mingw.c: server/player.pkg $(TOLUA_LINUX)
+#	cd server; ../$(TOLUA_LINUX) -n player -o w_play.mingw.c player.pkg; cd ..
+#
+#server/w_spells.mingw.c: server/spells.pkg $(TOLUA_LINUX)
+#	cd server; ../$(TOLUA_LINUX) -n spells -o w_spells.mingw.c spells.pkg; cd ..
+#
+#common/w_z_pack.mingw.c: common/z_pack.pkg $(TOLUA_LINUX)
+#	cd common; ../$(TOLUA_LINUX) -n z_pack -o w_z_pack.mingw.c z_pack.pkg; cd ..
+#
+#client/w_play.mingw.c: client/player.pkg $(TOLUA_LINUX)
+#	cd client; ../$(TOLUA_LINUX) -n player -o w_play.mingw.c player.pkg; cd ..
+#
+#client/w_util.mingw.c: client/util.pkg $(TOLUA_LINUX)
+#	cd client; ../$(TOLUA_LINUX) -n util -o w_util.mingw.c util.pkg; cd ..
+#
+#client/w_spells.mingw.c: client/spells.pkg $(TOLUA_LINUX)
+#	cd client; ../$(TOLUA_LINUX) -n spells -o w_spells.mingw.c spells.pkg; cd ..
+
+# For archival purposes and when to check if the files generated with wine and tolua.exe are same as with tolua on linux.
 # Use TOLUA_MINGW to generate .mingw.c files from .pkg
 server/w_util.mingw.c: server/util.pkg $(TOLUA_MINGW)
 	cd server; $(WINE) ../$(TOLUA_MINGW) -n util -o w_util.mingw.c util.pkg; cd ..
