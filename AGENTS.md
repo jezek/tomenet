@@ -19,13 +19,15 @@ This repository contains the source code of the TomeNET SDL2 client for Linux. T
 **Building**
 
 1. Ensure SDL2, SDL2_mixer, SDL2_ttf, SDL2_net and SDL2_image development headers are installed.
-2. From the repository root, run:
+2. From the repository root, run one of:
 
 ```bash
 cd src
-make -f makefile.sdl2 tomenet
+make -f makefile.sdl2 tomenet       # Linux SDL2 build
+make -f makefile.sdl2 tomenet.exe   # Windows SDL2 build (cross-compile)
+make -f makefile.sdl2 all           # build both binaries
 ```
-The resulting `tomenet` binary will appear in `src/`.
+The resulting binaries (`tomenet` and/or `tomenet.exe`) will appear in `src/`.
 
 **Running**
 
@@ -56,4 +58,10 @@ Other legacy macros (e.g. Amiga) also exist. SDL2 code is intended to remain OS 
 **Testing**
 
 There are currently no automated tests in this repository. Building the project is the main validation step.
+Use the following command to verify that both the Linux and Windows SDL2 clients compile:
+
+```bash
+cd src
+make -f makefile.sdl2 all
+```
 
