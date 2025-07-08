@@ -2,11 +2,12 @@
 # File: makefile.sdl2
 
 #
-# This file allows compiling TomeNET binaries for Linux and Windows.
+# This file allows compiling TomeNET SDL2 client binaries for Linux and Windows.
 #
-# Compiling for the Windows platform is using the MinGW cross-compiler running on Linux. You must install the MinGW cross compiler first.
-# If you want to use tolua.exe for .mingw.c file generation from .pkg files, wine must be installed to run the tolua.exe during compilation.
-# TODO jezek - Add flag to use wine & tolua.exe.
+# Compiling for linux uses currently clang complier, but can be changet if necessary.
+# Compiling for the Windows platform uses the MinGW cross-compiler running on Linux. You must install the MinGW cross compiler first.
+# If you want to use tolua.exe for .c files generation from .pkg files, wine must be installed to run the tolua.exe during compilation.
+# If wine isn't installed, the generation of .c files from .pkg files will be automatically done by linux native tolua executable.
 #
 # Also you need to install the headers for SDL2, SDL_mixer, SDL_ttf and SDL_net in your (cross) compiling environment.
 #
@@ -27,7 +28,7 @@
 #
 # The SDL2 client "object" files.
 #
-CLI_OBJS = \
+CLI_OBJS := \
   common/z-util.o common/z-virt.o common/z-form.o common/z-rand.o \
   common/net-sdl2.o common/sockbuf.o common/common.o \
   client/z-term.o client/c-util.o client/c-cmd.o client/c-inven.o \
@@ -40,9 +41,9 @@ CLI_OBJS = \
 CLI_OBJS_LINUX = $(patsubst %.o, %.linux.o, $(CLI_OBJS))
 CLI_OBJS_MINGW = $(patsubst %.o, %.mingw.o, $(CLI_OBJS))
 
-CLI_LUAOBJS = \
+CLI_LUAOBJS := \
   client/c-script.o client/lua_bind.o \
-  client/w_play.o client/w_util.o client/w_spells.o
+  client/w_player.o client/w_util.o client/w_spells.o
 
 CLI_LUAOBJS_LINUX = $(patsubst %.o, %.linux.o, $(CLI_LUAOBJS))
 CLI_LUAOBJS_MINGW = $(patsubst %.o, %.mingw.o, $(CLI_LUAOBJS))
@@ -51,7 +52,7 @@ CLI_LUAOBJS_MINGW = $(patsubst %.o, %.mingw.o, $(CLI_LUAOBJS))
 # The TOLUA compiler "object" files.
 #
 # TODO: lua directory should be under common/ and not server/
-TOLUAOBJS = \
+TOLUAOBJS := \
   server/lua/lapi.o server/lua/lcode.o server/lua/ldebug.o server/lua/ldo.o server/lua/lfunc.o server/lua/lgc.o \
   server/lua/llex.o server/lua/lmem.o server/lua/lobject.o server/lua/lparser.o server/lua/lstate.o server/lua/lstring.o \
   server/lua/ltable.o server/lua/ltests.o server/lua/ltm.o server/lua/lundump.o server/lua/lvm.o server/lua/lzio.o \
@@ -88,30 +89,30 @@ TOLUAOBJS_MINGW = $(patsubst %.o, %.mingw.o, $(TOLUAOBJS))
 # MinGW toolchain target name for cross compiling to windows
 #
 # You many need to change this depending on your setup.
-MINGW_TARGET = i686-w64-mingw32
+MINGW_TARGET ?= i686-w64-mingw32
 
 
 #
 # Default C compiler for client, tolua, preproc and object files
 #
-CC_LINUX = clang
-CC_MINGW = $(MINGW_TARGET)-gcc
+CC_LINUX ?= clang
+CC_MINGW ?= $(MINGW_TARGET)-gcc
 
 
 #
 # Binaries for generating configurating flags and libraries.
 #
-PKG_CONFIG_LINUX = pkg-config
-SDL_CONFIG_LINUX = sdl2-config
-PKG_CONFIG_MINGW = $(MINGW_TARGET)-pkg-config
-SDL_CONFIG_MINGW = /usr/$(MINGW_TARGET)/bin/sdl2-config
+PKG_CONFIG_LINUX ?= pkg-config
+SDL_CONFIG_LINUX ?= sdl2-config
+PKG_CONFIG_MINGW ?= $(MINGW_TARGET)-pkg-config
+SDL_CONFIG_MINGW ?= /usr/$(MINGW_TARGET)/bin/sdl2-config
 
 
 #
 # Common flags and libraries.
 #
-COMMON_FLAGS_LINUX = -std=c99 -pipe -Wall -fPIE -fsigned-char -DMEXP=19937 -D_XOPEN_SOURCE -D_BSD_SOURCE -D_DEFAULT_SOURCE -Iserver -Iserver/lua
-COMMON_FLAGS_MINGW = -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501 -DMINGW -Iserver -Iserver/lua
+COMMON_FLAGS_LINUX := -std=c99 -pipe -Wall -fPIE -fsigned-char -DMEXP=19937 -D_XOPEN_SOURCE -D_BSD_SOURCE -D_DEFAULT_SOURCE -Iserver -Iserver/lua
+COMMON_FLAGS_MINGW := -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501 -DMINGW -Iserver -Iserver/lua
 
 
 #TODO jezek - figure out how.
@@ -163,28 +164,35 @@ TOLUA_CC_LINUX = $(CC_LINUX)
 TOLUA_LINUX = server/tolua
 TOLUA_FLAGS_LINUX = $(COMMON_FLAGS_LINUX)
 TOLUA_LIBS_LINUX = -lm
-TOLUA_TOLUAOBJS_LINUX= $(TOLUAOBJS_LINUX)
+TOLUA_TOLUAOBJS_LINUX = $(TOLUAOBJS_LINUX)
 
-# No need to use wine and tolua.exe to generate the .mingw.c files from .pkg files..
-#TOLUA_CC_MINGW = $(CC_MINGW)
-#TOLUA_MINGW = server/tolua.exe
-#TOLUA_FLAGS_MINGW = $(COMMON_FLAGS_MINGW)
-#TOLUA_LIBS_MINGW =
-#TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_MINGW)
-#WINE = wine
-TOLUA_CC_MINGW = $(TOLUA_CC_LINUX)
-TOLUA_MINGW = $(TOLUA_LINUX).linux.exe
-TOLUA_FLAGS_MINGW = $(TOLUA_FLAGS_LINUX)
-TOLUA_LIBS_MINGW= $(TOLUA_LIBS_LINUX)
-TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_LINUX)
-WINE =
+# Detect whether Wine is available on this system
+WINE ?= wine
+HAVE_WINE := $(if $(shell command -v $(WINE) 2>/dev/null),yes,no)
 
+ifeq ($(HAVE_WINE),yes)
+  # Build settings when Wine is present.
+  # Use the native MinGW-built tolua.exe under Wine.
+  TOLUA_CC_MINGW = $(CC_MINGW)
+  TOLUA_MINGW = server/tolua.exe
+  TOLUA_FLAGS_MINGW = $(COMMON_FLAGS_MINGW)
+  TOLUA_LIBS_MINGW =
+  TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_MINGW)
+else
+  # Fallback: build with the Linux-hosted tolua binary.
+  TOLUA_CC_MINGW = $(TOLUA_CC_LINUX)
+  TOLUA_MINGW = $(TOLUA_LINUX).linux.exe
+  TOLUA_FLAGS_MINGW = $(TOLUA_FLAGS_LINUX)
+  TOLUA_LIBS_MINGW = $(TOLUA_LIBS_LINUX)
+  TOLUA_TOLUAOBJS_MINGW = $(TOLUAOBJS_LINUX)
+  WINE =
+endif
 
 #
 # Default CPP compiler and flags for usage with the preprocessor
 #
-CPP = cpp
-CPPFLAGS = -x c -E -Wp,-C,-P,-nostdinc,-Wno-format-overflow
+CPP ?= cpp
+CPPFLAGS ?= -x c -E -Wp,-C,-P,-nostdinc,-Wno-format-overflow
 
 
 #
@@ -271,78 +279,46 @@ preproc/preproc.linux.o: preproc/preproc.c
 
 
 #
+# Lua library compilation rules
+#
+# List of .pkg files to generate from .pre files for use in the client (in format [server|client]/<name>.pre).
+# The .pkg files are then used to generate .c files (in format [server|client]/w_<name>.[linux|mingw].c).
+PKG_FILES = \
+	server/util.pkg server/player.pkg server/spells.pkg \
+	client/util.pkg client/player.pkg client/spells.pkg
+
+# Use preprocessor with CPP to generate the <dir>/<name>.pkg files from <dir>/<name>.pre files.
+$(PKG_FILES): %.pkg: %.pre preproc/preproc
+	cd $(dir $@); ../preproc/preproc $(notdir $<) $(notdir $@) $(CPP) $(CPPFLAGS); cd ..
+
+# Use TOLUA_LINUX to generate server/w_<name>.linux.c files from server/<name>.pkg files.
+server/w_%.linux.c: server/%.pkg $(TOLUA_LINUX)
+	cd $(dir $@);  ../$(TOLUA_LINUX) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
+# Use TOLUA_LINUX to generate client/w_<name>.linux.c files from client/<name>.pkg files.
+client/w_%.linux.c: client/%.pkg $(TOLUA_LINUX)
+	cd $(dir $@);  ../$(TOLUA_LINUX) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
+
+# Use TOLUA_MINGW to generate server/w_<name>.mingw.c files from server/<name>.pkg files.
+server/w_%.mingw.c: server/%.pkg $(TOLUA_MINGW)
+	cd $(dir $@);  $(WINE) ../$(TOLUA_MINGW) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
+# Use TOLUA_MINGW to generate client/w_<name>.mingw.c files from client/<name>.pkg files.
+client/w_%.mingw.c: client/%.pkg $(TOLUA_MINGW)
+	cd $(dir $@);  $(WINE) ../$(TOLUA_MINGW) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
+
+
+#
 # Clean up old junk
 #
 clean:
 	cd server/lua; rm -f *.o
-	cd server; rm -f *.o w_play.*c w_util.*c w_spells.*c *.pkg tolua*
-	cd client; rm -f *.o w_play.*c w_util.*c w_spells.*c *.pkg
+	cd server; rm -f *.o w_player.*c w_util.*c w_spells.*c *.pkg tolua*
+	cd client; rm -f *.o w_player.*c w_util.*c w_spells.*c *.pkg
 	cd common; rm -f *.o
 	cd console; rm -f *.o
 	rm -f preproc/preproc.o
 
 
 #
-# Clean a build all
+# Clean and build all
 #
 re: clean all
-
-#
-# Lua library compilation rules
-#
-# Use preprocessor with CPP to generate .pkg files from .pre
-server/util.pkg: server/util.pre preproc/preproc
-	cd server; ../preproc/preproc util.pre util.pkg $(CPP) $(CPPFLAGS); cd ..
-
-server/player.pkg: server/player.pre preproc/preproc
-	cd server; ../preproc/preproc player.pre player.pkg $(CPP) $(CPPFLAGS); cd ..
-
-server/spells.pkg: server/spells.pre preproc/preproc
-	cd server; ../preproc/preproc spells.pre spells.pkg $(CPP) $(CPPFLAGS); cd ..
-
-client/util.pkg: client/util.pre preproc/preproc
-	cd client; ../preproc/preproc util.pre util.pkg $(CPP) $(CPPFLAGS); cd ..
-
-client/player.pkg: client/player.pre preproc/preproc
-	cd client; ../preproc/preproc player.pre player.pkg $(CPP) $(CPPFLAGS); cd ..
-
-client/spells.pkg: client/spells.pre preproc/preproc
-	cd client; ../preproc/preproc spells.pre spells.pkg $(CPP) $(CPPFLAGS); cd ..
-
-# Use TOLUA_LINUX to generate .linux.c files from .pkg
-server/w_util.linux.c: server/util.pkg $(TOLUA_LINUX)
-	cd server; ../$(TOLUA_LINUX) -n util -o w_util.linux.c util.pkg; cd ..
-
-server/w_play.linux.c: server/player.pkg $(TOLUA_LINUX)
-	cd server; ../$(TOLUA_LINUX) -n player -o w_play.linux.c player.pkg; cd ..
-
-server/w_spells.linux.c: server/spells.pkg $(TOLUA_LINUX)
-	cd server; ../$(TOLUA_LINUX) -n spells -o w_spells.linux.c spells.pkg; cd ..
-
-client/w_play.linux.c: client/player.pkg $(TOLUA_LINUX)
-	cd client; ../$(TOLUA_LINUX) -n player -o w_play.linux.c player.pkg; cd ..
-
-client/w_util.linux.c: client/util.pkg $(TOLUA_LINUX)
-	cd client; ../$(TOLUA_LINUX) -n util -o w_util.linux.c util.pkg; cd ..
-
-client/w_spells.linux.c: client/spells.pkg $(TOLUA_LINUX)
-	cd client; ../$(TOLUA_LINUX) -n spells -o w_spells.linux.c spells.pkg; cd ..
-
-
-server/w_util.mingw.c: server/util.pkg $(TOLUA_MINGW)
-	cd server; $(WINE) ../$(TOLUA_MINGW) -n util -o w_util.mingw.c util.pkg; cd ..
-
-server/w_play.mingw.c: server/player.pkg $(TOLUA_MINGW)
-	cd server; $(WINE) ../$(TOLUA_MINGW) -n player -o w_play.mingw.c player.pkg; cd ..
-
-server/w_spells.mingw.c: server/spells.pkg $(TOLUA_MINGW)
-	cd server; $(WINE) ../$(TOLUA_MINGW) -n spells -o w_spells.mingw.c spells.pkg; cd ..
-
-client/w_play.mingw.c: client/player.pkg $(TOLUA_MINGW)
-	cd client; $(WINE) ../$(TOLUA_MINGW) -n player -o w_play.mingw.c player.pkg; cd ..
-
-client/w_util.mingw.c: client/util.pkg $(TOLUA_MINGW)
-	cd client; $(WINE) ../$(TOLUA_MINGW) -n util -o w_util.mingw.c util.pkg; cd ..
-
-client/w_spells.mingw.c: client/spells.pkg $(TOLUA_MINGW)
-	cd client; $(WINE) ../$(TOLUA_MINGW) -n spells -o w_spells.mingw.c spells.pkg; cd ..
