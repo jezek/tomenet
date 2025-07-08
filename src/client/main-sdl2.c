@@ -905,10 +905,10 @@ const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN"
      (keycode) == SDLK_PAGEDOWN || (keycode) == SDLK_INSERT || \
      (keycode) == SDLK_PRINTSCREEN || (keycode) == SDLK_PAUSE)
 
-//TODO jezek - Allow sticky keys be configured in config file and toggled from game menu.
-bool stickyKeys = true;
+#ifdef SDL2_STICKY_KEYS
 bool ctrlForced = false;
 bool shiftForced = false;
+#endif
 static int Term_win_update(int flush, int sync, int discard);
 
 /**
@@ -972,10 +972,10 @@ static void react_keypress(SDL_Event *event) {
 	/* Ignore "modifier keys" */
 	if (IsModifierKey(keycode)) {
 		fprintf(stderr, "jezek -  react_keypress: modifier key\n");
-		if (stickyKeys) {
-			if (keycode == SDLK_LCTRL || keycode == SDLK_RCTRL) { ctrlForced = true; }
-			if (keycode == SDLK_LSHIFT || keycode == SDLK_RSHIFT) { shiftForced = true; }
-		}
+#ifdef SDL2_STICKY_KEYS
+		if (keycode == SDLK_LCTRL || keycode == SDLK_RCTRL) { ctrlForced = true; }
+		if (keycode == SDLK_LSHIFT || keycode == SDLK_RSHIFT) { shiftForced = true; }
+#endif
 		return;
 	}
 
@@ -990,17 +990,17 @@ static void react_keypress(SDL_Event *event) {
 
 	//fprintf(stderr, "jezek -  react_keypress: mc: %b, ms: %b, mo: %b, mx: %b\n", mc, ms, mo, mx);
 
-	if (stickyKeys) {
-		if (ctrlForced) {
-			mc = true;
-			ctrlForced = false;
-		}
-
-		if (shiftForced) {
-			ms = true;
-			shiftForced = false;
-		}
+#ifdef SDL2_STICKY_KEYS
+	if (ctrlForced) {
+		mc = true;
+		ctrlForced = false;
 	}
+
+	if (shiftForced) {
+		ms = true;
+		shiftForced = false;
+	}
+#endif
 
 	char msg[128] = "";
 
@@ -1413,7 +1413,8 @@ static int Term_win_update(int flush, int sync, int discard) {
 		/* Render prepared texture into the window renderer respecting borders. */
 		term_data *td = (term_data*)(Term->data);
 
-		if (stickyKeys && td == &term_main) {
+#ifdef SDL2_STICKY_KEYS
+		if (td == &term_main) {
 			uint8_t r = td->win->b_color.r;
 			uint8_t g = td->win->b_color.g;
 			uint8_t b = td->win->b_color.b;
@@ -1421,17 +1422,14 @@ static int Term_win_update(int flush, int sync, int discard) {
 			if (ctrlForced) r ^= 0xFF;
 			if (shiftForced) g ^= 0xFF;
 			uint32_t bc = SDL_MapRGBA(td->win->surface->format, r, g, b, a);
-			// Draw borders.
-			// Top.
+			// Draw top, bottom, left and right border.
 			SDL_FillRect(td->win->surface, &(SDL_Rect){0, 0, td->win->wb, td->win->bh}, bc);
-			// Bottom.
 			SDL_FillRect(td->win->surface, &(SDL_Rect){0, td->win->bh + td->win->hd, td->win->wb, (td->win->hb - td->win->hd - td->win->bh)}, bc);
-			// Left.
 			SDL_FillRect(td->win->surface, &(SDL_Rect){0, td->win->bh + 1, td->win->bw, td->win->hd}, bc);
-			// Right.
 			SDL_FillRect(td->win->surface, &(SDL_Rect){td->win->bw + td->win->wd, td->win->bh + 1, td->win->wb - td->win->wd - td->win->bw, td->win->hd}, bc);
 			//fprintf(stderr, "jezek - Term_win_update: termid: %d, wb: %d, hb: %d, wd: %d, hd: %d, bw: %d, bh: %d\n", term_data_to_term_idx(td), td->win->wb, td->win->hb, td->win->wd, td->win->hd, td->win->bw, td->win->bh);
 		}
+#endif
 
 		SDL_UpdateWindowSurface(td->win->window);
 	}

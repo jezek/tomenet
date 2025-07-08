@@ -18,9 +18,10 @@
 #  - SOUND_SDL - Optional, using SDL2_mixer library and provides SDL sound/music support. Is set as default.
 #
 #  - SDL2_CURL - Optional, using curl & openssl libraries for guide checks. Default for linux SDL2 client.
-#  TODO jezek - windows.
 #
-#  TODO jezek - sticky keys, tiles cache
+#  - SDL2_STICKY_KEYS - Optional, enables sticky key emulation logic in the SDL2 client. Disabled by default.
+#
+#  TODO jezek - windows.
 #
 #
 
