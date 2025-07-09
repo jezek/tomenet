@@ -58,6 +58,7 @@ extern void get_palette(byte c, byte *r, byte *g, byte *b);
 extern void refresh_palette(void);
 extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
 extern void set_window_title_sdl2(int term_idx, cptr title);
+extern void apply_window_decorations(void);
 
 extern char *SDL2_USER_PATH, *SDL2_GAME_PATH;
 extern char SDL2_PATH_SEP[2];
@@ -380,6 +381,7 @@ extern cptr ANGBAND_DIR_SCPT;
 extern cptr ANGBAND_DIR_GAME;
 
 extern bool disable_numlock;
+extern bool window_decorations;
 #ifdef WINDOWS
 extern bool use_logfont, use_logfont_ini;
 #endif

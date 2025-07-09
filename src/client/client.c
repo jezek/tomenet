@@ -280,8 +280,18 @@ static bool read_mangrc(cptr filename) {
 		if (!strncmp(buf, "fullauto", 8))
 			skip = TRUE;
 
-		/* READABILITY_BLUE */
-		if (!strncmp(buf, "lighterDarkBlue", 15)) lighterdarkblue = TRUE;
+                /* READABILITY_BLUE */
+                if (!strncmp(buf, "lighterDarkBlue", 15)) lighterdarkblue = TRUE;
+
+#ifdef USE_SDL2
+                if (!strncmp(buf, "window_decorations", 18)) {
+                        char *p;
+
+                        p = strtok(buf, " \t\n");
+                        p = strtok(NULL, "\t\n");
+                        if (p) window_decorations = (atoi(p) != 0);
+                }
+#endif
 
 		/* Color map */
 		if (!strncmp(buf, "colormap_", 9)) {
@@ -863,8 +873,11 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 
 			fputs("# Use lighter 'dark blue' colour to increase readability on some screens\n", config2);
 			fputs("# Sets blue to #0033ff instead of #0000ff\n", config2);
-			fputs("lighterDarkBlue\n", config2);
-			fputs("\n", config2);
+                        fputs("lighterDarkBlue\n", config2);
+#ifdef USE_SDL2
+                        fputs(format("window_decorations\t\t%d\n", window_decorations ? 1 : 0), config2);
+#endif
+                        fputs("\n", config2);
 
 			fputs("# Full color remapping\n", config2);
 			fputs("# 0 = black, 1 = white, 2 = gray, 3 = orange, 4 = red, 5 = green, 6 = blue\n", config2);

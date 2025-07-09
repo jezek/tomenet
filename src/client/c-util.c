@@ -11371,9 +11371,12 @@ static void do_cmd_options_fonts(void) {
 		else
 			Term_putstr(0, 2, -1, TERM_WHITE, format("  \377yENTER\377w enter a specific font name, \377yL\377w %s logfont, \377yESC\377w keep changes and exit", use_logfont_ini ? "disable" : "enable"));
 #else
-		Term_putstr(0, 2, -1, TERM_WHITE, "  \377yENTER\377w enter a specific font name, \377yESC\377w keep changes and exit");
+                Term_putstr(0, 2, -1, TERM_WHITE, "  \377yENTER\377w enter a specific font name, \377yESC\377w keep changes and exit");
 #endif
-		Term_putstr(0, 4, -1, TERM_WHITE, format("  %d font%s and %d graphic font%s available, \377yl\377w to list in message window", fonts, fonts == 1 ? "" : "s", graphic_fonts, graphic_fonts == 1 ? "" : "s"));
+#ifdef USE_SDL2
+                Term_putstr(0, 3, -1, TERM_WHITE, format("  d toggle window decorations (%s)", window_decorations ? "on" : "off"));
+#endif
+                Term_putstr(0, 4, -1, TERM_WHITE, format("  %d font%s and %d graphic font%s available, \377yl\377w to list in message window", fonts, fonts == 1 ? "" : "s", graphic_fonts, graphic_fonts == 1 ? "" : "s"));
 
 		/* Display the windows */
 		for (j = 0; j < ANGBAND_TERM_MAX; j++) {
@@ -11426,13 +11429,23 @@ static void do_cmd_options_fonts(void) {
 			inkey_msg = TRUE; /* And suppress macros again.. */
 			break;
 
-		case 'v':
-			if (y == 0) {
-				c_msg_print("\377yThe main window must always be visible.");
-				break; /* main window cannot be invisible */
-			}
-			term_toggle_visibility(y);
-			break;
+                case 'v':
+                        if (y == 0) {
+                                c_msg_print("\377yThe main window must always be visible.");
+                                break; /* main window cannot be invisible */
+                        }
+                        term_toggle_visibility(y);
+                        break;
+
+                case 'd':
+#ifdef USE_SDL2
+                        window_decorations = !window_decorations;
+                        apply_window_decorations();
+                        Term_putstr(0, 3, -1, TERM_WHITE, format("  d toggle window decorations (%s)", window_decorations ? "on" : "off"));
+#else
+                        bell();
+#endif
+                        break;
 
 		case ' ':
 			if (y == 0) {
