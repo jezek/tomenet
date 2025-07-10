@@ -11228,9 +11228,9 @@ static void do_cmd_options_fonts(void) {
 	char *cp, *cpp;
   #endif
 
-  #ifdef WINDOWS /* Windows uses the .FON files */
-	DIR *dir;
-	struct dirent *ent;
+#ifdef WINDOWS /* Windows uses the .FON files */
+        DIR *dir;
+        struct dirent *ent;
 
 	/* read all locally available fonts */
 	memset(font_name, 0, sizeof(char) * (MAX_FONTS * 256));
@@ -11260,11 +11260,43 @@ static void do_cmd_options_fonts(void) {
 			}
 		}
 	}
-	closedir(dir);
-  #endif
+        closedir(dir);
+#elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
+        DIR *dir;
+        struct dirent *ent;
 
-  //TODO jezek - TTF & PCF font detection for SDL2.
-  #if defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
+        /* read all locally available fonts */
+        memset(font_name, 0, sizeof(char) * (MAX_FONTS * 256));
+        memset(graphic_font_name, 0, sizeof(char) * (MAX_FONTS * 256));
+
+        path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
+        if (!(dir = opendir(path))) {
+                c_msg_format("Couldn't open fonts directory (%s).", path);
+                return;
+        }
+
+        while ((ent = readdir(dir))) {
+                strcpy(tmp_name, ent->d_name);
+                j = -1;
+                while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+                if (strstr(tmp_name, ".pcf")) {
+                        if (fonts == MAX_FONTS) continue;
+                        tmp_name[strlen(tmp_name) - 4] = '\0';
+                        strcpy(font_name[fonts], tmp_name);
+                        fonts++;
+                        if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+                } else if (strstr(tmp_name, ".ttf")) {
+                        if (fonts == MAX_FONTS) continue;
+                        strcpy(font_name[fonts], ent->d_name);
+                        fonts++;
+                        if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+                }
+        }
+        closedir(dir);
+#endif
+
+  /* SDL2 and X11 may also use system fonts. */
+#if defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
 	if (fonts < MAX_FONTS) {
@@ -11316,10 +11348,14 @@ static void do_cmd_options_fonts(void) {
 	}
   #endif
 
-	if (!fonts) {
-		c_msg_format("No .fon font files found in directory (%s).", path);
-		return;
-	}
+        if (!fonts) {
+#ifdef USE_SDL2
+                c_msg_format("No .pcf or .ttf font files found in directory (%s).", path);
+#else
+                c_msg_format("No .fon font files found in directory (%s).", path);
+#endif
+                return;
+        }
 
 //  #ifdef WINDOWS /* actually never sort fonts on X11, because they come in a sorted manner from fonts.alias and fonts.txt files already. */
 	qsort(font_name, fonts, sizeof(char[256]), font_name_cmp);
