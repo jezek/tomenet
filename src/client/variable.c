@@ -219,6 +219,9 @@ bool bad_solid_mapping = FALSE;
 #ifdef WINDOWS
 bool use_logfont = FALSE, use_logfont_ini;
 #endif
+#ifdef USE_SDL2
+bool window_decorations = FALSE;
+#endif
 byte use_graphics = FALSE, use_graphics_new = FALSE, use_graphics_err = 0;
 int override_graphics = -1; /* For '-a', '-g' and '-G' command-line parameters: These override the settings in the prf! */
 char use_graphics_errstr[MAX_CHARS_WIDE] = { 0 };

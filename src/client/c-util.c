@@ -11373,6 +11373,9 @@ static void do_cmd_options_fonts(void) {
 #else
 		Term_putstr(0, 2, -1, TERM_WHITE, "  \377yENTER\377w enter a specific font name, \377yESC\377w keep changes and exit");
 #endif
+#ifdef USE_SDL2
+		Term_putstr(0, 3, -1, TERM_WHITE, format("  \377yd\377w toggle window decorations (%s)", window_decorations ? "on" : "off"));
+#endif
 		Term_putstr(0, 4, -1, TERM_WHITE, format("  %d font%s and %d graphic font%s available, \377yl\377w to list in message window", fonts, fonts == 1 ? "" : "s", graphic_fonts, graphic_fonts == 1 ? "" : "s"));
 
 		/* Display the windows */
@@ -11433,6 +11436,14 @@ static void do_cmd_options_fonts(void) {
 			}
 			term_toggle_visibility(y);
 			break;
+
+#ifdef USE_SDL2
+		case 'd':
+			window_decorations = !window_decorations;
+			apply_window_decorations();
+			Term_putstr(0, 3, -1, TERM_WHITE, format("  d toggle window decorations (%s)", window_decorations ? "on" : "off"));
+			break;
+#endif
 
 		case ' ':
 			if (y == 0) {
