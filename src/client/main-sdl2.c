@@ -220,8 +220,9 @@ static errr Infowin_init(int x, int y, int w, int h, unsigned int b, Pixel b_col
 	/*** Create the SDL_Window* 'window' from data ***/
 
 	/* Create the Window. */
-	//TODO jezek - Add "window_decorations" into config and allow to toggle in game menu.
-	SDL_Window *window = SDL_CreateWindow("", x, y, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
+	Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+	if (!window_decorations) flags |= SDL_WINDOW_BORDERLESS;
+	SDL_Window *window = SDL_CreateWindow("", x, y, w, h, flags);
 
 	if (window == NULL) {
 		fprintf(stderr, "Error creating window in Infowin_init\n");
@@ -3058,6 +3059,15 @@ bool term_get_visibility(int term_idx) {
 
 	/* Only windows initialized in ang_term array are currently visible. */
 	return((bool)ang_term[term_idx]);
+}
+
+void apply_window_decorations(void) {
+	SDL_bool bordered = window_decorations ? SDL_TRUE : SDL_FALSE;
+	for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
+		if (!term_get_visibility(i)) continue;
+		term_data *td = term_idx_to_term_data(i);
+		SDL_SetWindowBordered(td->win->window, bordered);
+	}
 }
 
 void get_term_main_font_name(char *buf) {

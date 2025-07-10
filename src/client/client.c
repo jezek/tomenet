@@ -447,6 +447,15 @@ static bool read_mangrc(cptr filename) {
 			if (p) cfg_audio_weather_volume = atoi(p);
 		}
 #endif
+#ifdef USE_SDL2
+		if (!strncmp(buf, "window_decorations", 18)) {
+			char *p;
+
+			p = strtok(buf, " \t\n");
+			p = strtok(NULL, "\t\n");
+			if (p) window_decorations = (atoi(p) != 0);
+		}
+#endif
 
 		///LINUX_TERM_CFG
 		if (!strncmp(buf, use_term_names[0], strlen(use_term_names[0])))
@@ -917,6 +926,10 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 			fputs(format("audioVolumeWeather\t%d\n", cfg_audio_weather_volume), config2);
 #endif
 			fputs("\n", config2);
+#ifdef USE_SDL2
+			fputs(format("window_decorations\t\t%d\n", window_decorations ? 1 : 0), config2);
+			fputs("\n", config2);
+#endif
 
 #if defined(USE_X11) || defined(USE_SDL2)
 ///LINUX_TERM_CFG
