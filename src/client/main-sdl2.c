@@ -879,6 +879,22 @@ static term_data term_9;
 static term_data *sdl2_terms_term_data[ANGBAND_TERM_MAX] = {&term_main, &term_1, &term_2, &term_3, &term_4, &term_5, &term_6, &term_7, &term_8, &term_9};
 static char *sdl2_terms_font_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_FONT_TERM_MAIN", "TOMENET_SDL2_FONT_TERM_1", "TOMENET_SDL2_FONT_TERM_2", "TOMENET_SDL2_FONT_TERM_3", "TOMENET_SDL2_FONT_TERM_4", "TOMENET_SDL2_FONT_TERM_5", "TOMENET_SDL2_FONT_TERM_6", "TOMENET_SDL2_FONT_TERM_7", "TOMENET_SDL2_FONT_TERM_8", "TOMENET_SDL2_FONT_TERM_9"};
 static char *sdl2_terms_font_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_FONT_TERM_MAIN, DEFAULT_SDL2_FONT_TERM_1, DEFAULT_SDL2_FONT_TERM_2, DEFAULT_SDL2_FONT_TERM_3, DEFAULT_SDL2_FONT_TERM_4, DEFAULT_SDL2_FONT_TERM_5, DEFAULT_SDL2_FONT_TERM_6, DEFAULT_SDL2_FONT_TERM_7, DEFAULT_SDL2_FONT_TERM_8, DEFAULT_SDL2_FONT_TERM_9};
+static int sdl2_terms_ttf_size_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_TTF_FONT_SIZE_TERM_MAIN, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_1, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_2, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_3, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_4, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_5, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_6, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_7, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_8, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_9};
+
+static void ensure_ttf_font_size(char *font, int term_idx) {
+    if (!font) return;
+    if (strstr(font, ".ttf") != NULL) {
+        char name[256];
+        int size;
+        int n = sscanf(font, "%255s %d", name, &size);
+        if (n < 2) {
+            size = sdl2_terms_ttf_size_default[term_idx];
+        }
+        if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+        if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+        snprintf(font, 256, "%s %d", name, size);
+    }
+}
 const char *sdl2_terms_wid_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_WID_TERM_MAIN", "TOMENET_SDL2_WID_TERM_1", "TOMENET_SDL2_WID_TERM_2", "TOMENET_SDL2_WID_TERM_3", "TOMENET_SDL2_WID_TERM_4", "TOMENET_SDL2_WID_TERM_5", "TOMENET_SDL2_WID_TERM_6", "TOMENET_SDL2_WID_TERM_7", "TOMENET_SDL2_WID_TERM_8", "TOMENET_SDL2_WID_TERM_9"};
 const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN", "TOMENET_SDL2_HGT_TERM_1", "TOMENET_SDL2_HGT_TERM_2", "TOMENET_SDL2_HGT_TERM_3", "TOMENET_SDL2_HGT_TERM_4", "TOMENET_SDL2_HGT_TERM_5", "TOMENET_SDL2_HGT_TERM_6", "TOMENET_SDL2_HGT_TERM_7", "TOMENET_SDL2_HGT_TERM_8", "TOMENET_SDL2_HGT_TERM_9"};
 
@@ -2056,11 +2072,15 @@ static errr term_data_init(int index, term_data *td, bool fixed, cptr name, cptr
 	int topy = term_prefs[index].y;
 
 	//fprintf(stderr, "jezek -  term_data_init: initialize font %s\n", font);
-	/* Prepare the standard font */
-	MAKE(td->fnt, infofnt);
-	infofnt *old_infofnt = Infofnt;
-	Infofnt_set(td->fnt);
-	if (Infofnt_init(font) == -1) {
+        /* Prepare the standard font */
+        MAKE(td->fnt, infofnt);
+        infofnt *old_infofnt = Infofnt;
+        Infofnt_set(td->fnt);
+        char font_buf[256];
+        strncpy(font_buf, font, sizeof(font_buf));
+        font_buf[sizeof(font_buf)-1] = '\0';
+        ensure_ttf_font_size(font_buf, index);
+        if (Infofnt_init(font_buf) == -1) {
 		/* Initialization failed, log and try to use the default font. */
 		fprintf(stderr, "Failed to load the \"%s\" font for terminal %d\n", font, index);
 		if (in_game) {
@@ -2069,7 +2089,11 @@ static errr term_data_init(int index, term_data *td, bool fixed, cptr name, cptr
 			plog_fmt("Failed to load the \"%s\" font! Falling back to default font.\n", font);
 			Infofnt_set(td->fnt);
 		} 
-		if (Infofnt_init(sdl2_terms_font_default[index]) == -1) {
+                char def_buf[256];
+                strncpy(def_buf, sdl2_terms_font_default[index], sizeof(def_buf));
+                def_buf[sizeof(def_buf)-1] = '\0';
+                ensure_ttf_font_size(def_buf, index);
+                if (Infofnt_init(def_buf) == -1) {
 			/* Initialization of the default font failed too. Log, free allocated memory and return with error. */
 			fprintf(stderr, "Failed to load the default \"%s\" font for terminal %d\n", sdl2_terms_font_default[index], index);
 			Infofnt_set(old_infofnt);
@@ -2772,11 +2796,15 @@ static void term_force_font(int term_idx, cptr fnt_name) {
 	int old_fnt_hgt = td->fnt->hgt;
 
 	/* Create and initialize font. */
-	infofnt *new_font;
-	MAKE(new_font, infofnt);
-	infofnt *old_infofnt = Infofnt;
-	Infofnt_set(new_font);
-	if (Infofnt_init(fnt_name)) {
+        infofnt *new_font;
+        MAKE(new_font, infofnt);
+        infofnt *old_infofnt = Infofnt;
+        Infofnt_set(new_font);
+        char buf[256];
+        strncpy(buf, fnt_name, sizeof(buf));
+        buf[sizeof(buf)-1] = '\0';
+        ensure_ttf_font_size(buf, term_idx);
+        if (Infofnt_init(buf)) {
 		/* Failed to initialize. */
 		fprintf(stderr, "Error forcing the \"%s\" font on terminal %d\n", fnt_name, term_idx);
 		Infofnt_set(old_infofnt);
