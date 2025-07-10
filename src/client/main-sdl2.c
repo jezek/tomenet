@@ -879,6 +879,7 @@ static term_data term_9;
 static term_data *sdl2_terms_term_data[ANGBAND_TERM_MAX] = {&term_main, &term_1, &term_2, &term_3, &term_4, &term_5, &term_6, &term_7, &term_8, &term_9};
 static char *sdl2_terms_font_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_FONT_TERM_MAIN", "TOMENET_SDL2_FONT_TERM_1", "TOMENET_SDL2_FONT_TERM_2", "TOMENET_SDL2_FONT_TERM_3", "TOMENET_SDL2_FONT_TERM_4", "TOMENET_SDL2_FONT_TERM_5", "TOMENET_SDL2_FONT_TERM_6", "TOMENET_SDL2_FONT_TERM_7", "TOMENET_SDL2_FONT_TERM_8", "TOMENET_SDL2_FONT_TERM_9"};
 static char *sdl2_terms_font_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_FONT_TERM_MAIN, DEFAULT_SDL2_FONT_TERM_1, DEFAULT_SDL2_FONT_TERM_2, DEFAULT_SDL2_FONT_TERM_3, DEFAULT_SDL2_FONT_TERM_4, DEFAULT_SDL2_FONT_TERM_5, DEFAULT_SDL2_FONT_TERM_6, DEFAULT_SDL2_FONT_TERM_7, DEFAULT_SDL2_FONT_TERM_8, DEFAULT_SDL2_FONT_TERM_9};
+static int sdl2_terms_ttf_size_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_TTF_FONT_SIZE_TERM_MAIN, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_1, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_2, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_3, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_4, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_5, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_6, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_7, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_8, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_9};
 const char *sdl2_terms_wid_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_WID_TERM_MAIN", "TOMENET_SDL2_WID_TERM_1", "TOMENET_SDL2_WID_TERM_2", "TOMENET_SDL2_WID_TERM_3", "TOMENET_SDL2_WID_TERM_4", "TOMENET_SDL2_WID_TERM_5", "TOMENET_SDL2_WID_TERM_6", "TOMENET_SDL2_WID_TERM_7", "TOMENET_SDL2_WID_TERM_8", "TOMENET_SDL2_WID_TERM_9"};
 const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN", "TOMENET_SDL2_HGT_TERM_1", "TOMENET_SDL2_HGT_TERM_2", "TOMENET_SDL2_HGT_TERM_3", "TOMENET_SDL2_HGT_TERM_4", "TOMENET_SDL2_HGT_TERM_5", "TOMENET_SDL2_HGT_TERM_6", "TOMENET_SDL2_HGT_TERM_7", "TOMENET_SDL2_HGT_TERM_8", "TOMENET_SDL2_HGT_TERM_9"};
 
@@ -2335,11 +2336,30 @@ static int term_data_to_term_idx(term_data *td) {
 	return(-1);
 }
 
+/* 
+ * If provided font is a .ttf and size is missing or out of bounds, add or fix the font size.
+ */
+static void validate_font_format(char *font, int term_idx) {
+	if (!font) return;
+	if (strstr(font, ".ttf") != NULL) {
+		char name[256];
+		int size;
+		int n = sscanf(font, "%255s %d", name, &size);
+		if (n < 2) {
+			size = sdl2_terms_ttf_size_default[term_idx];
+		}
+		if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+		if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+		snprintf(font, 256, "%s %d", name, size);
+	}
+}
+
 /*
  * Initialization of i-th SDL2 terminal window.
  */
 static errr sdl2_term_init(int term_id) {
 	cptr fnt_name;
+	char valid_fnt_name[256];
 	errr err;
 
 	if (term_id < 0 || term_id >= ANGBAND_TERM_MAX) {
@@ -2362,8 +2382,12 @@ static errr sdl2_term_init(int term_id) {
 	/* Paranoia, use the default. */
 	if (!fnt_name) fnt_name = sdl2_terms_font_default[term_id];
 
+	strncpy(valid_fnt_name, fnt_name, sizeof(valid_fnt_name));
+	valid_fnt_name[sizeof(valid_fnt_name)-1] = '\0';
+	validate_font_format(valid_fnt_name, term_id);
+
 	/* Initialize the terminal window, allow resizing, for font changes. */
-	err = term_data_init(term_id, sdl2_terms_term_data[term_id], FALSE, ang_term_name[term_id], fnt_name);
+	err = term_data_init(term_id, sdl2_terms_term_data[term_id], FALSE, ang_term_name[term_id], valid_fnt_name);
 	/* Store created terminal with SDL2 term data to ang_term array, even if term_data_init failed, but only if there is one. */
 	if (Term && term_data_to_term_idx(Term->data) == term_id) ang_term[term_id] = Term;
 
@@ -2985,22 +3009,27 @@ const char* get_font_name(int term_idx) {
 void set_font_name(int term_idx, char* fnt) {
 	fprintf(stderr, "jezek - set_font_name(term_idx: %d, fnt: %s)\n", term_idx, fnt);
 	term_data *td;
+	char valid_fnt[256];
 
 	if (term_idx < 0 || term_idx >= ANGBAND_TERM_MAX) {
 		fprintf(stderr, "Terminal index %d is out of bounds for set_font_name\n", term_idx);
 		return;
 	}
 
+	strncpy(valid_fnt, fnt, sizeof(valid_fnt));
+	valid_fnt[sizeof(valid_fnt)-1] = '\0';
+	validate_font_format(valid_fnt, term_idx);
+
 	if (!term_get_visibility(term_idx)) {
 		/* Terminal is not visible, Do nothing, just change the font name in preferences. */
-		if (strcmp(term_prefs[term_idx].font, fnt) != 0) {
-			strncpy(term_prefs[term_idx].font, fnt, sizeof(term_prefs[term_idx].font));
+		if (strcmp(term_prefs[term_idx].font, valid_fnt) != 0) {
+			strncpy(term_prefs[term_idx].font, valid_fnt, sizeof(term_prefs[term_idx].font));
 			term_prefs[term_idx].font[sizeof(term_prefs[term_idx].font) - 1] = '\0';
 		}
 		return;
 	}
 
-	term_force_font(term_idx, fnt);
+	term_force_font(term_idx, valid_fnt);
 
 	/* Redraw the terminal for which the font was forced. */
 	td = term_idx_to_term_data(term_idx);
