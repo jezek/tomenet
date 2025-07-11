@@ -11267,6 +11267,7 @@ static void do_cmd_options_fonts(void) {
 
 	/* read all locally available fonts */
 	memset(font_name, 0, sizeof(char) * (MAX_FONTS * 256));
+	memset(graphic_font_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
 	if (!(dir = opendir(path))) {
@@ -11279,11 +11280,11 @@ static void do_cmd_options_fonts(void) {
 		j = -1;
 		while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
 		if (strstr(tmp_name, ".pcf")) {
-			if (fonts == MAX_FONTS) continue;
+			if (graphic_fonts == MAX_FONTS) continue;
 			tmp_name[strlen(tmp_name) - 4] = '\0';
-			strcpy(font_name[fonts], tmp_name);
-			fonts++;
-			if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			strcpy(graphic_font_name[graphic_fonts], tmp_name);
+			graphic_fonts++;
+			if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
 		} else if (strstr(tmp_name, ".ttf")) {
 			if (fonts == MAX_FONTS) continue;
 			strcpy(font_name[fonts], ent->d_name);
@@ -11344,12 +11345,10 @@ static void do_cmd_options_fonts(void) {
 	}
    #endif
 
-	if (!fonts) {
+	if (!fonts && !graphic_fonts) {
    #ifdef USE_SDL2
-		c_msg_format("No .fon font files found in directory (%s).", path);
-   #elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
 		c_msg_format("No .pcf or .ttf font files found in directory (%s).", path);
-   #else                
+   #else
 		c_msg_format("No font files found in directory (%s).", path);
    #endif
 		return;
@@ -11357,7 +11356,7 @@ static void do_cmd_options_fonts(void) {
 
 //  #ifdef WINDOWS /* actually never sort fonts on X11, because they come in a sorted manner from fonts.alias and fonts.txt files already. */
 	qsort(font_name, fonts, sizeof(char[256]), font_name_cmp);
-   #ifdef WINDOWS /* Windows supports graphic fonts for the clone-map */
+   #if defined(WINDOWS) || defined(USE_SDL2)
 	qsort(graphic_font_name, graphic_fonts, sizeof(char[256]), font_name_cmp);
    #endif
 //  #endif
@@ -11576,10 +11575,9 @@ static void do_cmd_options_fonts(void) {
    #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
-				//Include the graphic fonts, because we are cycling the clone-map
+				/* Include the graphic fonts, because we are cycling the clone-map */
 				for (j = 0; j < graphic_fonts - 1; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
-						/* advance to next font file in lib/xtra/font */
 						set_font_name(y, graphic_font_name[j + 1]);
    #ifndef WINDOWS
 						sync_sleep(x11_refresh);
@@ -11588,16 +11586,28 @@ static void do_cmd_options_fonts(void) {
 					}
 				}
 			} else {
-				for (j = 0; j < fonts - 1; j++) {
-					if (!strcasecmp(font_name[j], get_font_name(y))) {
-						/* advance to next font file in lib/xtra/font */
-						set_font_name(y, font_name[j + 1]);
-   #ifndef WINDOWS
-						sync_sleep(x11_refresh);
+   #ifdef USE_SDL2
+				const char *cur = get_font_name(y);
+				if (strstr(cur, ".ttf")) {
+					char name[256];
+					int size;
+					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					size++;
+					if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					set_font_name(y, new_fnt);
+				} else
    #endif
-						break;
+					for (j = 0; j < fonts - 1; j++) {
+						if (!strcasecmp(font_name[j], get_font_name(y))) {
+							set_font_name(y, font_name[j + 1]);
+   #ifndef WINDOWS
+							sync_sleep(x11_refresh);
+   #endif
+							break;
+						}
 					}
-				}
 			}
 			break;
 
@@ -11616,10 +11626,9 @@ static void do_cmd_options_fonts(void) {
    #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
-				//Include the graphic fonts, because we are cycling the clone-map
+				/* Include the graphic fonts, because we are cycling the clone-map. */
 				for (j = 1; j < graphic_fonts; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
-						/* retreat to previous font file in lib/xtra/font */
 						set_font_name(y, graphic_font_name[j - 1]);
    #ifndef WINDOWS
 						sync_sleep(x11_refresh);
@@ -11628,16 +11637,28 @@ static void do_cmd_options_fonts(void) {
 					}
 				}
 			} else {
-				for (j = 1; j < fonts; j++) {
-					if (!strcasecmp(font_name[j], get_font_name(y))) {
-						/* retreat to previous font file in lib/xtra/font */
-						set_font_name(y, font_name[j - 1]);
-   #ifndef WINDOWS
-						sync_sleep(x11_refresh);
+   #ifdef USE_SDL2
+				const char *cur = get_font_name(y);
+				if (strstr(cur, ".ttf")) {
+					char name[256];
+					int size;
+					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					size--;
+					if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					set_font_name(y, new_fnt);
+				} else
    #endif
-						break;
+					for (j = 1; j < fonts; j++) {
+						if (!strcasecmp(font_name[j], get_font_name(y))) {
+							set_font_name(y, font_name[j - 1]);
+   #ifndef WINDOWS
+							sync_sleep(x11_refresh);
+   #endif
+							break;
+						}
 					}
-				}
 			}
 			break;
 
