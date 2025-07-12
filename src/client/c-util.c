@@ -11281,8 +11281,8 @@ static void do_cmd_options_fonts(void) {
 		while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
 		if (strstr(tmp_name, ".pcf")) {
 			if (graphic_fonts == MAX_FONTS) continue;
-			tmp_name[strlen(tmp_name) - 4] = '\0';
-			strcpy(graphic_font_name[graphic_fonts], tmp_name);
+			strcpy(graphic_font_name[graphic_fonts], ent->d_name);
+			graphic_font_name[graphic_fonts][strlen(tmp_name) - 4] = '\0';
 			graphic_fonts++;
 			if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
 		} else if (strstr(tmp_name, ".ttf")) {
@@ -11571,14 +11571,14 @@ static void do_cmd_options_fonts(void) {
 			{
 				//TODO jezek - cleanup.
 				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
-					char name[256];
-					int size;
-					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+				char font_base[256];
+				int8_t size = 0;
+				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
+					if (size == -1) size = DEFAULT_SDL2_TTF_FONT_SIZE;
 					size++;
 					if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
 					char new_fnt[256];
-					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
 					set_font_name(y, new_fnt);
 				} else {
 					for (j = 0; j < graphic_fonts - 1; j++) {
@@ -11634,14 +11634,14 @@ static void do_cmd_options_fonts(void) {
 			{
 				//TODO jezek - cleanup.
 				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
-					char name[256];
-					int size;
-					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+				char font_base[256];
+				int8_t size = 0;
+				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
+					if (size == -1) size = DEFAULT_SDL2_TTF_FONT_SIZE;
 					size--;
 					if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
 					char new_fnt[256];
-					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
 					set_font_name(y, new_fnt);
 				} else {
 					for (j = 1; j < graphic_fonts; j++) {

@@ -40,7 +40,9 @@ extern void get_palette(byte c, byte *r, byte *g, byte *b);
 extern void refresh_palette(void);
 extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
 extern void set_window_title_x11(int term_idx, cptr title);
-#elif defined(USE_SDL2)
+#endif
+
+#ifdef USE_SDL2
 extern errr init_sdl2(void);
 
 extern void change_font(int s);
@@ -59,6 +61,7 @@ extern void refresh_palette(void);
 extern int get_misc_fonts(char *output_list, int max_misc_fonts, int max_font_name_length, int max_fonts);
 extern void set_window_title_sdl2(int term_idx, cptr title);
 extern void apply_window_decorations(void);
+extern bool is_ttf_font(const char *name, char *out_name, size_t out_name_len, int8_t *out_size);
 
 extern char *SDL2_USER_PATH, *SDL2_GAME_PATH;
 extern char SDL2_PATH_SEP[2];
