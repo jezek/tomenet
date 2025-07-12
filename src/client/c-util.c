@@ -11567,6 +11567,31 @@ static void do_cmd_options_fonts(void) {
    #endif
 		case '=':
 		case '+':
+   #ifdef USE_SDL2
+			{
+				//TODO jezek - cleanup.
+				const char *cur = get_font_name(y);
+				if (strstr(cur, ".ttf")) {
+					char name[256];
+					int size;
+					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					size++;
+					if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					set_font_name(y, new_fnt);
+				} else {
+					for (j = 0; j < graphic_fonts - 1; j++) {
+						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
+							set_font_name(y, graphic_font_name[j + 1]);
+							sync_sleep(x11_refresh);
+							break;
+						}
+					}
+				}
+			}
+			break;
+   #endif
    #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_inc(y, TRUE);
@@ -11586,19 +11611,6 @@ static void do_cmd_options_fonts(void) {
 					}
 				}
 			} else {
-   #ifdef USE_SDL2
-				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
-					char name[256];
-					int size;
-					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
-					size++;
-					if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
-					char new_fnt[256];
-					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
-					set_font_name(y, new_fnt);
-				} else
-   #endif
 					for (j = 0; j < fonts - 1; j++) {
 						if (!strcasecmp(font_name[j], get_font_name(y))) {
 							set_font_name(y, font_name[j + 1]);
@@ -11618,6 +11630,31 @@ static void do_cmd_options_fonts(void) {
 			break;
    #endif
 		case '-':
+   #ifdef USE_SDL2
+			{
+				//TODO jezek - cleanup.
+				const char *cur = get_font_name(y);
+				if (strstr(cur, ".ttf")) {
+					char name[256];
+					int size;
+					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					size--;
+					if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+					char new_fnt[256];
+					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
+					set_font_name(y, new_fnt);
+				} else {
+					for (j = 1; j < graphic_fonts; j++) {
+						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
+							set_font_name(y, graphic_font_name[j - 1]);
+							sync_sleep(x11_refresh);
+							break;
+						}
+					}
+				}
+			}
+			break;
+   #endif
    #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_dec(y, TRUE);
@@ -11637,19 +11674,6 @@ static void do_cmd_options_fonts(void) {
 					}
 				}
 			} else {
-   #ifdef USE_SDL2
-				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
-					char name[256];
-					int size;
-					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
-					size--;
-					if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
-					char new_fnt[256];
-					snprintf(new_fnt, sizeof(new_fnt), "%s %d", name, size);
-					set_font_name(y, new_fnt);
-				} else
-   #endif
 					for (j = 1; j < fonts; j++) {
 						if (!strcasecmp(font_name[j], get_font_name(y))) {
 							set_font_name(y, font_name[j - 1]);
