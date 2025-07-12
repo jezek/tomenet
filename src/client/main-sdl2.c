@@ -530,19 +530,132 @@ static errr Infofnt_init_pcf(cptr name) {
 }
 
 /*
+ * Detect if the filename is acceptable for a PCF font:
+ *  - returns true for names without any extension
+ *  - returns true for ".pcf"  (case-insensitive)
+ *  - returns false for any other extension
+ */
+bool is_pcf_font(const char *name)
+{
+	if (!name) return false;
+
+	/* Trim trailing whitespace. */
+	size_t len = strlen(name);
+	while (len > 0 && isspace((unsigned char)name[len - 1])) --len;
+
+	/* Check for empty string after trimming. */
+	if (len == 0) return false;
+
+	/* Mark end of string. One past the last real char. */
+	const char *end = name + len;
+
+	/* Find the last '.' that is *after* the last path separator. */
+	const char *dot = NULL;
+	for (const char *p = end; p-- > name; ) {
+		/* Reached a path separator.  */
+		if (*p == '/' || *p == '\\') break;
+
+		/* Found a potential extension. */
+		if (*p == '.') {
+			dot = p;
+			break;
+		}
+	}
+
+	/* No '.'  → no extension. */
+	if (!dot) return true;
+
+	/* Compare the extension including the dot. */
+	if ((end - dot) == 4 && strncasecmp(dot, ".pcf", 4) == 0) return true;
+
+	/* Other extension. */
+	return false;
+}
+
+/*
+ * Detect if `name` refers to a TTF font.
+ * ────────────────────────────────────────────────────────────────
+ * - If the filename ends with “.ttf” (case-insensitive), returns
+ *   true; otherwise returns false.
+ * - If `out_name` != NULL and `out_name_len` > 0, copies the
+ *   *sanitized* basename (the part up to and including ".ttf",
+ *   without trailing spaces or size suffix) into that buffer.
+ * - If `out_size` != NULL, stores the parsed size; stores -1 when
+ *   no numeric suffix is present.
+ *
+ * No dynamic allocation happens inside this function, so the caller
+ * never has to `free()` anything.
+ */
+bool is_ttf_font(const char *name, char *out_name, size_t out_name_len, int8_t *out_size) {
+	const char *ext;
+	const char *p;
+	int8_t size = -1;
+	char tmp[256];
+	size_t len;
+
+	/* Initialise optional outputs. */
+	if (out_name && out_name_len) *out_name = '\0';
+	if (out_size) *out_size = -1;
+
+	if (!name || !*name) return false;
+
+	/* Copy and truncate to local buffer. */
+	len = strlen(name);
+	if (len >= sizeof(tmp)) len = sizeof(tmp) - 1;
+	memcpy(tmp, name, len);
+	tmp[len] = '\0';
+
+	/* Trim trailing whitespace. */
+	while (len && isspace((unsigned char)tmp[len - 1])) tmp[--len] = '\0';
+
+	/* Locate extension. */
+	ext = strrchr(tmp, '.');
+	if (!ext || strncasecmp(ext, ".ttf", 4) != 0)
+		return false;
+
+	/* Parse optional numeric size after ".ttf". */
+	/* Point just past ".ttf". */
+	p = ext + 4;
+	while (isspace((unsigned char)*p)) p++;
+	if (*p) {
+		/* There is something after the spaces. */
+		char *endptr;
+		long val = strtol(p, &endptr, 10);
+		/* Not a number. */
+		if (endptr == p) return false;
+		while (isspace((unsigned char)*endptr)) endptr++;
+		/* Junk after number. */
+		if (*endptr) return false;
+		size = (int8_t)val;
+	}
+
+	/* Copy sanitized basename into caller-supplied buffer. */
+	if (out_name && out_name_len) {
+		/* Include ".ttf". */
+		size_t base_len = (ext - tmp) + 4;
+		if (base_len >= out_name_len) base_len = out_name_len - 1;
+		memcpy(out_name, tmp, base_len);
+		out_name[base_len] = '\0';
+	}
+
+	if (out_size) *out_size = size;
+
+	return true;
+}
+
+/*
  * Init an infofnt by its Name
  *
  * Inputs:
  *	name: The name of the requested Font
  */
 static errr Infofnt_init(cptr name) {
-	// Detect true type font.
-	if (strstr(name, ".ttf") != NULL) {
-		return Infofnt_init_ttf(name);
+	/* TrueType fonts are assumed unless the file name denotes a PCF font. */
+	if (is_pcf_font(name)) {
+		return Infofnt_init_pcf(name);
 	}
+	return Infofnt_init_ttf(name);
 
-	// Assume this is a .pcf monospaced bitmap font.
-	return Infofnt_init_pcf(name);
 }
 
 /*
@@ -2340,17 +2453,13 @@ static int term_data_to_term_idx(term_data *td) {
  * If provided font is a .ttf and size is missing or out of bounds, add or fix the font size.
  */
 static void validate_font_format(char *font, int term_idx) {
-	if (!font) return;
-	if (strstr(font, ".ttf") != NULL) {
-		char name[256];
-		int size;
-		int n = sscanf(font, "%255s %d", name, &size);
-		if (n < 2) {
-			size = sdl2_terms_ttf_size_default[term_idx];
-		}
+	char font_base[256];
+	int8_t size = 0;
+	if (is_ttf_font(font, font_base, sizeof(font_base), &size)) {
+		if (size < 0) size = sdl2_terms_ttf_size_default[term_idx];
 		if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
 		if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
-		snprintf(font, 256, "%s %d", name, size);
+		snprintf(font, 256, "%s %d", font_base, size);
 	}
 }
 
