@@ -536,13 +536,12 @@ static errr Infofnt_init_pcf(cptr name) {
  *	name: The name of the requested Font
  */
 static errr Infofnt_init(cptr name) {
-	// Detect true type font.
-	if (strstr(name, ".ttf") != NULL) {
-		return Infofnt_init_ttf(name);
-	}
+        /* TrueType fonts are assumed unless the file name denotes a PCF font. */
+        if (!is_pcf_font(name)) {
+                return Infofnt_init_ttf(name);
+        }
 
-	// Assume this is a .pcf monospaced bitmap font.
-	return Infofnt_init_pcf(name);
+        return Infofnt_init_pcf(name);
 }
 
 /*
@@ -2340,8 +2339,8 @@ static int term_data_to_term_idx(term_data *td) {
  * If provided font is a .ttf and size is missing or out of bounds, add or fix the font size.
  */
 static void validate_font_format(char *font, int term_idx) {
-	if (!font) return;
-	if (strstr(font, ".ttf") != NULL) {
+        if (!font) return;
+        if (!is_pcf_font(font)) {
 		char name[256];
 		int size;
 		int n = sscanf(font, "%255s %d", name, &size);

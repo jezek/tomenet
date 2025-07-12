@@ -11203,9 +11203,22 @@ static int font_name_cmp(const void *a, const void *b) {
 
 	if (fwid1 != fwid2) return(fwid1 > fwid2) ? 1 : -1;
 	else if (fhgt1 != fhgt2) return(fhgt1 > fhgt2) ? 1 : -1;
-	else return(0);
+       else return(0);
    #endif
 }
+#ifdef USE_SDL2
+bool is_pcf_font(const char *name) {
+       size_t len;
+
+       if (!name) return false;
+
+       len = strlen(name);
+       while (len > 0 && isspace((unsigned char)name[len - 1])) len--;
+       if (len < 4) return false;
+
+       return strncasecmp(name + len - 4, ".pcf", 4) == 0;
+}
+#endif
 //  #endif
 
 static void do_cmd_options_fonts(void) {
@@ -11275,23 +11288,24 @@ static void do_cmd_options_fonts(void) {
 		return;
 	}
 
-	while ((ent = readdir(dir))) {
-		strcpy(tmp_name, ent->d_name);
-		j = -1;
-		while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-		if (strstr(tmp_name, ".pcf")) {
-			if (graphic_fonts == MAX_FONTS) continue;
-			tmp_name[strlen(tmp_name) - 4] = '\0';
-			strcpy(graphic_font_name[graphic_fonts], tmp_name);
-			graphic_fonts++;
-			if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
-		} else if (strstr(tmp_name, ".ttf")) {
-			if (fonts == MAX_FONTS) continue;
-			strcpy(font_name[fonts], ent->d_name);
-			fonts++;
-			if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
-		}
-	}
+        while ((ent = readdir(dir))) {
+                strcpy(tmp_name, ent->d_name);
+                if (is_pcf_font(tmp_name)) {
+                        if (graphic_fonts == MAX_FONTS) continue;
+                        j = strlen(tmp_name);
+                        while (j > 0 && isspace((unsigned char)tmp_name[j - 1])) j--;
+                        tmp_name[j - 4] = '\0';
+                        for (j = 0; tmp_name[j]; j++) tmp_name[j] = tolower((unsigned char)tmp_name[j]);
+                        strcpy(graphic_font_name[graphic_fonts], tmp_name);
+                        graphic_fonts++;
+                        if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+                } else {
+                        if (fonts == MAX_FONTS) continue;
+                        strcpy(font_name[fonts], ent->d_name);
+                        fonts++;
+                        if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+                }
+        }
 	closedir(dir);
    #elif defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
@@ -11570,8 +11584,8 @@ static void do_cmd_options_fonts(void) {
    #ifdef USE_SDL2
 			{
 				//TODO jezek - cleanup.
-				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
+                                const char *cur = get_font_name(y);
+                                if (!is_pcf_font(cur)) {
 					char name[256];
 					int size;
 					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
@@ -11633,8 +11647,8 @@ static void do_cmd_options_fonts(void) {
    #ifdef USE_SDL2
 			{
 				//TODO jezek - cleanup.
-				const char *cur = get_font_name(y);
-				if (strstr(cur, ".ttf")) {
+                                const char *cur = get_font_name(y);
+                                if (!is_pcf_font(cur)) {
 					char name[256];
 					int size;
 					if (sscanf(cur, "%255s %d", name, &size) != 2) size = DEFAULT_SDL2_TTF_FONT_SIZE;
