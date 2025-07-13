@@ -486,9 +486,14 @@ static errr Infofnt_init_pcf(cptr name) {
 
 	PCF_Font *font;
 	char font_name[256];
+	
+	/* Append .pcf extension if missing */
+	size_t len = strlen(name);
+	bool has_ext = (len >= 4) && strcasecmp(name + len - 4, ".pcf") == 0;
+	if (has_ext) strncpy(font_name, name, sizeof(font_name));
+	else snprintf(font_name, sizeof(font_name), "%s.pcf", name);
+	font_name[sizeof(font_name) - 1] = '\0';
 
-	// Add .pcf extension.
-	sprintf(font_name, "%s.pcf", name);
 	fprintf(stderr, "jezek -  Infofnt_init_pcf: load font %s\n", font_name);
 
 	char buf[1024];
