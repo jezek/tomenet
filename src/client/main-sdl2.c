@@ -3813,8 +3813,8 @@ static PCF_Font* PCF_OpenFont(const char *name) {
 	max_byte1 = pcf_readS16(f, encodingsFormat);
 	default_char = pcf_readS16(f, encodingsFormat);
 
-	if (min_byte1 != max_byte1 != 0) {
-		//For single byte encodings min_byte1==max_byte1==0, and encoded values are between [min_char_or_byte2,max_char_or_byte2]. The glyph index corresponding to an encoding is glyphindex[encoding-min_char_or_byte2].
+	if (min_byte1 != 0 || max_byte1 != 0) {
+		//For single byte encodings min_byte1 == max_byte1 == 0, and encoded values are between [min_char_or_byte2,max_char_or_byte2]. The glyph index corresponding to an encoding is glyphindex[encoding-min_char_or_byte2].
 		fprintf(stderr, "Error: Only single byte encodings are supported.\n");
 		PCF_CloseFont(font);
 		FREE(tables, PCFTable);
