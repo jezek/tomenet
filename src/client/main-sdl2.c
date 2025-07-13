@@ -2457,17 +2457,32 @@ static int term_data_to_term_idx(term_data *td) {
 	return(-1);
 }
 
-/* 
- * If provided font is a .ttf and size is missing or out of bounds, add or fix the font size.
- */
-static void validate_font_format(char *font, int term_idx) {
-	char font_base[256];
+/* Normalize a font string in-place:
+ *   - TTF → add/default/clamp size and rewrite as "<file> <size>".
+ *   - non-TTF → trim trailing whitespace.
+ * `font` points to a writable buffer of `font_len` bytes.
+ * `term_idx` selects the fallback size from sdl2_terms_ttf_size_default[].
+ * */
+static void sanitize_font_format(char *font, size_t font_len, int term_idx) {
+	if (font == NULL || font_len == 0) return;
+
+	char   font_base[256];
 	int8_t size = 0;
+	size_t len;
+
 	if (is_ttf_font(font, font_base, sizeof(font_base), &size)) {
+		/* Fix missing or out-of-range size. */
 		if (size < 0) size = sdl2_terms_ttf_size_default[term_idx];
+
 		if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
-		if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
-		snprintf(font, 256, "%s %d", font_base, size);
+		else if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+
+		/* Rebuild the canonical “<file> <size>” string. */
+		snprintf(font, font_len, "%s %d", font_base, size);
+	} else {
+		/* Trim trailing spaces for non-TTF descriptions. */
+		len = strlen(font);
+		while (len && isspace((unsigned char)font[len - 1])) font[--len] = '\0';
 	}
 }
 
@@ -2476,7 +2491,7 @@ static void validate_font_format(char *font, int term_idx) {
  */
 static errr sdl2_term_init(int term_id) {
 	cptr fnt_name;
-	char valid_fnt_name[256];
+	char sanitized_fnt_name[256];
 	errr err;
 
 	if (term_id < 0 || term_id >= ANGBAND_TERM_MAX) {
@@ -2499,12 +2514,13 @@ static errr sdl2_term_init(int term_id) {
 	/* Paranoia, use the default. */
 	if (!fnt_name) fnt_name = sdl2_terms_font_default[term_id];
 
-	strncpy(valid_fnt_name, fnt_name, sizeof(valid_fnt_name));
-	valid_fnt_name[sizeof(valid_fnt_name)-1] = '\0';
-	validate_font_format(valid_fnt_name, term_id);
+	strncpy(sanitized_fnt_name, fnt_name, sizeof(sanitized_fnt_name));
+	sanitized_fnt_name[sizeof(sanitized_fnt_name)-1] = '\0';
+	sanitize_font_format(sanitized_fnt_name, sizeof(sanitized_fnt_name), term_id);
+	fprintf(stderr, "jezek - sdl2_term_init: sanitized name: %s\n", sanitized_fnt_name);
 
 	/* Initialize the terminal window, allow resizing, for font changes. */
-	err = term_data_init(term_id, sdl2_terms_term_data[term_id], FALSE, ang_term_name[term_id], valid_fnt_name);
+	err = term_data_init(term_id, sdl2_terms_term_data[term_id], FALSE, ang_term_name[term_id], sanitized_fnt_name);
 	/* Store created terminal with SDL2 term data to ang_term array, even if term_data_init failed, but only if there is one. */
 	if (Term && term_data_to_term_idx(Term->data) == term_id) ang_term[term_id] = Term;
 
@@ -3126,27 +3142,28 @@ const char* get_font_name(int term_idx) {
 void set_font_name(int term_idx, char* fnt) {
 	fprintf(stderr, "jezek - set_font_name(term_idx: %d, fnt: %s)\n", term_idx, fnt);
 	term_data *td;
-	char valid_fnt[256];
+	char sanitized_fnt[256];
 
 	if (term_idx < 0 || term_idx >= ANGBAND_TERM_MAX) {
 		fprintf(stderr, "Terminal index %d is out of bounds for set_font_name\n", term_idx);
 		return;
 	}
 
-	strncpy(valid_fnt, fnt, sizeof(valid_fnt));
-	valid_fnt[sizeof(valid_fnt)-1] = '\0';
-	validate_font_format(valid_fnt, term_idx);
+	strncpy(sanitized_fnt, fnt, sizeof(sanitized_fnt));
+	sanitized_fnt[sizeof(sanitized_fnt)-1] = '\0';
+	sanitize_font_format(sanitized_fnt, sizeof(sanitized_fnt), term_idx);
+	fprintf(stderr, "jezek - set_font_name: sanitized name: %s\n", sanitized_fnt);
 
 	if (!term_get_visibility(term_idx)) {
 		/* Terminal is not visible, Do nothing, just change the font name in preferences. */
-		if (strcmp(term_prefs[term_idx].font, valid_fnt) != 0) {
-			strncpy(term_prefs[term_idx].font, valid_fnt, sizeof(term_prefs[term_idx].font));
+		if (strcmp(term_prefs[term_idx].font, sanitized_fnt) != 0) {
+			strncpy(term_prefs[term_idx].font, sanitized_fnt, sizeof(term_prefs[term_idx].font));
 			term_prefs[term_idx].font[sizeof(term_prefs[term_idx].font) - 1] = '\0';
 		}
 		return;
 	}
 
-	term_force_font(term_idx, valid_fnt);
+	term_force_font(term_idx, sanitized_fnt);
 
 	/* Redraw the terminal for which the font was forced. */
 	td = term_idx_to_term_data(term_idx);
