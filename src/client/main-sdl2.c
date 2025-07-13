@@ -4037,6 +4037,7 @@ SDL_Surface* PCF_RenderText(struct PCF_Font* font, const char* str, SDL_Color fg
 	preparation = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
 	if (!preparation) {
 		fprintf(stderr, "PCF_RenderText: Error creating preparation surface: %s\n", TTF_GetError());
+		SDL_FreeSurface(surface);
 		return NULL;
 	}
 	// Fill the preparation surface with foreground color.
