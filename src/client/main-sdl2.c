@@ -4,7 +4,8 @@
  * SDL2 bindings implementation for the TomeNET game project.
  * Handles window creation, event handling, keyboard input, and graphics/text output using SDL2.
  *
- * Note: Requires SDL2, SDL2_ttf and SDL2_image libraries.
+ * Note: Requires SDL2, SDL2_ttf and SDL2_net libraries.
+ * PNG screenshot functionality optionally uses SDL2_image when compiled with SDL2_IMAGE defined.
  */
 
 #include "angband.h"
@@ -13,10 +14,10 @@
 #include "../common/z-virt.h"
 #include "../common/z-form.h"
 
-#ifndef __MAKEDEPEND__
- #include <SDL2/SDL.h>
- #include <SDL2/SDL_ttf.h>
- #include <SDL2/SDL_net.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_net.h>
+#ifdef SDL2_IMAGE
  #include <SDL2/SDL_image.h>
 #endif
 
@@ -2635,12 +2636,14 @@ errr init_sdl2(void) {
                return(-1);
        }
 
+#ifdef SDL2_IMAGE
        if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
                fprintf(stderr, "ERROR: init_sdl2: IMG_Init error: %s\n", IMG_GetError());
                TTF_Quit();
                SDL_Quit();
                return(-1);
        }
+#endif
 
 	/* Initialize SDL_net */
 	if (SDLNet_Init() < 0) {
@@ -3508,23 +3511,28 @@ void set_window_title_sdl2(int term_idx, cptr title) {
 }
 
 errr sdl2_win_term_main_screenshot(cptr name) {
-       if (!term_main.win || !term_main.win->surface) return 1;
+#ifndef SDL2_IMAGE
+	plog("PNG screenshot support not available. Recompile with SDL2_image.");
+	return 1;
+#else
+	if (!term_main.win || !term_main.win->surface) return 1;
 
-       /* Ensure latest contents are displayed */
-       SDL_UpdateWindowSurface(term_main.win->window);
+	/* Ensure latest contents are displayed */
+	SDL_UpdateWindowSurface(term_main.win->window);
 
-       SDL_Surface *surface = term_main.win->surface;
-       SDL_Surface *conv = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
-       if (!conv) return 1;
+	SDL_Surface *surface = term_main.win->surface;
+	SDL_Surface *conv = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
+	if (!conv) return 1;
 
-       if (IMG_SavePNG(conv, name) != 0) {
-               SDL_Log("IMG_SavePNG failed: %s", IMG_GetError());
-               SDL_FreeSurface(conv);
-               return 1;
-       }
+	if (IMG_SavePNG(conv, name) != 0) {
+		SDL_Log("IMG_SavePNG failed: %s", IMG_GetError());
+		SDL_FreeSurface(conv);
+		return 1;
+	}
 
-       SDL_FreeSurface(conv);
-       return 0;
+	SDL_FreeSurface(conv);
+	return 0;
+#endif
 }
 
 /* PCF definitions and handling functions. */
