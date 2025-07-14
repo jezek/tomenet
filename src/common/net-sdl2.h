@@ -28,10 +28,9 @@
  */
 
 #ifndef _SOCKLIB_INCLUDED
- #ifndef __MAKEDEPEND__
-  #include <SDL2/SDL_net.h>
- #endif
  #define _SOCKLIB_INCLUDED
+
+ #include <SDL2/SDL_net.h>
 
  /* Error values and their meanings */
  #define SL_ESOCKET		0	/* socket system call error */

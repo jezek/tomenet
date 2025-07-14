@@ -9,11 +9,12 @@
 # If you want to use tolua.exe for .c files generation from .pkg files, wine must be installed to run the tolua.exe during compilation.
 # If wine isn't installed, the generation of .c files from .pkg files will be automatically done by linux native tolua executable.
 #
-# Also you need to install the headers for SDL2, SDL_mixer, SDL_ttf and SDL_net in your (cross) compiling environment.
+# Also you need to install the headers for SDL2, SDL2_mixer, SDL2_ttf and SDL_net in your (cross) compiling environment.
 #
 # Flags:
 #
-#  - USE_SDL2 - Required for all SDL2 clients, uses SDL2, SDL2_ttf and SDL2_image libraries. Is set as default.
+#  - USE_SDL2 - Required for all SDL2 clients, uses SDL2, SDL2_mixer, SDL2_ttf and SDL_net libraries.
+#    PNG screenshot support additionally requires SDL2_image when available.
 #
 #  - SOUND_SDL - Optional, using SDL2_mixer library and provides SDL sound/music support. Is set as default.
 #
@@ -114,6 +115,22 @@ SDL_CONFIG_MINGW ?= /usr/$(MINGW_TARGET)/bin/sdl2-config
 #
 COMMON_FLAGS_LINUX := -std=c99 -pipe -Wall -fPIE -fsigned-char -DMEXP=19937 -D_XOPEN_SOURCE -D_BSD_SOURCE -D_DEFAULT_SOURCE -Iserver -Iserver/lua
 COMMON_FLAGS_MINGW := -flto=auto -Wall -DMEXP=19937 -std=c99 -DWINVER=0x0501 -DMINGW -Iserver -Iserver/lua
+
+# Check for SDL2_image library and set flags accordingly
+SDL2_IMAGE_LINUX ?= $(shell $(PKG_CONFIG_LINUX) --exists SDL2_image && echo yes)
+SDL2_IMAGE_MINGW ?= $(shell $(PKG_CONFIG_MINGW) --exists SDL2_image && echo yes)
+ifeq ($(SDL2_IMAGE_LINUX),yes)
+	FLAGS_SDL2_IMAGE_LINUX := -DSDL2_IMAGE
+  LIBS_SDL2_IMAGE_LINUX := -lSDL2_image
+else
+  $(warning Warning: SDL2_image library for linux not found, PNG screenshot support disabled)
+endif
+ifeq ($(SDL2_IMAGE_MINGW),yes)
+  FLAGS_SDL2_IMAGE_MINGW := -DSDL2_IMAGE
+  LIBS_SDL2_IMAGE_MINGW := -lSDL2_image
+else
+  $(warning Warning: SDL2_image library for mingw not found, PNG screenshot support disabled)
+endif
 
 
 #TODO jezek - figure out how.
@@ -216,8 +233,8 @@ date:
 #
 # Rules for building the TomeNET SDL2 (test) client
 #
-tomenet tomenet.test: CFLAGS = -Djezek_t $(COMMON_FLAGS_LINUX) -DUSE_SDL2 -DSOUND_SDL $(shell $(SDL_CONFIG_LINUX) --cflags)
-tomenet tomenet.test: LIBS = -lm -lSDL2_mixer -lSDL2_ttf -lSDL2_net -lSDL2_image $(shell $(SDL_CONFIG_LINUX) --libs)
+tomenet tomenet.test: CFLAGS = -Djezek_t $(COMMON_FLAGS_LINUX) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_LINUX) $(shell $(SDL_CONFIG_LINUX) --cflags)
+tomenet tomenet.test: LIBS = -lm -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_LINUX) $(shell $(SDL_CONFIG_LINUX) --libs)
 # Compiler for lient gets additional security hardening flags (linker too)
 tomenet: CFLAGS += -fstack-protector -D_FORTIFY_SOURCE=2 -g -O2
 tomenet: $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX)
@@ -229,8 +246,8 @@ tomenet.test: CPPFLAGS += -DTEST_CLIENT
 tomenet.test: $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX)
 	$(CC_LINUX) $(CFLAGS) -o tomenet $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX) $(LIBS)
 
-tomenet.exe tomenet.test.exe: CFLAGS = -Djezek_t $(COMMON_FLAGS_MINGW) -DUSE_SDL2 -DSOUND_SDL $(shell $(SDL_CONFIG_MINGW) --cflags)
-tomenet.exe tomenet.test.exe: LIBS = -lregex -lSDL2_mixer -lSDL2_ttf -lSDL2_net -lSDL2_image $(shell $(SDL_CONFIG_MINGW) --libs)
+tomenet.exe tomenet.test.exe: CFLAGS = -Djezek_t $(COMMON_FLAGS_MINGW) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_MINGW) $(shell $(SDL_CONFIG_MINGW) --cflags)
+tomenet.exe tomenet.test.exe: LIBS = -lregex -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_MINGW) $(shell $(SDL_CONFIG_MINGW) --libs)
 # Compiler for lient gets additional security hardening flags (linker too)
 tomenet.exe: CFLAGS += -D_FORTIFY_SOURCE=2 -O2
 tomenet.exe: $(CLI_OBJS_MINGW) $(CLI_LUAOBJS_MINGW) $(TOLUAOBJS_MINGW)
