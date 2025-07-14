@@ -11220,11 +11220,10 @@ static void do_cmd_options_fonts(void) {
 	char graphic_font_name[MAX_FONTS][256];
 	int graphic_fonts = 0;
 
-   #ifndef WINDOWS
-  //TODO jezek - Do we need x11_refresh with sdl2?
+   #ifdef USE_X11
 	int x11_refresh = 50;
 	FILE *fff;
-   #else
+   #elif defined(WINDOWS)
 	char *cp, *cpp;
    #endif
 
@@ -11584,7 +11583,6 @@ static void do_cmd_options_fonts(void) {
 					for (j = 0; j < graphic_fonts - 1; j++) {
 						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 							set_font_name(y, graphic_font_name[j + 1]);
-							sync_sleep(x11_refresh);
 							break;
 						}
 					}
@@ -11604,7 +11602,7 @@ static void do_cmd_options_fonts(void) {
 				for (j = 0; j < graphic_fonts - 1; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 						set_font_name(y, graphic_font_name[j + 1]);
-   #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
    #endif
 						break;
@@ -11614,7 +11612,7 @@ static void do_cmd_options_fonts(void) {
 					for (j = 0; j < fonts - 1; j++) {
 						if (!strcasecmp(font_name[j], get_font_name(y))) {
 							set_font_name(y, font_name[j + 1]);
-   #ifndef WINDOWS
+   #ifdef USE_X11
 							sync_sleep(x11_refresh);
    #endif
 							break;
@@ -11647,7 +11645,6 @@ static void do_cmd_options_fonts(void) {
 					for (j = 1; j < graphic_fonts; j++) {
 						if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 							set_font_name(y, graphic_font_name[j - 1]);
-							sync_sleep(x11_refresh);
 							break;
 						}
 					}
@@ -11667,7 +11664,7 @@ static void do_cmd_options_fonts(void) {
 				for (j = 1; j < graphic_fonts; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 						set_font_name(y, graphic_font_name[j - 1]);
-   #ifndef WINDOWS
+   #ifdef USE_X11
 						sync_sleep(x11_refresh);
    #endif
 						break;
@@ -11677,7 +11674,7 @@ static void do_cmd_options_fonts(void) {
 					for (j = 1; j < fonts; j++) {
 						if (!strcasecmp(font_name[j], get_font_name(y))) {
 							set_font_name(y, font_name[j - 1]);
-   #ifndef WINDOWS
+   #ifdef USE_X11
 							sync_sleep(x11_refresh);
    #endif
 							break;
@@ -11712,7 +11709,7 @@ static void do_cmd_options_fonts(void) {
 			clear_from(20);
 			if (!tmp_name[0]) break;
 			set_font_name(y, tmp_name);
-   #ifndef WINDOWS
+   #ifdef USE_X11
 			sync_sleep(x11_refresh);
    #endif
 			break;
