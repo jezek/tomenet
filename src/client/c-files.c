@@ -2181,7 +2181,7 @@ void xhtml_screenshot(cptr name, byte redux) {
 	}
 
 #ifdef ENABLE_SHIFT_SPECIALKEYS
-	/* Hack: SHIFT+CTRL+T makes a real (PNG) screenshot instead of an xhtml screenshot - C. Blue */
+	/* Hack: SHIFT+CTRL+T makes a real screenshot (PNG or BMP) instead of an xhtml screenshot - C. Blue */
 	if ((!c_cfg.screenshot_keys && inkey_shift_special == 3) ||
 	    (c_cfg.screenshot_keys && inkey_shift_special != 3)) {
  #if defined(USE_X11)
@@ -2200,15 +2200,15 @@ void xhtml_screenshot(cptr name, byte redux) {
 			return;
 		}
  #elif defined(USE_SDL2)
-		//TODO jezek - Test PNG screenshot generations using shift special keys.
+		//TODO jezek - Test screenshot generation using shift special keys.
 		char buf2[1028];
 		strcpy(buf2, buf);
 		buf2[strlen(buf2) - 5] = 0;
 
-		if (sdl2_win_term_main_screenshot(format("%spng", buf2))) {
-			c_msg_format("Error: Failed to save screenshot of main term window to %spng", buf2);
+		if (sdl2_win_term_main_screenshot(format("%s" SDL2_SCREENSHOT_EXT, buf2))) {
+			c_msg_format("Error: Failed to save screenshot of main term window to %s" SDL2_SCREENSHOT_EXT, buf2);
 		} else {
-			if (!silent_dump) c_msg_format("Screenshot saved to %spng", buf2);
+			if (!silent_dump) c_msg_format("Screenshot saved to %s" SDL2_SCREENSHOT_EXT, buf2);
 		}
 		silent_dump = FALSE;
 		return;

@@ -6799,12 +6799,17 @@ static void monster_lore(void) {
 //#define SCREENSHOT_TARGET "tomenet-screenshot.png"
 #define SCREENSHOT_TARGET (format("%s.png", screenshot_filename))
 bool png_screenshot(void) {
+#ifdef USE_SDL2
+	//TODO jezek - Try converting last XHTML screenshot to PNG using NetSurf stack.
+	c_msg_print("\377ySorry, converting last XHTML screenshot to PNG is work in progress.");
+	return(FALSE);
+#endif
 #ifdef WINDOWS
 	char path[1024], *c = path, *c2, tmp[1024], executable[1024];
 #endif
-#if !defined(WINDOWS) && !defined(USE_X11) && !defined(USE_SDL2)
+#if !defined(WINDOWS) && !defined(USE_X11)
 	/* Neither WINDOWS nor USE_X11 */
-	c_msg_print("\377ySorry, creating a PNG file from a screenshot requires an SDL2 client or X11 or Windows system.");
+	c_msg_print("\377ySorry, creating a image file from a screenshot requires an X11 or Windows system.");
 	return(FALSE);
 #else
 	char buf[1024], file_name[1024], command[1024];
@@ -6816,12 +6821,6 @@ bool png_screenshot(void) {
 		c_msg_print("\377yYou have not made a screenshot yet this session (CTRL+T).");
 		return(FALSE);
 	}
-#endif
-
-#ifdef USE_SDL2
-	//TODO jezek - Save screenshot as PNG. (Aren't you doing this already?)
-	c_msg_print("\377ySorry, work in progress.");
-	return(FALSE);
 #endif
 
 #ifdef WINDOWS
@@ -7462,8 +7461,7 @@ void cmd_check_misc(void) {
 #if defined(USE_X11) || defined(USE_SDL2)
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
-#endif
-#ifdef WINDOWS
+#elif defined(WINDOWS)
 			/* The ini file contains a long path (unlike mangrc_filename), so use two lines for it.. */
 			if (strlen(ini_file) <= 35)
 				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", ini_file));

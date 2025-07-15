@@ -5,7 +5,7 @@
  * Handles window creation, event handling, keyboard input, and graphics/text output using SDL2.
  *
  * Note: Requires SDL2, SDL2_ttf and SDL2_net libraries.
- * PNG screenshot functionality optionally uses SDL2_image when compiled with SDL2_IMAGE defined.
+ * Screenshot saving uses SDL2_image for PNG when available; otherwise BMP is used.
  */
 
 #include "angband.h"
@@ -3511,28 +3511,28 @@ void set_window_title_sdl2(int term_idx, cptr title) {
 }
 
 errr sdl2_win_term_main_screenshot(cptr name) {
-#ifndef SDL2_IMAGE
-	plog("PNG screenshot support not available. Recompile with SDL2_image.");
-	return 1;
-#else
 	if (!term_main.win || !term_main.win->surface) return 1;
 
-	/* Ensure latest contents are displayed */
+	/* Ensure latest content is displayed */
 	SDL_UpdateWindowSurface(term_main.win->window);
 
 	SDL_Surface *surface = term_main.win->surface;
 	SDL_Surface *conv = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
 	if (!conv) return 1;
 
+#ifdef SDL2_IMAGE
 	if (IMG_SavePNG(conv, name) != 0) {
 		SDL_Log("IMG_SavePNG failed: %s", IMG_GetError());
+#else
+	if (SDL_SaveBMP(conv, name) != 0) {
+		SDL_Log("SDL_SaveBMP failed: %s", SDL_GetError());
+#endif
 		SDL_FreeSurface(conv);
 		return 1;
 	}
 
 	SDL_FreeSurface(conv);
 	return 0;
-#endif
 }
 
 /* PCF definitions and handling functions. */
