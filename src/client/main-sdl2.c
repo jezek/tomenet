@@ -2855,66 +2855,53 @@ void change_font(int s) {
 	if (term_main.fnt->name) strcpy(tmp, term_main.fnt->name);
 	else strcpy(tmp, DEFAULT_SDL2_FONT);
 
-	/* cycle? */
-	if (s == -1) {
-		if (strstr(tmp, " 10")) s = 1;
-		else if (strstr(tmp, " 12")) s = 2;
-		else if (strstr(tmp, " 14")) s = 3;
-		else if (strstr(tmp, " 16")) s = 0;
-	}
+        /* cycle? */
+        if (s == -1) {
+                if (term_main.fnt->type == FONT_TYPE_PCF) {
+                        if (strstr(tmp, "8x13")) s = 1;
+                        else if (strstr(tmp, "9x15")) s = 2;
+                        else if (strstr(tmp, "12x24")) s = 3;
+                        else if (strstr(tmp, "16x24")) s = 0;
+                } else {
+                        if (strstr(tmp, " 10")) s = 1;
+                        else if (strstr(tmp, " 12")) s = 2;
+                        else if (strstr(tmp, " 14")) s = 3;
+                        else if (strstr(tmp, " 16")) s = 0;
+                }
+        }
 
-	//TODO jezek - Just do cycling, don't change font names.
-	/* Force the font */
-	switch (s) {
-	case 0:
-		/* change main window font */
-		term_force_font(0, "Hack-Regular.ttf 10");
-		/* Change sub windows too */
-		term_force_font(1, "Hack-Regular.ttf 10");
-		term_force_font(2, "Hack-Regular.ttf 10");
-		term_force_font(3, "Hack-Regular.ttf 6");
-		term_force_font(4, "Hack-Regular.ttf 8");
-		term_force_font(5, "Hack-Regular.ttf 8");
-		term_force_font(6, "Hack-Regular.ttf 6");
-		term_force_font(7, "Hack-Regular.ttf 6");
-		break;
-	case 1:
-		/* change main window font */
-		term_force_font(0, "Hack-Regular.ttf 12");
-		/* Change sub windows too */
-		term_force_font(1, "Hack-Regular.ttf 12");
-		term_force_font(2, "Hack-Regular.ttf 12");
-		term_force_font(3, "Hack-Regular.ttf 8");
-		term_force_font(4, "Hack-Regular.ttf 10");
-		term_force_font(5, "Hack-Regular.ttf 10");
-		term_force_font(6, "Hack-Regular.ttf 8");
-		term_force_font(7, "Hack-Regular.ttf 8");
-		break;
-	case 2:
-		/* change main window font */
-		term_force_font(0, "Hack-Regular.ttf 14");
-		/* Change sub windows too */
-		term_force_font(1, "Hack-Regular.ttf 14");
-		term_force_font(2, "Hack-Regular.ttf 14");
-		term_force_font(3, "Hack-Regular.ttf 10");
-		term_force_font(4, "Hack-Regular.ttf 12");
-		term_force_font(5, "Hack-Regular.ttf 12");
-		term_force_font(6, "Hack-Regular.ttf 10");
-		term_force_font(7, "Hack-Regular.ttf 10");
-		break;
-	case 3:
-		/* change main window font */
-		term_force_font(0, "Hack-Regular.ttf 16");
-		/* Change sub windows too */
-		term_force_font(1, "Hack-Regular.ttf 16");
-		term_force_font(2, "Hack-Regular.ttf 16");
-		term_force_font(3, "Hack-Regular.ttf 12");
-		term_force_font(4, "Hack-Regular.ttf 14");
-		term_force_font(5, "Hack-Regular.ttf 14");
-		term_force_font(6, "Hack-Regular.ttf 12");
-		term_force_font(7, "Hack-Regular.ttf 12");
-		break;
-	}
+        /* Force the font */
+        if (term_main.fnt->type == FONT_TYPE_PCF) {
+                static const char *pcf_fonts[4][8] = {
+                        {"8x13.pcf", "8x13.pcf", "8x13.pcf", "5x8.pcf", "6x10.pcf", "6x10.pcf", "5x8.pcf", "5x8.pcf"},
+                        {"9x15.pcf", "9x15.pcf", "9x15.pcf", "6x10.pcf", "8x13.pcf", "6x10.pcf", "6x10.pcf", "6x10.pcf"},
+                        {"12x24.pcf", "9x15.pcf", "9x15.pcf", "8x13.pcf", "9x15.pcf", "8x13.pcf", "8x13.pcf", "8x13.pcf"},
+                        {"16x24x.pcf", "12x24.pcf", "12x24.pcf", "9x15.pcf", "12x24.pcf", "9x15.pcf", "9x15.pcf", "9x15.pcf"}
+                };
+
+                if (s < 0 || s > 3) s = 0;
+                for (int i = 0; i < 8; i++) {
+                        term_force_font(i, pcf_fonts[s][i]);
+                }
+        } else {
+                char font_base[256];
+                if (!is_ttf_font(tmp, font_base, sizeof(font_base), NULL))
+                        strncpy(font_base, tmp, sizeof(font_base));
+
+                int add = 0;
+                if (s == 1) add = 2;
+                else if (s == 2) add = 4;
+                else if (s == 3) add = 6;
+
+                for (int i = 0; i < 8; i++) {
+                        int size = sdl2_terms_ttf_size_default[i] + add;
+                        if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+                        if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "%s %d", font_base, size);
+                        term_force_font(i, buf);
+                }
+        }
 }
 
 static void term_force_font(int term_idx, cptr fnt_name) {
