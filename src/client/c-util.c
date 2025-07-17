@@ -11573,9 +11573,9 @@ static void do_cmd_options_fonts(void) {
 				char font_base[256];
 				int8_t size = 0;
 				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
-					if (size == -1) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					if (size == -1) size = SDL2_DEFAULT_TTF_FONT_SIZE;
 					size++;
-					if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+					if (size > SDL2_MAX_TTF_FONT_SIZE) size = SDL2_MAX_TTF_FONT_SIZE;
 					char new_fnt[256];
 					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
 					set_font_name(y, new_fnt);
@@ -11635,9 +11635,9 @@ static void do_cmd_options_fonts(void) {
 				char font_base[256];
 				int8_t size = 0;
 				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
-					if (size == -1) size = DEFAULT_SDL2_TTF_FONT_SIZE;
+					if (size == -1) size = SDL2_DEFAULT_TTF_FONT_SIZE;
 					size--;
-					if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
+					if (size < SDL2_MIN_TTF_FONT_SIZE) size = SDL2_MIN_TTF_FONT_SIZE;
 					char new_fnt[256];
 					snprintf(new_fnt, sizeof(new_fnt), "%s %d", font_base, size);
 					set_font_name(y, new_fnt);
