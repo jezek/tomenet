@@ -479,7 +479,7 @@ SDL_Surface* PCF_RenderText(PCF_Font* font, const char* str, SDL_Color bg_color,
  *	name: The name of the requested Font without extension.
  */
 static errr Infofnt_init_pcf(cptr name) {
-	fprintf(stderr, "jezek - Infofnt_init_pcf(name: \"%s\"\n", name);
+	fprintf(stderr, "jezek - Infofnt_init_pcf(name: \"%s\")\n", name);
 	/*** Load the info Fresh, using the name ***/
 
 	/* If the name is not given, report an error */
@@ -979,7 +979,7 @@ struct term_data {
 #endif
 };
 
-#define DEFAULT_SDL2_BORDER_WIDTH 1
+#define SDL2_DEFAULT_BORDER_WIDTH 1
 
 // The main screen.
 static term_data term_main;
@@ -1000,8 +1000,8 @@ static term_data term_9;
 
 static term_data *sdl2_terms_term_data[ANGBAND_TERM_MAX] = {&term_main, &term_1, &term_2, &term_3, &term_4, &term_5, &term_6, &term_7, &term_8, &term_9};
 static char *sdl2_terms_font_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_FONT_TERM_MAIN", "TOMENET_SDL2_FONT_TERM_1", "TOMENET_SDL2_FONT_TERM_2", "TOMENET_SDL2_FONT_TERM_3", "TOMENET_SDL2_FONT_TERM_4", "TOMENET_SDL2_FONT_TERM_5", "TOMENET_SDL2_FONT_TERM_6", "TOMENET_SDL2_FONT_TERM_7", "TOMENET_SDL2_FONT_TERM_8", "TOMENET_SDL2_FONT_TERM_9"};
-static char *sdl2_terms_font_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_FONT_TERM_MAIN, DEFAULT_SDL2_FONT_TERM_1, DEFAULT_SDL2_FONT_TERM_2, DEFAULT_SDL2_FONT_TERM_3, DEFAULT_SDL2_FONT_TERM_4, DEFAULT_SDL2_FONT_TERM_5, DEFAULT_SDL2_FONT_TERM_6, DEFAULT_SDL2_FONT_TERM_7, DEFAULT_SDL2_FONT_TERM_8, DEFAULT_SDL2_FONT_TERM_9};
-static int sdl2_terms_ttf_size_default[ANGBAND_TERM_MAX] = {DEFAULT_SDL2_TTF_FONT_SIZE_TERM_MAIN, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_1, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_2, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_3, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_4, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_5, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_6, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_7, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_8, DEFAULT_SDL2_TTF_FONT_SIZE_TERM_9};
+static char *sdl2_terms_font_default[ANGBAND_TERM_MAX] = {SDL2_DEFAULT_FONT_TERM_MAIN, SDL2_DEFAULT_FONT_TERM_1, SDL2_DEFAULT_FONT_TERM_2, SDL2_DEFAULT_FONT_TERM_3, SDL2_DEFAULT_FONT_TERM_4, SDL2_DEFAULT_FONT_TERM_5, SDL2_DEFAULT_FONT_TERM_6, SDL2_DEFAULT_FONT_TERM_7, SDL2_DEFAULT_FONT_TERM_8, SDL2_DEFAULT_FONT_TERM_9};
+static int sdl2_terms_ttf_size_default[ANGBAND_TERM_MAX] = {SDL2_DEFAULT_TTF_FONT_SIZE_TERM_MAIN, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_1, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_2, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_3, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_4, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_5, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_6, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_7, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_8, SDL2_DEFAULT_TTF_FONT_SIZE_TERM_9};
 const char *sdl2_terms_wid_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_WID_TERM_MAIN", "TOMENET_SDL2_WID_TERM_1", "TOMENET_SDL2_WID_TERM_2", "TOMENET_SDL2_WID_TERM_3", "TOMENET_SDL2_WID_TERM_4", "TOMENET_SDL2_WID_TERM_5", "TOMENET_SDL2_WID_TERM_6", "TOMENET_SDL2_WID_TERM_7", "TOMENET_SDL2_WID_TERM_8", "TOMENET_SDL2_WID_TERM_9"};
 const char *sdl2_terms_hgt_env[ANGBAND_TERM_MAX] = {"TOMENET_SDL2_HGT_TERM_MAIN", "TOMENET_SDL2_HGT_TERM_1", "TOMENET_SDL2_HGT_TERM_2", "TOMENET_SDL2_HGT_TERM_3", "TOMENET_SDL2_HGT_TERM_4", "TOMENET_SDL2_HGT_TERM_5", "TOMENET_SDL2_HGT_TERM_6", "TOMENET_SDL2_HGT_TERM_7", "TOMENET_SDL2_HGT_TERM_8", "TOMENET_SDL2_HGT_TERM_9"};
 
@@ -2229,13 +2229,13 @@ static errr term_data_init(int index, term_data *td, bool fixed, cptr name, cptr
 	// Calculate window and drawing field sizes.
 	int wid_draw = win_cols * td->fnt->wid;
 	int hgt_draw = win_lines * td->fnt->hgt;
-	int wid_border = wid_draw + (2 * DEFAULT_SDL2_BORDER_WIDTH);
-	int hgt_border = hgt_draw + (2 * DEFAULT_SDL2_BORDER_WIDTH);
+	int wid_border = wid_draw + (2 * SDL2_DEFAULT_BORDER_WIDTH);
+	int hgt_border = hgt_draw + (2 * SDL2_DEFAULT_BORDER_WIDTH);
 
 	MAKE(td->win, infowin);
 	Infowin_set(td->win);
 
-	Infowin_init(topx, topy, wid_border, hgt_border, DEFAULT_SDL2_BORDER_WIDTH, color_default_b, color_default_bg);
+	Infowin_init(topx, topy, wid_border, hgt_border, SDL2_DEFAULT_BORDER_WIDTH, color_default_b, color_default_bg);
 
 	if (!strcmp(name, ang_term_name[0])) {
 		char version[MAX_CHARS];
@@ -2475,8 +2475,8 @@ static void sanitize_font_format(char *font, size_t font_len, int term_idx) {
 		/* Fix missing or out-of-range size. */
 		if (size < 0) size = sdl2_terms_ttf_size_default[term_idx];
 
-		if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
-		else if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
+		if (size < SDL2_MIN_TTF_FONT_SIZE) size = SDL2_MIN_TTF_FONT_SIZE;
+		else if (size > SDL2_MAX_TTF_FONT_SIZE) size = SDL2_MAX_TTF_FONT_SIZE;
 
 		/* Rebuild the canonical “<file> <size>” string. */
 		snprintf(font, font_len, "%s %d", font_base, size);
@@ -2849,59 +2849,62 @@ static void term_force_font(int term_idx, cptr fnt_name);
  *  2 - bigger
  *  3 - huge */
 void change_font(int s) {
+	//TODO jezek - When cycling pcf fonts, some terms show glitches and on text.
+	static const char *pcf_fonts[4][ANGBAND_TERM_MAX] = {
+		{"8x13", "8x13", "8x13", "5x8", "6x10", "6x10", "5x8", "5x8", "5x8", "5x8"},
+		{"9x15", "9x15", "9x15", "6x10", "8x13", "8x13", "6x10", "6x10", "6x10", "6x10"},
+		{"10x20", "10x20", "10x20", "8x13", "9x15", "9x15", "8x13", "8x13", "8x13", "8x13"},
+		{"16x22", "16x22", "16x22", "9x15", "10x20", "10x20", "9x15", "9x15", "9x15", "9x15"}
+	};
+	char font_name[128] = "";
+	char font_base[128];
+	int cycle_type;
+
 	/* use main window font for measuring */
-	char tmp[128] = "";
+	if (term_main.fnt->name) {
+		strcpy(font_name, term_main.fnt->name);
+		cycle_type = term_main.fnt->type;
+	} else {
+		strcpy(font_name, SDL2_DEFAULT_FONT);
+		if (is_pcf_font(font_name)) {
+				cycle_type = FONT_TYPE_PCF;
+		} else {
+				cycle_type = FONT_TYPE_TTF;
+		}
+	}
 
-	if (term_main.fnt->name) strcpy(tmp, term_main.fnt->name);
-	else strcpy(tmp, DEFAULT_SDL2_FONT);
+	/* cycle? */
+	if (s == -1) {
+		if (cycle_type == FONT_TYPE_PCF) {
+			if (strstr(font_name, pcf_fonts[0][0])) s = 1;
+			else if (strstr(font_name, pcf_fonts[1][0])) s = 2;
+			else if (strstr(font_name, pcf_fonts[2][0])) s = 3;
+			else if (strstr(font_name, pcf_fonts[3][0])) s = 0;
+		} else {
+			if (strstr(font_name, " 10")) s = 1;
+			else if (strstr(font_name, " 12")) s = 2;
+			else if (strstr(font_name, " 14")) s = 3;
+			else if (strstr(font_name, " 16")) s = 0;
+		}
+	}
 
-        /* cycle? */
-        if (s == -1) {
-                if (term_main.fnt->type == FONT_TYPE_PCF) {
-                        if (strstr(tmp, "8x13")) s = 1;
-                        else if (strstr(tmp, "9x15")) s = 2;
-                        else if (strstr(tmp, "12x24")) s = 3;
-                        else if (strstr(tmp, "16x24")) s = 0;
-                } else {
-                        if (strstr(tmp, " 10")) s = 1;
-                        else if (strstr(tmp, " 12")) s = 2;
-                        else if (strstr(tmp, " 14")) s = 3;
-                        else if (strstr(tmp, " 16")) s = 0;
-                }
-        }
+	if (s < 0 || s > 3) return;
 
-        /* Force the font */
-        if (term_main.fnt->type == FONT_TYPE_PCF) {
-                static const char *pcf_fonts[4][8] = {
-                        {"8x13.pcf", "8x13.pcf", "8x13.pcf", "5x8.pcf", "6x10.pcf", "6x10.pcf", "5x8.pcf", "5x8.pcf"},
-                        {"9x15.pcf", "9x15.pcf", "9x15.pcf", "6x10.pcf", "8x13.pcf", "6x10.pcf", "6x10.pcf", "6x10.pcf"},
-                        {"12x24.pcf", "9x15.pcf", "9x15.pcf", "8x13.pcf", "9x15.pcf", "8x13.pcf", "8x13.pcf", "8x13.pcf"},
-                        {"16x24x.pcf", "12x24.pcf", "12x24.pcf", "9x15.pcf", "12x24.pcf", "9x15.pcf", "9x15.pcf", "9x15.pcf"}
-                };
-
-                if (s < 0 || s > 3) s = 0;
-                for (int i = 0; i < 8; i++) {
-                        term_force_font(i, pcf_fonts[s][i]);
-                }
-        } else {
-                char font_base[256];
-                if (!is_ttf_font(tmp, font_base, sizeof(font_base), NULL))
-                        strncpy(font_base, tmp, sizeof(font_base));
-
-                int add = 0;
-                if (s == 1) add = 2;
-                else if (s == 2) add = 4;
-                else if (s == 3) add = 6;
-
-                for (int i = 0; i < 8; i++) {
-                        int size = sdl2_terms_ttf_size_default[i] + add;
-                        if (size < MIN_SDL2_TTF_FONT_SIZE) size = MIN_SDL2_TTF_FONT_SIZE;
-                        if (size > MAX_SDL2_TTF_FONT_SIZE) size = MAX_SDL2_TTF_FONT_SIZE;
-                        char buf[256];
-                        snprintf(buf, sizeof(buf), "%s %d", font_base, size);
-                        term_force_font(i, buf);
-                }
-        }
+	/* Force the font */
+	if (cycle_type == FONT_TYPE_PCF) {
+		for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
+			term_force_font(i, pcf_fonts[s][i]);
+		}
+	} else {
+		/* Just extract font name without size. */
+		is_ttf_font(font_name, font_base, sizeof(font_base), NULL);
+		for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
+			int size = sdl2_terms_ttf_size_default[i] + s*2;
+			if (size > SDL2_MAX_TTF_FONT_SIZE) size = SDL2_MAX_TTF_FONT_SIZE;
+			snprintf(font_name, sizeof(font_name), "%s %d", font_base, size);
+			term_force_font(i, font_name);
+		}
+	}
 }
 
 static void term_force_font(int term_idx, cptr fnt_name) {
@@ -3008,8 +3011,8 @@ void resize_window_sdl2(int term_idx, int cols, int rows) {
 	/* Calculate dimensions in pixels. */
 	int wid_draw = cols * td->fnt->wid;
 	int hgt_draw = rows * td->fnt->hgt;
-	int wid_border = wid_draw + (2 * DEFAULT_SDL2_BORDER_WIDTH);
-	int hgt_border = hgt_draw + (2 * DEFAULT_SDL2_BORDER_WIDTH);
+	int wid_border = wid_draw + (2 * SDL2_DEFAULT_BORDER_WIDTH);
+	int hgt_border = hgt_draw + (2 * SDL2_DEFAULT_BORDER_WIDTH);
 	fprintf(stderr, "jezek -  resize_window_sdl2: wid_border: %d, hgt_border: %d\n", wid_border, hgt_border);
 
 	// Save current Infowin and activated Term.
