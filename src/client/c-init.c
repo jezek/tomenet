@@ -4009,8 +4009,13 @@ again:
 #endif
 
 	/* Send the info */
-	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len) == -1))
+#ifdef USE_SDL2
+	if ((bytes = SocketWrite(Socket, ibuf.buf, ibuf.len)) == -1)
 		quit("Couldn't send contact information\n");
+#else
+	if ((bytes = DgramWrite(Socket, ibuf.buf, ibuf.len)) == -1)
+		quit("Couldn't send contact information\n");
+#endif
 
 	/* Listen for reply */
 	for (retries = 0; retries < 10; retries++) {
@@ -4021,7 +4026,11 @@ again:
 		if (!SocketReadable(Socket)) continue;
 
 		/* Read reply */
+#ifdef USE_SDL2
+		if (SocketRead(Socket, ibuf.buf, ibuf.size) <= 0) {
+#else
 		if (DgramRead(Socket, ibuf.buf, ibuf.size) <= 0) {
+#endif
 			/*printf("DgramReceiveAny failed (errno = %d)\n", errno);*/
 			continue;
 		}

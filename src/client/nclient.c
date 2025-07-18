@@ -1499,6 +1499,15 @@ void Net_cleanup(void) {
 
 	if (sock > 2) {
 		ch = PKT_QUIT;
+#ifdef USE_SDL2
+		if (SocketWrite(sock, &ch, 1) != 1) {
+			GetSocketError(sock);
+			SocketWrite(sock, &ch, 1);
+		}
+		Term_xtra(TERM_XTRA_DELAY, 50);
+
+		SocketClose(sock);
+#else
 		if (DgramWrite(sock, &ch, 1) != 1) {
 			GetSocketError(sock);
 			DgramWrite(sock, &ch, 1);
@@ -1506,6 +1515,7 @@ void Net_cleanup(void) {
 		Term_xtra(TERM_XTRA_DELAY, 50);
 
 		DgramClose(sock);
+#endif
 	}
 
 	Sockbuf_cleanup(&rbuf);

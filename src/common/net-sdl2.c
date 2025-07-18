@@ -39,36 +39,16 @@ int sl_errno = 0;
 /* Global timeout variables (seconds and microseconds) */
 int sl_timeout_s = DEFAULT_S_TIMEOUT_VALUE;
 int sl_timeout_us = DEFAULT_US_TIMEOUT_VALUE;
-
-/* Global default retries variable used by DgramSendRec */
-int sl_default_retries = DEFAULT_RETRIES;
-
-/* Global broadcast enable variable (super-user only), default disabled */
-int sl_broadcast_enabled = 0;
-
-/*
- * We keep two tables, one for TCP and one for UDP.
- * However, a single logical "fd" can open a TCP socket (CreateClientSocket),
- * and if code later calls DgramWrite/DgramRead using that same fd, we
- * will lazily open a UDP socket on demand and store it in the matching index.
- */
-
 /* Mapping table for TCPsocket pointers */
 #define MAX_TCP_FD 1024
 static TCPsocket tcp_socket_table[MAX_TCP_FD] = { NULL };
 
-/* Mapping table for UDPsocket pointers */
-#define MAX_UDP_FD 1024
-static UDPsocket udp_socket_table[MAX_UDP_FD] = { NULL };
+
 
 /* Forward declarations */
 static int addTCPsocket(TCPsocket sock);
 static TCPsocket fd2TCPsocket(int fd);
 static void delTCPsocket(int fd);
-static int addUDPsocket(UDPsocket sock);
-static UDPsocket fd2UDPsocket(int fd);
-static void delUDPsocket(int fd);
-static int ensureUdpSocket(int fd);
 
 /*
  *******************************************************************************
@@ -429,83 +409,6 @@ int SocketWrite(int fd, char *wbuf, int size)
 /*
  *******************************************************************************
  *
- *	DgramRead()
- *
- *******************************************************************************
- * Description:
- *	Receives a datagram on a connected UDP/IP socket.
- *
- * Input Parameters:
- *	fd	- The file descriptor (index in our UDP mapping table).
- *	size	- Expected maximum message size.
- *
- * Output Parameters:
- *	rbuf	- Pointer to the buffer to store received message.
- *
- * Return Value:
- *	Number of bytes received, or -1 on error.
- *
- */
-int DgramRead(int fd, char *rbuf, int size)
-{
-	return SocketRead(fd, rbuf, size);
-} /* DgramRead */
-
-
-/*
- *******************************************************************************
- *
- *	DgramWrite()
- *
- *******************************************************************************
- * Description:
- *	Sends a datagram on a connected UDP/IP socket.
- *
- * Input Parameters:
- *	fd	- The file descriptor (index in our UDP mapping table).
- *	wbuf	- Pointer to the message buffer to send.
- *	size	- Size of the message.
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	Number of bytes sent, or -1 on error.
- *
- */
-int DgramWrite(int fd, char *wbuf, int size)
-{
-	return SocketWrite(fd, wbuf, size);
-} /* DgramWrite */
-
-
-/*
- *******************************************************************************
- *
- *	DgramClose()
- *
- *******************************************************************************
- * Description:
- *	Closes a UDP/IP datagram socket.
- *
- * Input Parameters:
- *	fd	- The file descriptor (index in our UDP mapping table).
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	None.
- *
- */
-void DgramClose(int fd)
-{
-	UDPsocket udp = fd2UDPsocket(fd);
-	if (udp != NULL) {
-		SDLNet_UDP_Close(udp);
-		delUDPsocket(fd);
-	}
-} /* DgramClose */
 
 
 /*
@@ -572,7 +475,7 @@ int SocketClose(int fd)
 /*
  *******************************************************************************
  *
- * TCP and UDP sockets as file descriptor helper functions.
+ * TCP socket helper functions.
  *
  *******************************************************************************
  */
@@ -624,94 +527,3 @@ static void delTCPsocket(int fd)
 	}
 }
 
-/*
- * addUDPsocket:
- *  Adds a UDPsocket to the mapping table.
- *  Returns the file descriptor (index) if successful, or -1 if the table is full.
- */
-static int addUDPsocket(UDPsocket sock)
-{
-	for (int i = 0; i < MAX_UDP_FD; i++) {
-		if (udp_socket_table[i] == NULL) {
-			udp_socket_table[i] = sock;
-			return i;
-		}
-	}
-	return -1; /* Table is full */
-}
-
-/*
- * fd2UDPsocket:
- *  Retrieves the UDPsocket pointer corresponding to the given file descriptor.
- *  Returns NULL if the fd is out of range or if no socket is stored at that index.
- */
-static UDPsocket fd2UDPsocket(int fd)
-{
-	if ((fd < 0) || (fd >= MAX_UDP_FD)) {
-		return NULL;
-	}
-	return udp_socket_table[fd];
-}
-
-/*
- * delUDPsocket:
- *  Removes the UDPsocket associated with the given file descriptor from the mapping table.
- */
-static void delUDPsocket(int fd)
-{
-	if ((fd >= 0) && (fd < MAX_UDP_FD)) {
-		udp_socket_table[fd] = NULL;
-	}
-}
-
-/*
- * ensureUdpSocket:
- *   Lazy-creates a UDP socket for the given fd if not already present,
- *   using the same remote address as the TCP socket.
- *   Returns 0 on success, -1 on failure.
- */
-static int ensureUdpSocket(int fd)
-{
-	/* If we already have a UDP socket at this fd, do nothing. */
-	if (fd < 0 || fd >= MAX_UDP_FD) {
-		sl_errno = SL_ESOCKET;
-		return -1;
-	}
-
-	if (udp_socket_table[fd] != NULL) {
-		return 0; /* Already have one. */
-	}
-
-	/* Attempt to get the TCP socket for the same fd. */
-	TCPsocket tcpSock = fd2TCPsocket(fd);
-	if (!tcpSock) {
-		sl_errno = SL_ESOCKET;
-		return -1;
-	}
-
-	/* Retrieve peer address from the TCP socket. */
-	IPaddress *ip = SDLNet_TCP_GetPeerAddress(tcpSock);
-	if (!ip) {
-		sl_errno = SL_ESOCKET;
-		return -1;
-	}
-
-	/* Create a UDP socket. Bind it to the same host/port if possible. */
-	UDPsocket newUdp = SDLNet_UDP_Open(0); /* 0 means ephemeral local port */
-	if (!newUdp) {
-		sl_errno = SL_ESOCKET;
-		return -1;
-	}
-
-	/* Bind channel 0 to the server's IP and port, so we can send/receive from that address. */
-	if (SDLNet_UDP_Bind(newUdp, 0, ip) == -1) {
-		SDLNet_UDP_Close(newUdp);
-		sl_errno = SL_ESOCKET;
-		return -1;
-	}
-
-	/* Store it in the table at the same index. */
-	udp_socket_table[fd] = newUdp;
-
-	return 0;
-}

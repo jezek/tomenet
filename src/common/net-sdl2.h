@@ -52,10 +52,8 @@ extern int	SetSocketSendBufferSize(int, int);
 extern int	SetSocketNoDelay(int, int);
 extern int	GetSocketError(int);
 extern int	SocketReadable(int);
+extern int	SocketWrite(int, char *, int);
 extern int	SocketRead(int, char *, int);
-extern int	DgramRead(int fd, char *rbuf, int size);
-extern int	DgramWrite(int fd, char *wbuf, int size);
-extern void	DgramClose(int);
 extern void	GetLocalHostName(char *, unsigned);
 extern int	SocketClose(int fd);
 
