@@ -227,7 +227,11 @@ int Sockbuf_flush(sockbuf_t *sbuf) {
 	    len = sbuf->len;
 	else
 #endif
-	while ((len = DgramWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+	#ifdef USE_SDL2
+        while ((len = SocketWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+#else
+        while ((len = DgramWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+#endif
 	    if (len == 0
 		|| errno == EWOULDBLOCK
 		|| errno == EAGAIN) {
@@ -268,7 +272,11 @@ int Sockbuf_flush(sockbuf_t *sbuf) {
 	Sockbuf_clear(sbuf);
     } else {
 	errno = 0;
-	while ((len = DgramWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+	#ifdef USE_SDL2
+        while ((len = SocketWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+#else
+        while ((len = DgramWrite(sbuf->sock, sbuf->buf, sbuf->len)) <= 0) {
+#endif
 	    if (errno == EINTR) {
 		errno = 0;
 		continue;
@@ -341,7 +349,11 @@ int Sockbuf_read(sockbuf_t *sbuf) {
 	    len = sbuf->len;
 	else
 #endif
-	while ((len = DgramRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+	#ifdef USE_SDL2
+        while ((len = SocketRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+#else
+        while ((len = DgramRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+#endif
 	    if (len == 0) {
 		return(0);
 	    }
@@ -377,7 +389,11 @@ int Sockbuf_read(sockbuf_t *sbuf) {
 	sbuf->len += len;
     } else {
 	errno = 0;
-	while ((len = DgramRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+	#ifdef USE_SDL2
+        while ((len = SocketRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+#else
+        while ((len = DgramRead(sbuf->sock, sbuf->buf + sbuf->len, max)) <= 0) {
+#endif
 	    if (len == 0) {
 		return(0);
 	    }
