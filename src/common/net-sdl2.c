@@ -113,7 +113,7 @@ int CreateClientSocket(char *host, int port)
 	int fd = addTCPsocket(sock);
 	if (fd == -1) {
 		SDLNet_TCP_Close(sock);
-		sl_errno = SL_ESOCKET;
+		sl_errno = SL_EBIND;
 		return -1;
 	}
 	return fd;
@@ -155,100 +155,7 @@ int GetPortNum(int fd)
 } /* GetPortNum */
 
 
-/*
- *******************************************************************************
- *
- *	SetSocketReceiveBufferSize()
- *
- *******************************************************************************
- * Description:
- *	Sets the receive buffer size for a socket.
- *
- * Input Parameters:
- *	fd	- The socket descriptor.
- *	size	- The desired buffer size.
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	-1 on failure, 0 on success.
- *
- * Note:
- *	SDL_net does not support changing the socket buffer size. This is a stub.
- *
- */
-int SetSocketReceiveBufferSize(int fd, int size)
-{
-	(void)fd;
-	(void)size;
-	/* Not supported by SDL_net; return success */
-	return 0;
-} /* SetSocketReceiveBufferSize */
 
-
-/*
- *******************************************************************************
- *
- *	SetSocketSendBufferSize()
- *
- *******************************************************************************
- * Description:
- *	Sets the send buffer size for a socket.
- *
- * Input Parameters:
- *	fd	- The socket descriptor.
- *	size	- The desired buffer size.
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	-1 on failure, 0 on success.
- *
- * Note:
- *	SDL_net does not support changing the socket buffer size. This is a stub.
- *
- */
-int SetSocketSendBufferSize(int fd, int size)
-{
-	(void)fd;
-	(void)size;
-	/* Not supported by SDL_net; return success */
-	return 0;
-} /* SetSocketSendBufferSize */
-
-
-/*
- *******************************************************************************
- *
- *	SetSocketNoDelay()
- *
- *******************************************************************************
- * Description:
- *	Sets the TCP_NODELAY option on a connected stream socket.
- *
- * Input Parameters:
- *	fd	- The socket descriptor.
- *	flag	- 1 to enable, 0 to disable.
- *
- * Output Parameters:
- *	None.
- *
- * Return Value:
- *	-1 on failure, 0 on success.
- *
- * Note:
- *	SDL_net does not support setting TCP_NODELAY. This is a stub.
- *
- */
-int SetSocketNoDelay(int fd, int flag)
-{
-	(void)fd;
-	(void)flag;
-	/* Not supported by SDL_net; return success */
-	return 0;
-} /* SetSocketNoDelay */
 
 
 /*
@@ -409,11 +316,6 @@ int SocketWrite(int fd, char *wbuf, int size)
 /*
  *******************************************************************************
  *
-
-
-/*
- *******************************************************************************
- *
  *	GetLocalHostName()
  *
  *******************************************************************************
@@ -437,7 +339,7 @@ int SocketWrite(int fd, char *wbuf, int size)
  */
 void GetLocalHostName(char *name, unsigned size)
 {
-	strncpy(name, "localhost", size);
+	strncpy(name, "127.0.0.1", size);
 	name[size - 1] = '\0';
 } /* GetLocalHostName */
 
