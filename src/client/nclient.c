@@ -1451,6 +1451,8 @@ int Net_init(int fd) {
 	sock = fd;
 
 	wbuf.sock = sock;
+/* SDL2_net lacks setters for delay and buffer sizes. */
+#ifndef USE_SDL2
 	if (SetSocketNoDelay(sock, 1) == -1) {
 		plog("Can't set TCP_NODELAY on socket");
 		return(-1);
@@ -1459,6 +1461,7 @@ int Net_init(int fd) {
 		plog(format("Can't set send buffer size to %d: error %d", CLIENT_SEND_SIZE + 256, errno));
 	if (SetSocketReceiveBufferSize(sock, CLIENT_RECV_SIZE + 256) == -1)
 		plog(format("Can't set receive buffer size to %d", CLIENT_RECV_SIZE + 256));
+#endif
 
 	/* queue buffer, not a valid socket filedescriptor needed */
 	if (Sockbuf_init(&qbuf, -1, CLIENT_RECV_SIZE,
