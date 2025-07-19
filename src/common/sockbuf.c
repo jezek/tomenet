@@ -259,10 +259,12 @@ int Sockbuf_flush(sockbuf_t *sbuf) {
 					/*plog(format("send (%d)", i));*/
 				}
 			}
-			if (GetSocketError(sbuf->sock) == -1) {
-				plog("GetSocketError send");
-				return(-1);
-			}
+                        #ifndef USE_SDL2
+                        if (GetSocketError(sbuf->sock) == -1) {
+                                plog("GetSocketError send");
+                                return(-1);
+                        }
+                        #endif
 			errno = 0;
 		}
 		if (len != sbuf->len) {
@@ -382,10 +384,12 @@ int Sockbuf_read(sockbuf_t *sbuf) {
 					/*plog(format("recv (%d)", i));*/
 				}
 			}
-			if (GetSocketError(sbuf->sock) == -1) {
-				plog("GetSocketError recv");
-				return(-1);
-			}
+                        #ifndef USE_SDL2
+                        if (GetSocketError(sbuf->sock) == -1) {
+                                plog("GetSocketError recv");
+                                return(-1);
+                        }
+                        #endif
 			errno = 0;
 		}
 		sbuf->len += len;

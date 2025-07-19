@@ -47,14 +47,9 @@
 extern void	SetTimeout(int, int);
 extern int	CreateClientSocket(char *, int);
 extern int	GetPortNum(int);
-extern int	SetSocketReceiveBufferSize(int, int);
-extern int	SetSocketSendBufferSize(int, int);
-extern int	SetSocketNoDelay(int, int);
-extern int	GetSocketError(int);
 extern int	SocketReadable(int);
 extern int	SocketWrite(int, char *, int);
 extern int	SocketRead(int, char *, int);
-extern void	GetLocalHostName(char *, unsigned);
 extern int	SocketClose(int fd);
 
  #if !defined(select) && defined(__linux__)

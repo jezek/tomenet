@@ -1451,14 +1451,16 @@ int Net_init(int fd) {
 	sock = fd;
 
 	wbuf.sock = sock;
-	if (SetSocketNoDelay(sock, 1) == -1) {
-		plog("Can't set TCP_NODELAY on socket");
-		return(-1);
-	}
-	if (SetSocketSendBufferSize(sock, CLIENT_SEND_SIZE + 256) == -1)
-		plog(format("Can't set send buffer size to %d: error %d", CLIENT_SEND_SIZE + 256, errno));
-	if (SetSocketReceiveBufferSize(sock, CLIENT_RECV_SIZE + 256) == -1)
-		plog(format("Can't set receive buffer size to %d", CLIENT_RECV_SIZE + 256));
+#ifndef USE_SDL2
+        if (SetSocketNoDelay(sock, 1) == -1) {
+                plog("Can't set TCP_NODELAY on socket");
+                return(-1);
+        }
+        if (SetSocketSendBufferSize(sock, CLIENT_SEND_SIZE + 256) == -1)
+                plog(format("Can't set send buffer size to %d: error %d", CLIENT_SEND_SIZE + 256, errno));
+        if (SetSocketReceiveBufferSize(sock, CLIENT_RECV_SIZE + 256) == -1)
+                plog(format("Can't set receive buffer size to %d", CLIENT_RECV_SIZE + 256));
+#endif
 
 	/* queue buffer, not a valid socket filedescriptor needed */
 	if (Sockbuf_init(&qbuf, -1, CLIENT_RECV_SIZE,
@@ -1500,10 +1502,9 @@ void Net_cleanup(void) {
 	if (sock > 2) {
 		ch = PKT_QUIT;
 #ifdef USE_SDL2
-		if (SocketWrite(sock, &ch, 1) != 1) {
-			GetSocketError(sock);
-			SocketWrite(sock, &ch, 1);
-		}
+                if (SocketWrite(sock, &ch, 1) != 1) {
+                        SocketWrite(sock, &ch, 1);
+                }
 		Term_xtra(TERM_XTRA_DELAY, 50);
 
 		SocketClose(sock);

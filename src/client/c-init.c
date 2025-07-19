@@ -3632,7 +3632,11 @@ void client_init(char *argv1, bool skip) {
 	/* For in-client guide search */
 	init_guide();
 
-	GetLocalHostName(host_name, 80);
+#ifdef USE_SDL2
+        strncpy(host_name, "localhost", sizeof(host_name));
+#else
+        GetLocalHostName(host_name, 80);
+#endif
 
 	/* Set the "quit hook" */
 	if (!quit_aux) quit_aux = quit_hook;
