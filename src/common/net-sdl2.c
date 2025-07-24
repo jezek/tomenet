@@ -18,6 +18,7 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_net.h>
+#include <errno.h>
 
 /* Debug macro */
 #ifdef DEBUG
@@ -323,7 +324,9 @@ int SocketRead(int fd, char *buf, int size)
 		return -1;
 	}
 	int bytes = SDLNet_TCP_Recv(sock, buf, size);
-	if (bytes < 0) {
+	if (bytes <= 0) {
+		if (bytes == 0) errno = EAGAIN;
+		else errno = EIO;
 		tcp_error_table[fd] = SL_ERECEIVE;
 		return -1;
 	}
@@ -369,7 +372,13 @@ int SocketWrite(int fd, char *wbuf, int size)
 	/* Check if the send operation was successful.
 	 * If bytes sent is less than the requested size, treat it as an error.
 	 */
-	if (bytes < size) {
+	if (bytes <= 0) {
+		if (bytes == 0) errno = EAGAIN;
+		else errno = EIO;
+		tcp_error_table[fd] = SL_ECONNECT;
+		return -1;
+	} else if (bytes < size) {
+		errno = EIO;
 		tcp_error_table[fd] = SL_ECONNECT;
 		return bytes;
 	}
