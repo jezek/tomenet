@@ -308,24 +308,16 @@ preproc/preproc.linux.o: preproc/preproc.c
 #
 # List of .pkg files to generate from .pre files for use in the client (in format [server|client]/<name>.pre).
 # The .pkg files are then used to generate .c files (in format [server|client]/w_<name>.[linux|mingw].c).
-PKG_FILES = \
-	server/util.pkg server/player.pkg server/spells.pkg \
-	client/util.pkg client/player.pkg client/spells.pkg
+PKG_FILES = client/util.pkg client/player.pkg client/spells.pkg
 
 # Use preprocessor with CPP to generate the <dir>/<name>.pkg files from <dir>/<name>.pre files.
 $(PKG_FILES): %.pkg: %.pre preproc/preproc
 	cd $(dir $@); ../preproc/preproc $(notdir $<) $(notdir $@) $(CPP) $(CPPFLAGS); cd ..
 
-# Use TOLUA_LINUX to generate server/w_<name>.linux.c files from server/<name>.pkg files.
-server/w_%.linux.c: server/%.pkg $(TOLUA_LINUX)
-	cd $(dir $@);  ../$(TOLUA_LINUX) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
 # Use TOLUA_LINUX to generate client/w_<name>.linux.c files from client/<name>.pkg files.
 client/w_%.linux.c: client/%.pkg $(TOLUA_LINUX)
 	cd $(dir $@);  ../$(TOLUA_LINUX) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
 
-# Use TOLUA_MINGW to generate server/w_<name>.mingw.c files from server/<name>.pkg files.
-server/w_%.mingw.c: server/%.pkg $(TOLUA_MINGW)
-	cd $(dir $@);  $(WINE) ../$(TOLUA_MINGW) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
 # Use TOLUA_MINGW to generate client/w_<name>.mingw.c files from client/<name>.pkg files.
 client/w_%.mingw.c: client/%.pkg $(TOLUA_MINGW)
 	cd $(dir $@);  $(WINE) ../$(TOLUA_MINGW) -n $(basename $(notdir $<)) -o $(notdir $@) $(notdir $<); cd ..
