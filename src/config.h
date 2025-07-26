@@ -895,4 +895,7 @@
  /* Minimal and maximal allowed TrueType font size. */
  #define SDL2_MIN_TTF_FONT_SIZE 4
  #define SDL2_MAX_TTF_FONT_SIZE 32
+
+ /* Maximum number of addresses returned by SDLNet_GetLocalAddresses. */
+ #define SDL2_MAX_LOCAL_ADRESSES 32
 #endif
