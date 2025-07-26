@@ -405,8 +405,20 @@ int SocketWrite(int fd, char *wbuf, int size)
  */
 void GetLocalHostName(char *name, unsigned size)
 {
-	strncpy(name, "127.0.0.1", size);
-	name[size - 1] = '\0';
+	IPaddress addrs[1];
+	const char *host = NULL;
+
+	if (SDLNet_GetLocalAddresses(addrs, 1) == 1) {
+		host = SDLNet_ResolveIP(&addrs[0]);
+	}
+
+	if (host && *host) {
+		strncpy(name, host, size);
+		name[size - 1] = '\0';
+	} else {
+		strncpy(name, "127.0.0.1", size);
+		name[size - 1] = '\0';
+	}
 } /* GetLocalHostName */
 
 
