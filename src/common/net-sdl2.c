@@ -414,6 +414,24 @@ int SocketWrite(int fd, char *wbuf, int size)
  */
 void GetLocalHostName(char *name, unsigned size)
 {
+	IPaddress addrs[SDL2_MAX_LOCAL_ADRESSES];
+	int count, i;
+	const char *host = NULL;
+
+	count = SDLNet_GetLocalAddresses(addrs, SDL2_MAX_LOCAL_ADRESSES);
+	if (count > SDL2_MAX_LOCAL_ADRESSES) count = SDL2_MAX_LOCAL_ADRESSES;
+
+	for (i = 0; i < count; ++i) {
+		if (addrs[i].host == INADDR_NONE || addrs[i].host == INADDR_ANY) continue;
+
+		host = SDLNet_ResolveIP(&addrs[i]);
+		if (host && *host) {
+			strncpy(name, host, size);
+			name[size - 1] = '\0';
+			return;
+		}
+	}
+
 	strncpy(name, "127.0.0.1", size);
 	name[size - 1] = '\0';
 } /* GetLocalHostName */

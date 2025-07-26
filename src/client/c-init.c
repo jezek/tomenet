@@ -3633,6 +3633,7 @@ void client_init(char *argv1, bool skip) {
 	init_guide();
 
 	GetLocalHostName(host_name, 80);
+	fprintf(stderr, "jezek - host_name: %s\n", host_name);
 
 	/* Set the "quit hook" */
 	if (!quit_aux) quit_aux = quit_hook;
