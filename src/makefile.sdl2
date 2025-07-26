@@ -66,6 +66,14 @@ TOLUAOBJS_LINUX = $(patsubst %.o, %.linux.o, $(TOLUAOBJS))
 TOLUAOBJS_MINGW = $(patsubst %.o, %.mingw.o, $(TOLUAOBJS))
 
 #
+# Define files for dependencies.
+DEPS_LINUX = $(CLI_OBJS_LINUX:.linux.o=.linux.d) $(CLI_LUAOBJS_LINUX:.linux.o=.linux.d) $(TOLUAOBJS_LINUX:.linux.o=.linux.d)
+DEPS_MINGW = $(CLI_OBJS_MINGW:.mingw.o=.mingw.d) $(CLI_LUAOBJS_MINGW:.mingw.o=.mingw.d) $(TOLUAOBJS_MINGW:.mingw.o=.mingw.d)
+DEPS = $(DEPS_LINUX) $(DEPS_MINGW)
+# Include existing .d files. The "-include" suppresses error when files are missing.
+-include $(DEPS)
+
+
 # Following are some "system" definitions
 #
 # No changes are needed to compile a version that will run on
@@ -286,15 +294,14 @@ preproc/preproc.linux.o: preproc/preproc.c
 ## Rules for making a "object" ('.o') file for linux and windows
 ##
 %.linux.o: %.c
-	$(CC_LINUX) $(CFLAGS) -o $@ -c $<
+	$(CC_LINUX) $(CFLAGS) -MMD -MP -o $@ -c $<
 %.linux.o: %.linux.c
-	$(CC_LINUX) $(CFLAGS) -o $@ -c $<
+	$(CC_LINUX) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 %.mingw.o: %.c
-	$(CC_MINGW) $(CFLAGS) -o $@ -c $<
+	$(CC_MINGW) $(CFLAGS) -MMD -MP -o $@ -c $<
 %.mingw.o: %.mingw.c
-	$(CC_MINGW) $(CFLAGS) -o $@ -c $<
-
+	$(CC_MINGW) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 #
 # Lua library compilation rules
@@ -328,11 +335,11 @@ client/w_%.mingw.c: client/%.pkg $(TOLUA_MINGW)
 # Clean up old junk
 #
 clean:
-	cd server/lua; rm -f *.o
-	cd server; rm -f *.o w_player.*c w_util.*c w_spells.*c *.pkg tolua*
-	cd client; rm -f *.o w_player.*c w_util.*c w_spells.*c *.pkg
-	cd common; rm -f *.o
-	cd console; rm -f *.o
+	cd server/lua; rm -f *.o *.d
+	cd server; rm -f *.o *.d w_player.*c w_util.*c w_spells.*c *.pkg tolua*
+	cd client; rm -f *.o *.d w_player.*c w_util.*c w_spells.*c *.pkg
+	cd common; rm -f *.o *.d
+	cd console; rm -f *.o *.d
 	rm -f preproc/preproc.o
 
 
