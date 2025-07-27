@@ -19,6 +19,15 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_net.h>
 
+/* Local copy of SDL_net's internal TCP socket structure */
+	struct _TCPsocket {
+	int ready;
+	int channel;
+	IPaddress remoteAddress;
+	IPaddress localAddress;
+	int sflag;
+	};
+
 /* Debug macro */
 #ifdef DEBUG
  #define DEB(x) x
@@ -165,8 +174,7 @@ int CreateClientSocket(char *host, int port)
  *	invalid_fd_error	- If fd is invalid, sets the SL_ESOCKET error.
  *
  * External Calls
- *	SDLNet_TCP_GetPeerAddress
- *	SDL_SwapBE16
+  *	SDL_SwapBE16
  */
 int GetPortNum(int fd)
 {
@@ -176,13 +184,9 @@ int GetPortNum(int fd)
 		else invalid_fd_error = SL_ESOCKET;
 		return -1;
 	}
-	IPaddress *ip = SDLNet_TCP_GetPeerAddress(sock);
-	if (ip == NULL) {
-		tcp_error_table[fd] = SL_ECONNECT;
-		return -1;
-	}
-	/* ip->port is in network byte order; convert to host order */
-	Uint16 port = SDL_SwapBE16(ip->port);
+	/* localAddress.port is in network byte order */
+	Uint16 net = ((struct _TCPsocket*)sock)->localAddress.port;
+	Uint16 port = SDL_SwapBE16(net);
 	tcp_error_table[fd] = 0;
 	return port;
 } /* GetPortNum */
