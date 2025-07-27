@@ -3997,6 +3997,7 @@ again:
 
 	/* Put the contact info in it */
 	Packet_printf(&ibuf, "%u", magic);
+	/* Note: The SDL2 client returns always 0 as port number. But it doesn't matter, cause the server throws this information away and probes the port by itself. */
 	Packet_printf(&ibuf, "%s%hu%c", real_name, GetPortNum(ibuf.sock), 0xFF);
 	Packet_printf(&ibuf, "%s%s%hu", nick, host_name, version);
 

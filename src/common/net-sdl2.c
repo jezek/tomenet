@@ -8,6 +8,9 @@
 
 #define _SOCKLIB_LIBSOURCE
 
+/* Maximum number of addresses returned by SDLNet_GetLocalAddresses. */
+#define MAX_LOCAL_ADDRESSES 32
+
 #include "angband.h"
 #include "version.h"
 #include "net-sdl2.h"
@@ -166,8 +169,7 @@ int CreateClientSocket(char *host, int port)
  *	invalid_fd_error	- If fd is invalid, sets the SL_ESOCKET error.
  *
  * External Calls
- *	SDLNet_TCP_GetPeerAddress
- *	SDL_SwapBE16
+  *	SDL_SwapBE16
  */
 int GetPortNum(int fd)
 {
@@ -177,13 +179,25 @@ int GetPortNum(int fd)
 		else invalid_fd_error = SL_ESOCKET;
 		return -1;
 	}
-	IPaddress *ip = SDLNet_TCP_GetPeerAddress(sock);
-	if (ip == NULL) {
-		tcp_error_table[fd] = SL_ECONNECT;
-		return -1;
-	}
-	/* ip->port is in network byte order; convert to host order */
-	Uint16 port = SDL_SwapBE16(ip->port);
+
+	/*
+	 * SDL_net does not provide a public API to query the local port number.
+	 * The returned TCPsocket pointer is therefore cast to the private`_TCPsocket` structure defined in SDL_net (see https://github.com/libsdl-org/SDL_net/blob/SDL2/src/SDLnetTCP.c#L31).
+	 * This relies on SDL_net keeping the same layout; future versions could change it and break this code.
+	 */
+	struct _TCPsocket {
+		int ready;
+		int channel;
+		IPaddress remoteAddress;
+		IPaddress localAddress;
+		int sflag;
+	};
+
+	/* The port is in network byte order and needs to be converted. */
+	/* Note: The localAddress is never filled when creating a TCPsocket and the localAddress.port will be always 0. Maybe remoteAddress port needs to be returned? */
+	//Uint16 net = ((struct _TCPsocket*)sock)->remoteAddress.port;
+	Uint16 net = ((struct _TCPsocket*)sock)->localAddress.port;
+	Uint16 port = SDL_SwapBE16(net);
 	tcp_error_table[fd] = 0;
 	return port;
 } /* GetPortNum */
@@ -208,7 +222,7 @@ int GetPortNum(int fd)
  *	None.
  *
  * Return Value:
- *	-1 if there was an error stored for fd, 0 otherwise.
+ *	0. The stored error code is placed in errno
  *
  * Globals Referenced
  *	errno	- stores the error or 0 if none.
@@ -225,7 +239,6 @@ int GetSocketError(int fd)
 		errno = invalid_fd_error;
 		invalid_fd_error = 0;
 	}
-	if (errno != 0) return -1;
 	return 0;
 } /* GetSocketError */
 
@@ -414,12 +427,12 @@ int SocketWrite(int fd, char *wbuf, int size)
  */
 void GetLocalHostName(char *name, unsigned size)
 {
-	IPaddress addrs[SDL2_MAX_LOCAL_ADRESSES];
+	IPaddress addrs[MAX_LOCAL_ADDRESSES];
 	int count, i;
 	const char *host = NULL;
 
-	count = SDLNet_GetLocalAddresses(addrs, SDL2_MAX_LOCAL_ADRESSES);
-	if (count > SDL2_MAX_LOCAL_ADRESSES) count = SDL2_MAX_LOCAL_ADRESSES;
+	count = SDLNet_GetLocalAddresses(addrs, MAX_LOCAL_ADDRESSES);
+	if (count > MAX_LOCAL_ADDRESSES) count = MAX_LOCAL_ADDRESSES;
 
 	for (i = 0; i < count; ++i) {
 		if (addrs[i].host == INADDR_NONE || addrs[i].host == INADDR_ANY) continue;
