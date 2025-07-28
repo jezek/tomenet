@@ -45,6 +45,9 @@ int sl_timeout_s = DEFAULT_S_TIMEOUT_VALUE;
 int sl_timeout_us = DEFAULT_US_TIMEOUT_VALUE;
 /* Mapping table for TCPsocket pointers */
 #define MAX_TCP_FD 1024
+/* Start returning file descriptors from this value so that descriptors 0-2
+ * remain unused, matching the typical STDIN/STDOUT/STDERR reservations. */
+#define FIRST_TCP_FD 3
 static TCPsocket tcp_socket_table[MAX_TCP_FD] = { NULL };
 static int tcp_error_table[MAX_TCP_FD] = { 0 };
 static int invalid_fd_error = 0;
@@ -174,11 +177,13 @@ int CreateClientSocket(char *host, int port)
 int GetPortNum(int fd)
 {
 	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		if ((fd >= 0) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
-		else invalid_fd_error = SL_ESOCKET;
-		return -1;
-	}
+       if (sock == NULL) {
+               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
+                       tcp_error_table[fd] = SL_ESOCKET;
+               else
+                       invalid_fd_error = SL_ESOCKET;
+               return -1;
+       }
 
 	/* Local copy of SDL_net's internal TCP socket structure (https://github.com/libsdl-org/SDL_net/blob/SDL2/src/SDLnetTCP.c#L31)*/
 	struct _TCPsocket {
@@ -228,13 +233,13 @@ int GetPortNum(int fd)
  */
 int GetSocketError(int fd)
 {
-	if ((fd >= 0) && (fd < MAX_TCP_FD)) {
-		errno = tcp_error_table[fd];
-		tcp_error_table[fd] = 0;
-	} else {
-		errno = invalid_fd_error;
-		invalid_fd_error = 0;
-	}
+       if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) {
+               errno = tcp_error_table[fd];
+               tcp_error_table[fd] = 0;
+       } else {
+               errno = invalid_fd_error;
+               invalid_fd_error = 0;
+       }
 	return 0;
 } /* GetSocketError */
 
@@ -270,12 +275,14 @@ int GetSocketError(int fd)
  */
 int SocketReadable(int fd)
 {
-	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		if ((fd >= 0) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
-		else invalid_fd_error = SL_ESOCKET;
-		return -1;
-	}
+       TCPsocket sock = fd2TCPsocket(fd);
+       if (sock == NULL) {
+               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
+                       tcp_error_table[fd] = SL_ESOCKET;
+               else
+                       invalid_fd_error = SL_ESOCKET;
+               return -1;
+       }
 	SDLNet_SocketSet set = SDLNet_AllocSocketSet(1);
 	if (set == NULL) {
 		tcp_error_table[fd] = SL_ECONNECT;
@@ -327,11 +334,14 @@ int SocketReadable(int fd)
  */
 int SocketRead(int fd, char *buf, int size)
 {
-	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		tcp_error_table[fd] = SL_ESOCKET;
-		return -1;
-	}
+       TCPsocket sock = fd2TCPsocket(fd);
+       if (sock == NULL) {
+               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
+                       tcp_error_table[fd] = SL_ESOCKET;
+               else
+                       invalid_fd_error = SL_ESOCKET;
+               return -1;
+       }
 	int bytes = SDLNet_TCP_Recv(sock, buf, size);
 	if (bytes <= 0) {
 		if (bytes == 0) errno = EAGAIN;
@@ -368,12 +378,14 @@ int SocketRead(int fd, char *buf, int size)
 int SocketWrite(int fd, char *wbuf, int size)
 {
 	/* Retrieve the TCP socket from the mapping table */
-	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		if ((fd >= 0) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
-		else invalid_fd_error = SL_ESOCKET;
-		return -1;
-	}
+       TCPsocket sock = fd2TCPsocket(fd);
+       if (sock == NULL) {
+               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
+                       tcp_error_table[fd] = SL_ESOCKET;
+               else
+                       invalid_fd_error = SL_ESOCKET;
+               return -1;
+       }
 
 	/* Send data over the TCP socket */
 	int bytes = SDLNet_TCP_Send(sock, wbuf, size);
@@ -467,12 +479,14 @@ void GetLocalHostName(char *name, unsigned size)
  */
 int SocketClose(int fd)
 {
-	TCPsocket sock = fd2TCPsocket(fd);
-	if (sock == NULL) {
-		if ((fd >= 0) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ECLOSE;
-		else invalid_fd_error = SL_ECLOSE;
-		return -1;
-	}
+       TCPsocket sock = fd2TCPsocket(fd);
+       if (sock == NULL) {
+               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
+                       tcp_error_table[fd] = SL_ECLOSE;
+               else
+                       invalid_fd_error = SL_ECLOSE;
+               return -1;
+       }
 	SDLNet_TCP_Close(sock);
 	delTCPsocket(fd);
 	tcp_error_table[fd] = 0;
@@ -501,14 +515,15 @@ int SocketClose(int fd)
  */
 static int addTCPsocket(TCPsocket sock)
 {
-	for (int i = 0; i < MAX_TCP_FD; i++) {
-		if (tcp_socket_table[i] == NULL) {
-			tcp_socket_table[i] = sock;
-			tcp_error_table[i] = 0;
-			return i;
-		}
-	}
-	return -1; /* Table is full */
+       /* descriptors 0-2 are reserved; start allocating from FIRST_TCP_FD */
+       for (int i = FIRST_TCP_FD; i < MAX_TCP_FD; i++) {
+               if (tcp_socket_table[i] == NULL) {
+                       tcp_socket_table[i] = sock;
+                       tcp_error_table[i] = 0;
+                       return i;
+               }
+       }
+       return -1; /* Table is full */
 }
 
 /*
@@ -518,10 +533,10 @@ static int addTCPsocket(TCPsocket sock)
  */
 static TCPsocket fd2TCPsocket(int fd)
 {
-	if ((fd < 0) || (fd >= MAX_TCP_FD)) {
-		return NULL;
-	}
-	return tcp_socket_table[fd];
+       if ((fd < FIRST_TCP_FD) || (fd >= MAX_TCP_FD)) {
+               return NULL;
+       }
+       return tcp_socket_table[fd];
 }
 
 /*
@@ -530,9 +545,9 @@ static TCPsocket fd2TCPsocket(int fd)
  */
 static void delTCPsocket(int fd)
 {
-	if ((fd >= 0) && (fd < MAX_TCP_FD)) {
-		tcp_socket_table[fd] = NULL;
-		tcp_error_table[fd] = 0;
-	}
+       if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) {
+               tcp_socket_table[fd] = NULL;
+               tcp_error_table[fd] = 0;
+       }
 }
 
