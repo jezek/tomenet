@@ -9,7 +9,7 @@
 #define _SOCKLIB_LIBSOURCE
 
 /* Maximum number of addresses returned by SDLNet_GetLocalAddresses. */
-#define MAX_LOCAL_ADRESSES 32
+#define MAX_LOCAL_ADDRESSES 32
 
 #include "angband.h"
 #include "version.h"
@@ -177,15 +177,17 @@ int CreateClientSocket(char *host, int port)
 int GetPortNum(int fd)
 {
 	TCPsocket sock = fd2TCPsocket(fd);
-       if (sock == NULL) {
-               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
-                       tcp_error_table[fd] = SL_ESOCKET;
-               else
-                       invalid_fd_error = SL_ESOCKET;
-               return -1;
-       }
+	if (sock == NULL) {
+		if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
+		else invalid_fd_error = SL_ESOCKET;
+		return -1;
+	}
 
-	/* Local copy of SDL_net's internal TCP socket structure (https://github.com/libsdl-org/SDL_net/blob/SDL2/src/SDLnetTCP.c#L31)*/
+	/*
+	 * SDL_net does not provide a public API to query the local port number.
+	 * The returned TCPsocket pointer is therefore cast to the private`_TCPsocket` structure defined in SDL_net (see https://github.com/libsdl-org/SDL_net/blob/SDL2/src/SDLnetTCP.c#L31).
+	 * This relies on SDL_net keeping the same layout; future versions could change it and break this code.
+	 */
 	struct _TCPsocket {
 		int ready;
 		int channel;
@@ -233,13 +235,13 @@ int GetPortNum(int fd)
  */
 int GetSocketError(int fd)
 {
-       if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) {
-               errno = tcp_error_table[fd];
-               tcp_error_table[fd] = 0;
-       } else {
-               errno = invalid_fd_error;
-               invalid_fd_error = 0;
-       }
+	if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) {
+		errno = tcp_error_table[fd];
+		tcp_error_table[fd] = 0;
+	} else {
+		errno = invalid_fd_error;
+		invalid_fd_error = 0;
+	}
 	return 0;
 } /* GetSocketError */
 
@@ -334,7 +336,10 @@ int SocketReadable(int fd)
  */
 int SocketRead(int fd, char *buf, int size)
 {
-       TCPsocket sock = fd2TCPsocket(fd);
+	TCPsocket sock;
+	int bytes;
+
+	sock = fd2TCPsocket(fd);
        if (sock == NULL) {
                if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
                        tcp_error_table[fd] = SL_ESOCKET;
@@ -342,14 +347,15 @@ int SocketRead(int fd, char *buf, int size)
                        invalid_fd_error = SL_ESOCKET;
                return -1;
        }
-	int bytes = SDLNet_TCP_Recv(sock, buf, size);
-	if (bytes <= 0) {
-		if (bytes == 0) errno = EAGAIN;
-		else errno = EIO;
+
+	bytes = SDLNet_TCP_Recv(sock, buf, size);
+	if (bytes < 0) {
 		tcp_error_table[fd] = SL_ERECEIVE;
-		return -1;
+		errno = EIO;
+	} else {
+		tcp_error_table[fd] = 0;
+		if (bytes == 0) errno = EAGAIN;
 	}
-	tcp_error_table[fd] = 0;
 	return bytes;
 } /* SocketRead */
 
@@ -377,34 +383,29 @@ int SocketRead(int fd, char *buf, int size)
  */
 int SocketWrite(int fd, char *wbuf, int size)
 {
+	TCPsocket sock;
+	int bytes;
+
 	/* Retrieve the TCP socket from the mapping table */
-       TCPsocket sock = fd2TCPsocket(fd);
-       if (sock == NULL) {
-               if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD))
-                       tcp_error_table[fd] = SL_ESOCKET;
-               else
-                       invalid_fd_error = SL_ESOCKET;
-               return -1;
-       }
-
-	/* Send data over the TCP socket */
-	int bytes = SDLNet_TCP_Send(sock, wbuf, size);
-
-	/* Check if the send operation was successful.
-	 * If bytes sent is less than the requested size, treat it as an error.
-	 */
-	if (bytes <= 0) {
-		if (bytes == 0) errno = EAGAIN;
-		else errno = EIO;
-		tcp_error_table[fd] = SL_ECONNECT;
+  sock = fd2TCPsocket(fd);
+	if (sock == NULL) {
+		if ((fd >= FIRST_TCP_FD) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
+		else invalid_fd_error = SL_ESOCKET;
 		return -1;
-	} else if (bytes < size) {
-		errno = EIO;
-		tcp_error_table[fd] = SL_ECONNECT;
-		return bytes;
 	}
 
-	tcp_error_table[fd] = 0;
+	/* Send data over the TCP socket */
+	bytes = SDLNet_TCP_Send(sock, wbuf, size);
+
+	/* Check if the send operation was successful. */
+	if (bytes < 0) {
+		tcp_error_table[fd] = SL_ECONNECT;
+		errno = EIO;
+	} else {
+		tcp_error_table[fd] = 0;
+		if (bytes == 0) errno = EAGAIN;
+	}
+
 	return bytes;
 } /* SocketWrite */
 
@@ -435,12 +436,12 @@ int SocketWrite(int fd, char *wbuf, int size)
  */
 void GetLocalHostName(char *name, unsigned size)
 {
-	IPaddress addrs[MAX_LOCAL_ADRESSES];
+	IPaddress addrs[MAX_LOCAL_ADDRESSES];
 	int count, i;
 	const char *host = NULL;
 
-	count = SDLNet_GetLocalAddresses(addrs, MAX_LOCAL_ADRESSES);
-	if (count > MAX_LOCAL_ADRESSES) count = MAX_LOCAL_ADRESSES;
+	count = SDLNet_GetLocalAddresses(addrs, MAX_LOCAL_ADDRESSES);
+	if (count > MAX_LOCAL_ADDRESSES) count = MAX_LOCAL_ADDRESSES;
 
 	for (i = 0; i < count; ++i) {
 		if (addrs[i].host == INADDR_NONE || addrs[i].host == INADDR_ANY) continue;
