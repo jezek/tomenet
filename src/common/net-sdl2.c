@@ -331,19 +331,23 @@ int SocketReadable(int fd)
  */
 int SocketRead(int fd, char *buf, int size)
 {
-	TCPsocket sock = fd2TCPsocket(fd);
+	TCPsocket sock;
+	int bytes;
+
+	sock = fd2TCPsocket(fd);
 	if (sock == NULL) {
 		tcp_error_table[fd] = SL_ESOCKET;
 		return -1;
 	}
-	int bytes = SDLNet_TCP_Recv(sock, buf, size);
-	if (bytes <= 0) {
-		if (bytes == 0) errno = EAGAIN;
-		else errno = EIO;
+
+	bytes = SDLNet_TCP_Recv(sock, buf, size);
+	if (bytes < 0) {
 		tcp_error_table[fd] = SL_ERECEIVE;
-		return -1;
+		errno = EIO;
+	} else {
+		tcp_error_table[fd] = 0;
+		if (bytes == 0) errno = EAGAIN;
 	}
-	tcp_error_table[fd] = 0;
 	return bytes;
 } /* SocketRead */
 
@@ -371,8 +375,11 @@ int SocketRead(int fd, char *buf, int size)
  */
 int SocketWrite(int fd, char *wbuf, int size)
 {
+	TCPsocket sock;
+	int bytes;
+
 	/* Retrieve the TCP socket from the mapping table */
-	TCPsocket sock = fd2TCPsocket(fd);
+	 sock = fd2TCPsocket(fd);
 	if (sock == NULL) {
 		if ((fd >= 0) && (fd < MAX_TCP_FD)) tcp_error_table[fd] = SL_ESOCKET;
 		else invalid_fd_error = SL_ESOCKET;
@@ -380,23 +387,17 @@ int SocketWrite(int fd, char *wbuf, int size)
 	}
 
 	/* Send data over the TCP socket */
-	int bytes = SDLNet_TCP_Send(sock, wbuf, size);
+	bytes = SDLNet_TCP_Send(sock, wbuf, size);
 
-	/* Check if the send operation was successful.
-	 * If bytes sent is less than the requested size, treat it as an error.
-	 */
-	if (bytes <= 0) {
-		if (bytes == 0) errno = EAGAIN;
-		else errno = EIO;
+	/* Check if the send operation was successful. */
+	if (bytes < 0) {
 		tcp_error_table[fd] = SL_ECONNECT;
-		return -1;
-	} else if (bytes < size) {
 		errno = EIO;
-		tcp_error_table[fd] = SL_ECONNECT;
-		return bytes;
+	} else {
+		tcp_error_table[fd] = 0;
+		if (bytes == 0) errno = EAGAIN;
 	}
 
-	tcp_error_table[fd] = 0;
 	return bytes;
 } /* SocketWrite */
 
