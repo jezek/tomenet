@@ -353,12 +353,11 @@ int SocketRead(int fd, char *buf, int size)
 	}
 
 	bytes = SDLNet_TCP_Recv(sock, buf, size);
-	if (bytes < 0) {
+	if (bytes <= 0) {
 		tcp_error_table[fd] = SL_ERECEIVE;
 		errno = EIO;
 	} else {
 		tcp_error_table[fd] = 0;
-		if (bytes == 0) errno = EAGAIN;
 	}
 	return bytes;
 } /* SocketRead */
