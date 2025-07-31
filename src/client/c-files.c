@@ -2200,7 +2200,6 @@ void xhtml_screenshot(cptr name, byte redux) {
 			return;
 		}
  #elif defined(USE_SDL2)
-		//TODO jezek - Test screenshot generation using shift special keys.
 		char buf2[1028];
 		strcpy(buf2, buf);
 		buf2[strlen(buf2) - 5] = 0;

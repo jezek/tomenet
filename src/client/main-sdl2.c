@@ -941,20 +941,24 @@ bool shiftForced = false;
 static int Term_win_update(int flush, int sync, int discard);
 
 /**
- * Function `shiftKeycode` transforms the given keycode to its shifted equivalent
- * based on a US ISO keyboard layout. If the character is already shifted or does not
- * have a shifted variant, the function returns the original character.
+ * Transforms an SDL_Keycode to its shifted ASCII equivalent (US-ISO layout).
+ * If the code is not an ASCII printable character or it has no shifted form, the original code is returned unchanged.
  *
- * @param keycode Input character (keycode)
- * @return Shifted character or the original character if no shifted variant exists
+ * @param keycode SDL_Keycode received from SDL
+ * @return Shifted SDL_Keycode or original code when no mapping exists
  */
-char shiftKeycode(char keycode) {
-    // Check if the character is a lowercase letter and convert it to uppercase
+SDL_Keycode shiftKeycode(SDL_Keycode keycode) {
+    /* Work only with ASCII printable range */
+    if (keycode < 32 || keycode > 126) {
+        return keycode;
+    }
+
+    /* Letters a-z → A-Z */
     if (keycode >= 'a' && keycode <= 'z') {
         return keycode - 'a' + 'A';
     }
 
-    // Map special characters to their shifted equivalents
+    /* Digits / punctuation */
     switch (keycode) {
         case '1': return '!';
         case '2': return '@';
@@ -1031,6 +1035,13 @@ static void react_keypress(SDL_Event *event) {
 	}
 #endif
 
+#ifdef ENABLE_SHIFT_SPECIALKEYS
+	/* As we're shortcutting the whole key-evaluation with the various 'return' calls here, set the shiftkey flags manually */
+	if (ms) inkey_shift_special |= 0x1;
+	if (mc) inkey_shift_special |= 0x2;
+	if (mo) inkey_shift_special |= 0x4;
+#endif
+
 	char msg[128] = "";
 
 	if (keycode == SDLK_UNKNOWN) {
@@ -1048,9 +1059,11 @@ static void react_keypress(SDL_Event *event) {
 		return;
 	}
 
+	fprintf(stderr, "jezek - react_keypress: keycode: %d\n", keycode);
 	if (ms) {
 		// Shift is pressed with the key, shift the keycode.
 		keycode = shiftKeycode(keycode);
+		fprintf(stderr, "jezek - react_keypress: after shift keycode: %d\n", keycode);
 	}
 
 	if (!mc && !mo && keycode < 256) {
@@ -1118,7 +1131,6 @@ static void react_keypress(SDL_Event *event) {
 
 	}
 
-	//TODO jezek - Shift + arrows don't work? Test.
 	if (ks > 0) {
 		fprintf(stderr, "jezek -  ks: %d\n", ks);
 		sprintf(msg, "%c%s%s%s%s_%lX%c", 31,
