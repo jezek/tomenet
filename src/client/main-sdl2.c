@@ -1500,8 +1500,12 @@ static errr Term_xtra_sdl2(int n, int v) {
 	/* Handle a subset of the legal requests */
 	switch (n) {
 		/* Make a noise */
-		case TERM_XTRA_NOISE: 
-			//TODO jezek - Make a beep sound.
+		case TERM_XTRA_NOISE:
+			/* This is called after failing making a sound using a sdl library or sdl sound is not built in. */
+			/* Fallback to a simple ASCII bell */
+			fprintf(stderr, "jezek - ascii beep\n");
+			fputc('\a', stdout);
+			fflush(stdout);
 			return(0);
 
 		/* Flush the output XXX XXX XXX */
