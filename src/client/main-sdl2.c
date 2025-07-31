@@ -108,9 +108,6 @@ struct infowin {
 struct infoclr {
 	Pixel		fg;
 	Pixel		bg;
-
-	//TODO jezek - Continue. Get rid of xor. It is used only for cursor. Use transparency for cursor.
-	bool		xor;
 };
 
 
@@ -164,8 +161,8 @@ struct infofnt {
 #define Infoclr_set(C) \
 	(Infoclr = (C))
 
-#define Infoclr_init_parse(F, B, xor) \
-	Infoclr_init_data(Infoclr_Pixel(F), Infoclr_Pixel(B), xor)
+#define Infoclr_init_parse(F, B) \
+        Infoclr_init_data(Infoclr_Pixel(F), Infoclr_Pixel(B))
 
 
 /* Set the current infofnt */
@@ -180,6 +177,7 @@ struct infofnt {
 Pixel color_default_bg = (Pixel){0x00, 0x00, 0x00, 0xFF};
 Pixel color_default_fg = (Pixel){0xFF, 0xFF, 0xFF, 0xFF};
 Pixel color_default_b  = (Pixel){0xFF, 0xFF, 0xFF, 0xFF};
+Pixel cursor_color = (Pixel){0xFF, 0xFF, 0xFF, 0x80};
 
 /*
  * The "current" variables
@@ -338,7 +336,7 @@ static Pixel Infoclr_Pixel(cptr name) {
  *	fg:   The Pixel for the requested Foreground (see above)
  *	bg:   The Pixel for the requested Background (see above)
  */
-static errr Infoclr_init_data(Pixel fg, Pixel bg, bool xor) {
+static errr Infoclr_init_data(Pixel fg, Pixel bg) {
 	infoclr *iclr = Infoclr;
 
 	/*** Initialize ***/
@@ -349,7 +347,6 @@ static errr Infoclr_init_data(Pixel fg, Pixel bg, bool xor) {
 	/* Assign the parms */
 	iclr->fg = fg;
 	iclr->bg = bg;
-	iclr->xor = xor;
 
 	/* Success */
 	return(0);
@@ -792,94 +789,12 @@ static errr Infofnt_text_std(int x, int y, cptr str, int len) {
 	SDL_Rect srcRect = {0, 0, Infofnt->wid*len, Infofnt->hgt};
 	//SDL_Rect dstRect = {x, y, surface->w, surface->h};
 	SDL_Rect dstRect = {x, y, Infofnt->wid*len, Infofnt->hgt};
-
-
-	if (Infoclr->xor == true) {
-		fprintf(stderr, "jezek - xor in font not implemented");
-	} else {
 		SDL_BlitSurface(surface, &srcRect, Infowin->surface, &dstRect);
-	}
 
 	SDL_FreeSurface(surface);
 
 	/* Success */
 	return(0);
-}
-
-//TODO jezek - Remove SDL_xor_rect function after removing xor painting.
-void SDL_xor_rect(SDL_Surface *surface, SDL_Rect rect, Uint32 color) {
-    // Lock the surface if required
-    if (SDL_MUSTLOCK(surface) && SDL_LockSurface(surface) < 0) {
-        fprintf(stderr, "Failed to lock the surface: %s\n", SDL_GetError());
-        return;
-    }
-
-    // Access pixel data
-    Uint8 *pixels = (Uint8 *)surface->pixels;
-    int pitch = surface->pitch; // Number of bytes in one row
-    int bpp = surface->format->BytesPerPixel; // Bytes per pixel
-
-    for (int row = rect.y; row < rect.y + rect.h; row++) {
-        for (int col = rect.x; col < rect.x + rect.w; col++) {
-            // Ensure the pixel is within the surface bounds
-            if (row >= 0 && row < surface->h && col >= 0 && col < surface->w) {
-                // Calculate the address of the pixel
-                Uint8 *pixel = pixels + row * pitch + col * bpp;
-
-                // Read the existing pixel value
-                Uint32 pixel_value;
-                switch (bpp) {
-                    case 1:
-                        pixel_value = *pixel;
-                        break;
-                    case 2:
-                        pixel_value = *(Uint16 *)pixel;
-                        break;
-                    case 3: {
-                        Uint8 r, g, b;
-                        SDL_GetRGB(*(Uint32 *)pixel, surface->format, &r, &g, &b);
-                        pixel_value = SDL_MapRGB(surface->format, r, g, b);
-                        break;
-                    }
-                    case 4:
-                        pixel_value = *(Uint32 *)pixel;
-                        break;
-                    default:
-                        pixel_value = 0;
-                        break;
-                }
-
-                // Apply XOR operation
-                pixel_value ^= color;
-
-                // Write the updated pixel value back
-                switch (bpp) {
-                    case 1:
-                        *pixel = (Uint8)pixel_value;
-                        break;
-                    case 2:
-                        *(Uint16 *)pixel = (Uint16)pixel_value;
-                        break;
-                    case 3: {
-                        Uint8 r, g, b;
-                        SDL_GetRGB(pixel_value, surface->format, &r, &g, &b);
-                        *(pixel + 0) = r;
-                        *(pixel + 1) = g;
-                        *(pixel + 2) = b;
-                        break;
-                    }
-                    case 4:
-                        *(Uint32 *)pixel = pixel_value;
-                        break;
-                }
-            }
-        }
-    }
-
-    // Unlock the surface if it was locked
-    if (SDL_MUSTLOCK(surface)) {
-        SDL_UnlockSurface(surface);
-    }
 }
 /*
  * Painting where text would be
@@ -904,22 +819,12 @@ static errr Infofnt_text_non(int x, int y, cptr str, int len) {
 
 	/*** Actually 'paint' the area ***/
 	//fprintf(stderr, "jezek -  Infofnt_text_non: x: %d, y: %d, w: %d, h: %d\n", x, y, w, h);
-
-	if (Infoclr->xor) {
-		SDL_xor_rect(Infowin->surface, (SDL_Rect){x, y, w, h}, SDL_MapRGBA(Infowin->surface->format, Pixel_quadruplet(Infoclr->fg)));
-	} else {
 		/* Just do a Fill Rectangle */
 		SDL_FillRect(Infowin->surface, &(SDL_Rect){x, y, w, h}, SDL_MapRGBA(Infowin->surface->format, Pixel_quadruplet(Infoclr->fg)));
-	}
 
 	/* Success */
 	return(0);
 }
-
-/*
- * Hack -- cursor color
- */
-static infoclr *xor;
 
 /*
  * Color table
@@ -1638,15 +1543,26 @@ static errr Term_curs_sdl2(int x, int y) {
 	 * blinking.
 	 */
 	if ((cursor_x != x) || (cursor_y != y)) {
-		/* Draw the cursor */
-		Infoclr_set(xor);
+               /* Draw translucent cursor rectangle */
+               int w = Infofnt->wid;
+               int h = Infofnt->hgt;
+               int px = Infowin->bw + x * w;
+               int py = Infowin->bh + y * h;
 
-		/* Hilite the cursor character */
-		Infofnt_text_non(x, y, " ", 1);
+               SDL_Surface *cursor = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32,
+                                       Infowin->surface->format->format);
+               if (cursor) {
+                       SDL_FillRect(cursor, NULL,
+                               SDL_MapRGBA(cursor->format, Pixel_quadruplet(cursor_color)));
+                       SDL_SetSurfaceBlendMode(cursor, SDL_BLENDMODE_BLEND);
+                       SDL_BlitSurface(cursor, NULL, Infowin->surface,
+                                       &(SDL_Rect){px, py, w, h});
+                       SDL_FreeSurface(cursor);
+               }
 
-		cursor_x = x;
-		cursor_y = y;
-	}
+               cursor_x = x;
+               cursor_y = y;
+       }
 
 	/* Success */
 	return(0);
@@ -2680,13 +2596,6 @@ errr init_sdl2(void) {
 
 	enable_common_colormap_sdl2();
 
-	/* Prepare color "xor" (for cursor) */
-	MAKE(xor, infoclr);
-	Infoclr_set (xor);
-	Infoclr_init_parse("fg", "bg", true);
-	//fprintf(stderr, "jezek - xor->fg: %x, xor->bg: %x, xor->xor: %b\n", xor->fg, xor->bg, xor->xor);
-
-	/* Prepare the colors (including "black") */
 	for (i = 0; i < CLIENT_PALETTE_SIZE; ++i) {
 		cptr cname = color_name[0];
 
@@ -2694,7 +2603,7 @@ errr init_sdl2(void) {
 		Infoclr_set(clr[i]);
 		if (dpy_color) cname = color_name[i];
 		else if (i) cname = color_name[1];
-		Infoclr_init_parse(cname, "bg", false);
+		Infoclr_init_parse(cname, "bg");
 	}
 
 #ifdef EXTENDED_BG_COLOURS
@@ -2708,7 +2617,7 @@ errr init_sdl2(void) {
 			cname = color_ext_name[i][0];
 			cname2 = color_ext_name[i][1];
 		}
-		Infoclr_init_parse(cname, cname2, false);
+		Infoclr_init_parse(cname, cname2);
 	}
 #endif
 
@@ -3339,7 +3248,7 @@ void animate_palette(void) {
 #else
 		cname = color_name[i];
 #endif
-		Infoclr_init_parse(cname, "bg", false);
+		Infoclr_init_parse(cname, "bg");
 	}
 
 	old_td = (term_data*)(Term->data);
@@ -3436,10 +3345,10 @@ void set_palette(byte c, byte r, byte g, byte b) {
 	/* Just for testing for now.. */
 	if (c >= CLIENT_PALETTE_SIZE) { /* TERMX_.. */
 		/* Actually animate the 'bg' colour instead of the 'fg' colour (testing purpose) */
-		Infoclr_init_parse(color_ext_name[c - CLIENT_PALETTE_SIZE][0], cname, false);
+		Infoclr_init_parse(color_ext_name[c - CLIENT_PALETTE_SIZE][0], cname);
 	} else
 #endif
-	Infoclr_init_parse(cname, "bg", false);
+	Infoclr_init_parse(cname, "bg");
 
 #ifndef PALANIM_OPTIMIZED
 	/* Refresh aka redraw the main window with new colour */
