@@ -7785,12 +7785,12 @@ void update_ticks(void) {
 	newticks = ticks - (ticks % 10);
 
 //#ifdef ENABLE_JUKEBOX
- #ifdef SOUND_SDL
-	/* Track jukebox music position in seconds */
-	if (newticks != oldticks) {
-		oldticks = newticks;
-		if (jukebox_screen) update_jukebox_timepos();
-	}
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+        /* Track jukebox music position in seconds */
+        if (newticks != oldticks) {
+                oldticks = newticks;
+                if (jukebox_screen) update_jukebox_timepos();
+        }
  #endif
 //#endif
 
@@ -8022,22 +8022,22 @@ void do_ping(void) {
 		}
 
  #ifdef USE_SOUND_2010
-  #ifdef SOUND_SDL
-		if (weather_fading) weather_handle_fading();
+  #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+                if (weather_fading) weather_handle_fading();
   #endif
  #endif
 #endif
 	}
 
 #ifdef USE_SOUND_2010
- #ifdef SOUND_SDL
-	/* make sure fading out an ambient sound to zero completes glitch-free */
-	if (ambient_fading) ambient_handle_fading();
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+        /* make sure fading out an ambient sound to zero completes glitch-free */
+        if (ambient_fading) ambient_handle_fading();
 
 	/* change volume of background ambient sound effects or weather (if enabled),
 	   check every 1/10 s (one tick):  */
-	if (last_ping != ticks
-	    && (last_ping + 1) % 10 != ticks) { /* actually skip 2 ticks -> 1/5s */
+        if (last_ping != ticks
+            && (last_ping + 1) % 10 != ticks) { /* actually skip 2 ticks -> 1/5s */
 		bool modified = FALSE;
 
 		if (grid_ambient_volume != grid_ambient_volume_goal) {

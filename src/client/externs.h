@@ -1231,7 +1231,7 @@ extern bool sound_hint;
 extern const struct module sound_modules[];
 extern int re_init_sound();
 
- #ifdef SOUND_SDL
+#if defined(SOUND_SDL) || defined(SOUND_SDL2)
  extern errr init_sound_sdl(int argc, char **argv);
  extern errr re_init_sound_sdl(void);
  extern void close_audio_sdl(void);
@@ -1240,7 +1240,7 @@ extern int re_init_sound();
   //#ifdef ENABLE_JUKEBOX
  extern void update_jukebox_timepos(void);
   //#endif
- #endif
+#endif
 
 extern bool skip_received_music;
 #endif

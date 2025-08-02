@@ -5492,4 +5492,4 @@ void update_jukebox_timepos(void) {
 	Term->scr->cu = 1;
 }
 
-#endif /* SOUND_SDL */
+#endif /* SOUND_SDL2 */

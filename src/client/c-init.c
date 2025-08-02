@@ -33,9 +33,9 @@ static int Socket;
  * List of sound modules in the order they should be tried.
  */
 const struct module sound_modules[] = {
- #ifdef SOUND_SDL
-	{ "sdl", "SDL_mixer sound module", init_sound_sdl },
- #endif /* SOUND_SDL */
+#if defined(SOUND_SDL) || defined(SOUND_SDL2)
+       { "sdl", "SDL_mixer sound module", init_sound_sdl },
+#endif
 	{ "dummy", "Dummy module", NULL },
 };
 #endif /* USE_SOUND_2010 */
@@ -3300,8 +3300,8 @@ static void quit_hook(cptr s) {
 #ifdef USE_SOUND_2010
 	/* let the sound fade out, also helps the user to realize
 	   he's been disconnected or something - C. Blue */
- #ifdef SOUND_SDL
-	mixer_fadeall();
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+       mixer_fadeall();
  #endif
 #endif
 #endif
@@ -3345,8 +3345,8 @@ static void quit_hook(cptr s) {
 #ifdef USE_SOUND_2010
 	/* let the sound fade out, also helps the user to realize
 	   he's been disconnected or something - C. Blue */
- #ifdef SOUND_SDL
-	mixer_fadeall();
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+       mixer_fadeall();
  #endif
 #endif
 #endif
@@ -3476,8 +3476,8 @@ static void init_sound() {
 #ifdef USE_SOUND_2010
 int re_init_sound() {
 	int i;
- #ifdef SOUND_SDL
-	int err;
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+       int err;
  #endif
 
 	/* Initialise this even if we don't use sound, just for its visual effect */
@@ -3496,8 +3496,8 @@ int re_init_sound() {
 			puts("ERROR: SDL audio has no init function.");
 			return(-1);
 		}
- #ifdef SOUND_SDL
-		if ((err = re_init_sound_sdl()) == 0) {
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+               if ((err = re_init_sound_sdl()) == 0) {
   #ifdef DEBUG_SOUND
 			puts(format("USE_SOUND_2010: successfully loaded module %d.", i));
   #endif
@@ -3505,7 +3505,7 @@ int re_init_sound() {
 		} else {
 			puts("ERROR: SDL audio failed to re-initialize.");
 			return(err);
-		}
+               }
  #endif
 	}
  #ifdef DEBUG_SOUND
@@ -4405,8 +4405,8 @@ again:
 		/* We quit the game actively? (Otherwise the quit_hook will already have taken care of fading out). Or, in 4.9.3+, it' PKT_RELOGIN from the server. */
 		if (rl_connection_state == 3) {
  #ifdef USE_SOUND_2010
-  #ifdef SOUND_SDL
-			mixer_fadeall();
+  #if defined(SOUND_SDL) || defined(SOUND_SDL2)
+                       mixer_fadeall();
   #endif
  #endif
 		}
