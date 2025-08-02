@@ -20,11 +20,11 @@
  */
 
 
-#include "angband.h"
-
 /* Summer 2022 I migrated from SDL to SDL2, requiring SDL2_mixer v2.5 or higher
    for Mix_SetPanning() and Mix_GetMusicPosition(). - C. Blue */
 #ifdef SOUND_SDL
+
+#include "angband.h"
 
 /* Enable ALMixer, overriding SDL? */
 //#define SOUND_AL_SDL
