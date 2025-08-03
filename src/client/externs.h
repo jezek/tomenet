@@ -776,6 +776,9 @@ extern void colour_bignum(s32b bn, s32b bn_max, char *out_val, byte method, bool
 extern void set_bigmap(int bm, bool verbose);
 extern void apply_auto_inscriptions(int insc_idx);
 extern int check_guard_inscription_str(cptr ax, char what);
+#ifdef USE_SDL2
+extern int copy_file(const char *source, const char *destination);
+#endif
 
 /* c-store.c */
 extern bool leave_store;

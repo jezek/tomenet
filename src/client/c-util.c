@@ -16049,3 +16049,45 @@ bool my_fexists(const char *fname) {
 	default: return(FALSE);
 	}
 }
+
+#ifdef USE_SDL2
+/**
+ * copy_file - Copy the contents of one file to another.
+ *
+ * This function opens the given source file for reading in binary mode
+ * and creates or overwrites the destination file for writing in binary mode.
+ * It reads the source file in 4096-byte chunks and writes them to the destination.
+ *
+ * @param source:      Path to the source file.
+ * @param destination: Path to the destination file.
+ *
+ * @return 0 on success, -1 on error (e.g., file not found or permission denied).
+ */
+int copy_file(const char *source, const char *destination) {
+	FILE *src;
+	FILE *dest;
+	char buffer[4096];
+	size_t bytes;
+
+	src = fopen(source, "rb");
+	if (!src) {
+		fprintf(stderr, "copy_file: Error opening source file: %s\n", source);
+		return -1;
+	}
+
+	dest = fopen(destination, "wb");
+	if (!dest) {
+		fprintf(stderr, "copy_file: Error opening destination file: %s\n", destination);
+		fclose(src);
+		return -1;
+	}
+
+	while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+		fwrite(buffer, 1, bytes, dest);
+	}
+
+	fclose(src);
+	fclose(dest);
+	return 0;  // Success
+}
+#endif
