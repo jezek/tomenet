@@ -140,6 +140,22 @@ else
   $(warning Warning: SDL2_image library for mingw not found, PNG screenshot support disabled)
 endif
 
+# Check for libarchive library for extracting audio packs
+LIBARCHIVE_LINUX ?= $(shell $(PKG_CONFIG_LINUX) --exists libarchive && echo yes)
+LIBARCHIVE_MINGW ?= $(shell $(PKG_CONFIG_MINGW) --exists libarchive && echo yes)
+ifeq ($(LIBARCHIVE_LINUX),yes)
+  FLAGS_LIBARCHIVE_LINUX := -DHAVE_LIBARCHIVE
+  LIBS_LIBARCHIVE_LINUX := -larchive
+else
+  $(warning Warning: libarchive library for linux not found, 7z support disabled)
+endif
+ifeq ($(LIBARCHIVE_MINGW),yes)
+  FLAGS_LIBARCHIVE_MINGW := -DHAVE_LIBARCHIVE
+  LIBS_LIBARCHIVE_MINGW := -larchive
+else
+  $(warning Warning: libarchive library for mingw not found, 7z support disabled)
+endif
+
 
 #TODO jezek - figure out how.
 #
@@ -241,8 +257,8 @@ date:
 #
 # Rules for building the TomeNET SDL2 (test) client
 #
-tomenet tomenet.test: CFLAGS = -Djezek_t $(COMMON_FLAGS_LINUX) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_LINUX) $(shell $(SDL_CONFIG_LINUX) --cflags)
-tomenet tomenet.test: LIBS = -lm -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_LINUX) $(shell $(SDL_CONFIG_LINUX) --libs)
+tomenet tomenet.test: CFLAGS = -Djezek_t $(COMMON_FLAGS_LINUX) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_LINUX) $(FLAGS_LIBARCHIVE_LINUX) $(shell $(SDL_CONFIG_LINUX) --cflags)
+tomenet tomenet.test: LIBS = -lm -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_LINUX) $(LIBS_LIBARCHIVE_LINUX) $(shell $(SDL_CONFIG_LINUX) --libs)
 # Compiler for lient gets additional security hardening flags (linker too)
 tomenet: CFLAGS += -fstack-protector -D_FORTIFY_SOURCE=2 -g -O2
 tomenet: $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX)
@@ -254,8 +270,8 @@ tomenet.test: CPPFLAGS += -DTEST_CLIENT
 tomenet.test: $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX)
 	$(CC_LINUX) $(CFLAGS) -o tomenet $(CLI_OBJS_LINUX) $(CLI_LUAOBJS_LINUX) $(TOLUAOBJS_LINUX) $(LIBS)
 
-tomenet.exe tomenet.test.exe: CFLAGS = -Djezek_t $(COMMON_FLAGS_MINGW) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_MINGW) $(shell $(SDL_CONFIG_MINGW) --cflags)
-tomenet.exe tomenet.test.exe: LIBS = -lregex -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_MINGW) $(shell $(SDL_CONFIG_MINGW) --libs)
+tomenet.exe tomenet.test.exe: CFLAGS = -Djezek_t $(COMMON_FLAGS_MINGW) -DUSE_SDL2 -DSOUND_SDL $(FLAGS_SDL2_IMAGE_MINGW) $(FLAGS_LIBARCHIVE_MINGW) $(shell $(SDL_CONFIG_MINGW) --cflags)
+tomenet.exe tomenet.test.exe: LIBS = -lregex -lSDL2_mixer -lSDL2_ttf -lSDL2_net $(LIBS_SDL2_IMAGE_MINGW) $(LIBS_LIBARCHIVE_MINGW) $(shell $(SDL_CONFIG_MINGW) --libs)
 # Compiler for lient gets additional security hardening flags (linker too)
 tomenet.exe: CFLAGS += -D_FORTIFY_SOURCE=2 -O2
 tomenet.exe: $(CLI_OBJS_MINGW) $(CLI_LUAOBJS_MINGW) $(TOLUAOBJS_MINGW)

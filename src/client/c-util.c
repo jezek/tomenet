@@ -13,6 +13,10 @@
 
 #ifdef USE_SDL2
  #include <SDL2/SDL.h>
+#ifdef HAVE_LIBARCHIVE
+ #include <archive.h>
+ #include <archive_entry.h>
+#endif
 #endif
 
 #define ENABLE_SUBWINDOW_MENU /* allow =f menu function for setting fonts/visibility of term windows */
@@ -12197,6 +12201,73 @@ errr options_dump(cptr fname) {
 
 /* For installing audio packs via = I menu: */
 
+#ifdef USE_SDL2
+#ifdef HAVE_LIBARCHIVE
+/* Helper function to extract a 7z archive into a target directory using
+ * libarchive. Returns TRUE on success. */
+       static int archive_copy_data(struct archive *ar, struct archive *aw) {
+	const void *buff;
+	size_t size;
+	la_int64_t offset;
+	int r;
+	
+	for (;;) {
+	r = archive_read_data_block(ar, &buff, &size, &offset);
+	if (r == ARCHIVE_EOF)
+	return ARCHIVE_OK;
+	if (r < ARCHIVE_OK)
+	return r;
+	r = archive_write_data_block(aw, buff, size, offset);
+	if (r < ARCHIVE_OK)
+		return r;
+	}
+}
+static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
+	struct archive *ar;
+	struct archive *aw;
+	struct archive_entry *entry;
+	int r;
+	char cwd[1024];
+
+	if (!getcwd(cwd, sizeof(cwd))) return FALSE;
+	if (chdir(dest)) return FALSE;
+	
+	ar = archive_read_new();
+	archive_read_support_format_7zip(ar);
+	archive_read_support_filter_all(ar);
+	if (password && password[0]) archive_read_add_passphrase(ar, password);
+	if ((r = archive_read_open_filename(ar, archive_path, 10240))) {
+        archive_read_free(ar);
+        (void)chdir(cwd);
+        return FALSE;
+	}
+
+	aw = archive_write_disk_new();
+	archive_write_disk_set_options(aw, ARCHIVE_EXTRACT_TIME |
+	ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL |
+	ARCHIVE_EXTRACT_FFLAGS);
+	archive_write_disk_set_standard_lookup(aw);
+	
+	while (archive_read_next_header(ar, &entry) == ARCHIVE_OK) {
+	r = archive_write_header(aw, entry);
+	if (r == ARCHIVE_OK)
+	r = archive_copy_data(ar, aw);
+	if (r < ARCHIVE_WARN) {
+        archive_write_free(aw);
+        archive_read_free(ar);
+        (void)chdir(cwd);
+        return FALSE;
+	}
+	}
+	
+        archive_write_free(aw);
+        archive_read_free(ar);
+        (void)chdir(cwd);
+        return TRUE;
+}
+#endif /* HAVE_LIBARCHIVE */
+#endif /* USE_SDL2 */
+
 #ifdef WINDOWS
  #include <winreg.h>	/* remote control of installed 7-zip via registry approach */
  #include <process.h>	/* use spawn() instead of normal system() (WINE bug/Win inconsistency even maybe) */
@@ -12571,11 +12642,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		return;
 	}
 #elif(USE_SDL2)
-	//TODO jezek - Unzipping support for SDL2 client.
-	Term_putstr(0, 1, -1, TERM_RED, "SDL2 client doesn't support unzipping yet.");
-	Term_putstr(0, 9, -1, TERM_WHITE, "Press any key to return to options menu...");
-	inkey();
-	return;
+        Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver (libarchive) found.");
 #else /* assume posix */
 	fff = fopen("tmp", "w");
 	fclose(fff);
@@ -12937,8 +13004,12 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
-		//TODO jezek - Unzipping support for SDL2 client.
-		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Sound pack not correctly installed!");
+#ifdef HAVE_LIBARCHIVE
+                if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
+                        Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
+#else
+                Term_putstr(0, 12, -1, TERM_L_RED, "Error: libarchive missing! Sound pack not installed.");
+#endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -12972,8 +13043,12 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
-		//TODO jezek - Unzipping support for SDL2 client.
-		Term_putstr(0, 12, -1, TERM_L_RED, "Error: Unziping not implemented! Music pack not correctly installed!");
+#ifdef HAVE_LIBARCHIVE
+                if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
+                        Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Music pack not correctly installed!");
+#else
+                Term_putstr(0, 12, -1, TERM_L_RED, "Error: libarchive missing! Music pack not installed.");
+#endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
