@@ -1962,12 +1962,12 @@ void bell(void) {
 	/* Make a bell noise (if allowed) */
 	if (c_cfg.ring_bell) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 		/* Try to beep via bell sfx of the SDL audio system first */
 		if (!sound_bell()
-		    //&& !(c_cfg.audio_paging && sound_page())
-		    )
-#endif
+				//&& !(c_cfg.audio_paging && sound_page())
+			 )
+ #endif
 #endif
 		if (!c_cfg.quiet_os) Term_xtra(TERM_XTRA_NOISE, 0);
 	}
@@ -2001,10 +2001,10 @@ void bell_silent(void) {
 /* Generate a page sfx (beep) */
 int page(void) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Try to beep via page sfx of the SDL audio system first */
 	if (c_cfg.audio_paging && sound_page()) return(1);
-#endif
+ #endif
 #endif
 
 	/* Fall back on system-specific default beeps */
@@ -2017,11 +2017,11 @@ int page(void) {
 /* Generate a warning sfx (beep) or if it's missing then a page sfx */
 int warning_page(void) {
 #ifdef USE_SOUND_2010
-#ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Try to beep via warning sfx of the SDL audio system first */
 	if (sound_warning()) return(1);
 	//if (c_cfg.audio_paging && sound_page()) return(1);
-#endif
+ #endif
 #endif
 
 	/* Fall back on system-specific default beeps */
@@ -12099,12 +12099,12 @@ static void do_cmd_options_tilesets(void) {
 
 #ifdef USE_SOUND_2010
 static void do_cmd_options_sfx(void) {
- #if SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	do_cmd_options_sfx_sdl();
  #endif
 }
 static void do_cmd_options_mus(void) {
- #if SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	do_cmd_options_mus_sdl();
  #endif
 }
@@ -12986,7 +12986,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		if (c == 'y' || c == 'Y') break;
 	}
 
-#ifdef SOUND_SDL
+#if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Windows OS: Need to close all related files so they can actually be overwritten, esp. the .cfg files */
 	if (!quiet_mode) close_audio_sdl();
 #endif
@@ -16124,3 +16124,45 @@ bool my_fexists(const char *fname) {
 	default: return(FALSE);
 	}
 }
+
+#ifdef USE_SDL2
+/**
+ * copy_file - Copy the contents of one file to another.
+ *
+ * This function opens the given source file for reading in binary mode
+ * and creates or overwrites the destination file for writing in binary mode.
+ * It reads the source file in 4096-byte chunks and writes them to the destination.
+ *
+ * @param source:      Path to the source file.
+ * @param destination: Path to the destination file.
+ *
+ * @return 0 on success, -1 on error (e.g., file not found or permission denied).
+ */
+int copy_file(const char *source, const char *destination) {
+	FILE *src;
+	FILE *dest;
+	char buffer[4096];
+	size_t bytes;
+
+	src = fopen(source, "rb");
+	if (!src) {
+		fprintf(stderr, "copy_file: Error opening source file: %s\n", source);
+		return -1;
+	}
+
+	dest = fopen(destination, "wb");
+	if (!dest) {
+		fprintf(stderr, "copy_file: Error opening destination file: %s\n", destination);
+		fclose(src);
+		return -1;
+	}
+
+	while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+		fwrite(buffer, 1, bytes, dest);
+	}
+
+	fclose(src);
+	fclose(dest);
+	return 0;  // Success
+}
+#endif

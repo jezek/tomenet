@@ -17,13 +17,20 @@
  */
 
 #ifdef SOUND_SDL2
-/* Requires SDL2_mixer v2.5 or higher */
+ #ifndef USE_SDL2
+  #error "Compiling with SOUND_SDL2 works currently only for SDL2 client!"
+ #endif
+
+ #ifdef SOUND_SDL
+  #error "Compiling client with SOUND_SDL and SOUND_SDL2 at the same time!"
+ #endif
 
 #include "angband.h"
 
-#include "SDL.h"
-#include "SDL_mixer.h"
-#include "SDL_thread.h"
+#include "SDL2/SDL.h"
+/* Requires SDL2_mixer v2.5 or higher */
+#include "SDL2/SDL_mixer.h"
+#include "SDL2/SDL_thread.h"
 
 
 /* allow pressing RETURN key to play any piece of music (like for sfx) -- only reason to disable: It's spoilery ;) */
@@ -5492,4 +5499,4 @@ void update_jukebox_timepos(void) {
 	Term->scr->cu = 1;
 }
 
-#endif /* SOUND_SDL */
+#endif /* SOUND_SDL2 */

@@ -776,6 +776,9 @@ extern void colour_bignum(s32b bn, s32b bn_max, char *out_val, byte method, bool
 extern void set_bigmap(int bm, bool verbose);
 extern void apply_auto_inscriptions(int insc_idx);
 extern int check_guard_inscription_str(cptr ax, char what);
+#ifdef USE_SDL2
+extern int copy_file(const char *source, const char *destination);
+#endif
 
 /* c-store.c */
 extern bool leave_store;
@@ -1231,7 +1234,7 @@ extern bool sound_hint;
 extern const struct module sound_modules[];
 extern int re_init_sound();
 
- #ifdef SOUND_SDL
+ #if defined(SOUND_SDL) || defined(SOUND_SDL2)
  extern errr init_sound_sdl(int argc, char **argv);
  extern errr re_init_sound_sdl(void);
  extern void close_audio_sdl(void);

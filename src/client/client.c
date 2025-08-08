@@ -12,9 +12,6 @@
 
 #ifdef USE_SDL2
  #include <SDL2/SDL.h>
-
-/* For readability purposes, the function body is implemented at the end of this file. */
-static int copy_file(const char *source, const char *destination);
 #endif
 
 extern bool disable_tile_cache;
@@ -1452,34 +1449,3 @@ int main(int argc, char **argv) {
 	fprintf(stderr, "jezek - main end\n");
 	return(0);
 }
-
-#ifdef USE_SDL2
-//TODO jezek - Move copy_file function elsewhere?
-static int copy_file(const char *source, const char *destination) {
-	FILE *src;
-	FILE *dest;
-	char buffer[4096];
-	size_t bytes;
-
-	src = fopen(source, "rb");
-	if (!src) {
-		fprintf(stderr, "copy_file: Error opening source file: %s\n", source);
-		return -1;
-	}
-
-	dest = fopen(destination, "wb");
-	if (!dest) {
-		fprintf(stderr, "copy_file: Error opening destination file: %s\n", destination);
-		fclose(src);
-		return -1;
-	}
-
-	while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
-		fwrite(buffer, 1, bytes, dest);
-	}
-
-	fclose(src);
-	fclose(dest);
-	return 0;  // Success
-}
-#endif
