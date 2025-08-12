@@ -12224,6 +12224,7 @@ static int archive_copy_data(struct archive *ar, struct archive *aw) {
 /* Helper function to extract a 7z archive into a target directory using
  * libarchive. Returns TRUE on success. */
 static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
+	fprintf(stderr, "jezek - sdl2_extract_7z(archive_path: %s, dest: %s, password: %s)\n", archive_path, dest, (password == NULL ? "no" : "yes"));
 	struct archive *ar;
 	struct archive *aw;
 	struct archive_entry *entry;
@@ -12533,6 +12534,7 @@ static bool verify_password(cptr path_7z_quoted, cptr pack_name, cptr pack_class
 /* Attempt to find sound+music pack 7z files in the client's root folder
    and to install them properly. - C. Blue */
 static void do_cmd_options_install_audio_packs(void) {
+	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs()\n");
 	FILE *fff;
 	char ins_path[1024] = { 0 }, out_val[1024 + 28], password[MAX_CHARS];
 	char c, ch, pack_name[1024], pack_top_folder[1024];
@@ -12642,14 +12644,15 @@ static void do_cmd_options_install_audio_packs(void) {
 		inkey();
 		return;
 	}
+	fclose(fff);
+	remove("tmp.7z");
 #elif(USE_SDL2)
- #ifdef SDL2_ARCHIVE
-	Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver (libarchive) found.");
- #else
-	//TODO jezek - Test and write info about downloading client with archive support or manual unpacking.
+ #ifndef SDL2_ARCHIVE
+	//TODO jezek - Write info about downloading client with archive support or manual unpacking.
 	Term_putstr(0, 1, -1, TERM_RED, "This SDL2 client doesn't support unzipping.");
 	Term_putstr(0, 9, -1, TERM_WHITE, "Press any key to return to options menu...");
 	inkey();
+	return;
  #endif
 #else /* assume posix */
 	fff = fopen("tmp", "w");
@@ -12668,10 +12671,11 @@ static void do_cmd_options_install_audio_packs(void) {
 		inkey();
 		return;
 	}
-#endif
-	Term_fresh();
 	fclose(fff);
 	remove("tmp.7z");
+#endif
+	Term_fresh();
+	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: after remove\n");
 
 #ifdef WINDOWS
 	{ /* Use native Windows functions from dirent to query directory structure directly */
@@ -12822,6 +12826,10 @@ static void do_cmd_options_install_audio_packs(void) {
 	}
 	closedir(dr);
 	}
+#elif USE_SDL2
+	Term_clear();
+	//TODO jezek - Add OS independent implementation.
+ //#error Implement folder scanning for audio and music pack 7zip files.
 #else /* assume POSIX */
 	{
 	FILE *fff_ls;
@@ -13012,14 +13020,9 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
- #ifdef SDL2_ARCHIVE
-		//TODO jezek - Test unpacking, find out what to do so the server pushes a new pack..
+		//TODO jezek - Test unpacking sound pack.
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
- #else
-		//TODO jezek - Test and write info about downloading client with archive support or manual unpacking.
-		Term_putstr(0, 12, -1, TERM_L_RED, "Error: libarchive missing! Sound pack not installed.");
- #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -13053,14 +13056,9 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
- #ifdef SDL2_ARCHIVE
-		//TODO jezek - Test unpacking, find out what to do so the server pushes a new pack..
+		//TODO jezek - Test unpacking music pack.
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Music pack not correctly installed!");
- #else
-		//TODO jezek - Test and write info about downloading client with archive support or manual unpacking.
-		Term_putstr(0, 12, -1, TERM_L_RED, "Error: libarchive missing! Music pack not installed.");
- #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -13165,7 +13163,11 @@ static void do_cmd_options_colourblindness(void) {
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current INI file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current INI file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", ini_file));
-#elif defined(USE_X11) || defined(USE_SDL2)
+#elif defined(USE_SDL2)
+			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current cfg file");
+			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current cfg file");
+			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", mangrc_filename));
+#elif defined(USE_X11)
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377ys\377w) Save (modified) palette to current rc-file");
 			Term_putstr(0, l++, -1, TERM_WHITE, "(\377yr\377w) Reset palette to values from current rc-file");
 			Term_putstr(0, l, -1, TERM_SLATE, format("    (Filename: %s)", mangrc_filename));
