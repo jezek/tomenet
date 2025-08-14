@@ -10666,9 +10666,9 @@ static bool do_cmd_options_aux(int page, cptr info, int select) {
 
 			/* Display the option text */
 			sprintf(buf, "%-49s: %s  (%s)",
-			        option_info[opt[i]].o_desc,
-			        (*option_info[opt[i]].o_var ? "yes" : "no "),
-			        option_info[opt[i]].o_text);
+				option_info[opt[i]].o_desc,
+				(*option_info[opt[i]].o_var ? "yes" : "no "),
+				option_info[opt[i]].o_text);
 			c_prt(a, buf, i + 2, 0);
 		}
 
@@ -12267,6 +12267,103 @@ static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
 	(void)chdir(cwd);
 	return TRUE;
 }
+
+/* Inspect a 7z archive and determine whether it contains a top level
+ * "sound" or "music" directory. If a password is required and not
+ * supplied this function returns -1. On success it returns 1 and sets
+ * the appropriate flags and top folder name. */
+static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
+		char *pack_top_folder, bool *sound_pack, bool *music_pack) {
+	struct archive *ar;
+	struct archive_entry *entry;
+	int r;
+	bool tarfile = FALSE;
+
+	pack_top_folder[0] = 0;
+	*sound_pack = FALSE;
+	*music_pack = FALSE;
+
+	ar = archive_read_new();
+	archive_read_support_format_7zip(ar);
+	archive_read_support_filter_all(ar);
+	if (password && password[0])
+		archive_read_add_passphrase(ar, password);
+	if ((r = archive_read_open_filename(ar, archive_path, 10240))) {
+		archive_read_free(ar);
+		return -1;
+	}
+
+	while ((r = archive_read_next_header(ar, &entry)) == ARCHIVE_OK) {
+		const char *name = archive_entry_pathname(entry);
+
+		if (archive_entry_filetype(entry) == AE_IFDIR) {
+			const char *slash = strchr(name, '/');
+			size_t len = slash ? (size_t)(slash - name) : strlen(name);
+			if (len > 1023) len = 1023;
+			strncpy(pack_top_folder, name, len);
+			pack_top_folder[len] = '\0';
+			if (prefix_case(pack_top_folder, "music")) {
+				*music_pack = TRUE;
+				break;
+			}
+			if (prefix_case(pack_top_folder, "sound")) {
+				*sound_pack = TRUE;
+				break;
+			}
+		} else if (!tarfile && suffix_case(name, ".tar")) {
+			size_t size = archive_entry_size(entry);
+			char *data = malloc(size);
+			if (!data) {
+				archive_read_free(ar);
+				return 0;
+			}
+			size_t off = 0;
+			const void *buff; size_t bytes; la_int64_t o;
+			while (archive_read_data_block(ar, &buff, &bytes, &o) == ARCHIVE_OK) {
+				memcpy(data + off, buff, bytes);
+				off += bytes;
+			}
+			struct archive *tar = archive_read_new();
+			archive_read_support_format_tar(tar);
+			archive_read_support_filter_all(tar);
+			if (!archive_read_open_memory(tar, data, size)) {
+				struct archive_entry *te;
+				while (archive_read_next_header(tar, &te) == ARCHIVE_OK) {
+					const char *tname = archive_entry_pathname(te);
+					if (archive_entry_filetype(te) == AE_IFDIR) {
+						const char *tslash = strchr(tname, '/');
+						size_t tlen = tslash ? (size_t)(tslash - tname) : strlen(tname);
+						if (tlen > 1023) tlen = 1023;
+						strncpy(pack_top_folder, tname, tlen);
+						pack_top_folder[tlen] = '\0';
+						if (prefix_case(pack_top_folder, "music")) {
+							*music_pack = TRUE;
+							break;
+						}
+						if (prefix_case(pack_top_folder, "sound")) {
+							*sound_pack = TRUE;
+							break;
+						}
+					}
+					archive_read_data_skip(tar);
+				}
+				archive_read_free(tar);
+			}
+			free(data);
+			if (*music_pack || *sound_pack)
+				break;
+			tarfile = TRUE;
+			continue;
+		}
+
+		archive_read_data_skip(ar);
+	}
+
+	archive_read_free(ar);
+	if (*music_pack || *sound_pack)
+		return 1;
+	return 0;
+}
  #endif /* SDL2_ARCHIVE */
 #endif /* USE_SDL2 */
 
@@ -12827,9 +12924,88 @@ static void do_cmd_options_install_audio_packs(void) {
 	closedir(dr);
 	}
 #elif USE_SDL2
-	Term_clear();
-	//TODO jezek - Add OS independent implementation.
- //#error Implement folder scanning for audio and music pack 7zip files.
+	{
+	struct dirent *de;
+	DIR *dr;
+
+	if (!(dr = opendir("."))) {
+		c_message_add("\377oError: Couldn't scan TomeNET folder.");
+		return;
+	}
+	while ((de = readdir(dr))) {
+		/* Clear screen */
+		Term_clear();
+		Term_putstr(0, 0, -1, TERM_WHITE,
+			"Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
+		Term_putstr(0, 1, -1, TERM_WHITE,
+			"Unarchiver support found.");
+
+		strcpy(pack_name, de->d_name);
+
+		pack_top_folder[0] = 0;
+		passworded = FALSE;
+		maybe_sound_pack = !strncmp(pack_name, "TomeNET-soundpack", 17) || prefix_case(pack_name, "sound");
+		maybe_music_pack = !strncmp(pack_name, "TomeNET-musicpack", 17) || prefix_case(pack_name, "music");
+		if (!maybe_sound_pack && !maybe_music_pack) continue;
+
+		r = sdl2_identify_audio_pack(pack_name, NULL, pack_top_folder,
+				&sound_pack, &music_pack);
+		if (r < 0) passworded = TRUE;
+
+		/* If passworded, ask user for the password: */
+		if (passworded) {
+			bool retry_pw = TRUE;
+
+			Term_putstr(0, 3, -1, TERM_ORANGE,
+				format("Found file '\377y%s\377o'", pack_name));
+			Term_putstr(0, 4, -1, TERM_ORANGE,
+				"which is password-protected. Enter the password:   ");
+			while (retry_pw) {
+				Term_gotoxy(49, 4);
+				password[0] = 0;
+				if (!askfor_aux(password, MAX_CHARS - 1, 0) || !password[0]) {
+					c_msg_format("\377yNo password entered for '%s', skipping.", pack_name);
+					retry_pw = FALSE;
+					continue;
+				}
+				r = sdl2_identify_audio_pack(pack_name, password,
+						pack_top_folder, &sound_pack, &music_pack);
+				if (r > 0) {
+					Term_putstr(0, 5, -1, TERM_L_RED,
+						"                                               ");
+					break;
+				}
+				Term_putstr(0, 5, -1, TERM_L_RED,
+					"You entered a wrong password. Please try again.");
+			}
+			if (!retry_pw) continue;
+		}
+
+		if (!sound_pack && !music_pack) continue;
+
+		if (passworded)
+			Term_putstr(0, 5, -1, TERM_ORANGE,
+				"File is eligible. Install it? [Y/n]");
+		else
+			Term_putstr(0, 5, -1, TERM_ORANGE,
+				format("Found file '\377y%s\377o'. Install? [Y/n]", pack_name));
+		picked = FALSE;
+		while (!picked) {
+			c = inkey();
+			switch (c) {
+			case 'n': case 'N':
+				c = 0;
+				picked = TRUE;
+				break;
+			case 'y': case 'Y': case ' ': case '\r': case '\n':
+				picked = TRUE;
+				break;
+			}
+		}
+		if (c) break;
+	}
+	closedir(dr);
+	}
 #else /* assume POSIX */
 	{
 	FILE *fff_ls;
@@ -14082,11 +14258,11 @@ static void print_tomb(cptr reason) {
 				strcpy(buf, reason2);
 
 				/* 1st: Try to end name at a comma, skipping the additional description.
-				        "Gothmog, the High Captain of Balrogs" -> "Gothmog". */
+					"Gothmog, the High Captain of Balrogs" -> "Gothmog". */
 				if ((cp = strchr(buf, ','))) *cp = 0;
 
 				/* 2nd: Try to end name at a relative word such as "that", "which" etc.
-				        "The disembodied hand that strangled people" -> "The disembodied hand". */
+					"The disembodied hand that strangled people" -> "The disembodied hand". */
 				else if ((cp = strstr(buf, " that "))) *cp = 0;
 				else if ((cp = strstr(buf, " who "))) *cp = 0;
 				else if ((cp = strstr(buf, " which "))) *cp = 0;
@@ -14094,7 +14270,7 @@ static void print_tomb(cptr reason) {
 				else if ((cp = strstr(buf, " what "))) *cp = 0;
 
 				/* 3rd: Try to end name at lineage descriptions aka " of ".
-				        "Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
+					"Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
 				else if ((cp = strstr(buf, " of "))) *cp = 0;
 
 				strcpy(reason2, buf);
