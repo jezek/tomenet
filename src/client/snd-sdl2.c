@@ -516,8 +516,8 @@ static void close_audio(void) {
 	SDL_DestroyMutex(load_sample_mutex);
 	SDL_DestroyMutex(load_song_mutex);
 
-	/* XXX This may conflict with the SDL port */
-	SDL_Quit();
+	/* Only shut down audio so the video subsystem stays alive */
+	SDL_QuitSubSystem(SDL_INIT_AUDIO);
 }
 
 /* Just for external call when using  = I  to install an audio pack while already running */

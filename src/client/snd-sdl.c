@@ -532,8 +532,14 @@ static void close_audio(void) {
 	SDL_DestroyMutex(load_sample_mutex);
 	SDL_DestroyMutex(load_song_mutex);
 
+/* In the improbable case when someone decides to compile SDL2 client with this file. */
+#ifdef USE_SDL2
+	/* Only shut down audio so the video subsystem stays alive */
+	SDL_QuitSubSystem(SDL_INIT_AUDIO);
+#else
 	/* XXX This may conflict with the SDL port */
 	SDL_Quit();
+#endif
 }
 
 /* Just for external call when using  = I  to install an audio pack while already running */

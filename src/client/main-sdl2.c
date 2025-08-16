@@ -2561,20 +2561,22 @@ errr init_sdl2(void) {
 		fprintf(stderr, "ERROR: init_sdl2: Video SDL_Init error: %s\n", SDL_GetError());
 		return(-1);
 	}
+	/* Ensure SDL shuts down on exit */
+	atexit(SDL_Quit);
 
-       if (TTF_Init() != 0) {
-               fprintf(stderr, "ERROR: init_sdl2: TTF_Init error: %s\n", TTF_GetError());
-               SDL_Quit();
-               return(-1);
-       }
+	if (TTF_Init() != 0) {
+		fprintf(stderr, "ERROR: init_sdl2: TTF_Init error: %s\n", TTF_GetError());
+		SDL_Quit();
+		return(-1);
+	}
 
 #ifdef SDL2_IMAGE
-       if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
-               fprintf(stderr, "ERROR: init_sdl2: IMG_Init error: %s\n", IMG_GetError());
-               TTF_Quit();
-               SDL_Quit();
-               return(-1);
-       }
+	if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+		fprintf(stderr, "ERROR: init_sdl2: IMG_Init error: %s\n", IMG_GetError());
+		TTF_Quit();
+		SDL_Quit();
+		return(-1);
+	}
 #endif
 
 	/* Initialize SDL_net */

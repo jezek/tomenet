@@ -12272,8 +12272,8 @@ static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
  * "sound" or "music" directory. If a password is required and not
  * supplied this function returns -1. On success it returns 1 and sets
  * the appropriate flags and top folder name. */
-static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
-		char *pack_top_folder, bool *sound_pack, bool *music_pack) {
+static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack_top_folder, bool *sound_pack, bool *music_pack) {
+	fprintf(stderr, "jezek - sdl2_identify_audio_pack(path: %s, pwd: %s)\n", archive_path, (password == NULL ? "no" : "yes"));
 	struct archive *ar;
 	struct archive_entry *entry;
 	int r;
@@ -12295,6 +12295,7 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
 
 	while ((r = archive_read_next_header(ar, &entry)) == ARCHIVE_OK) {
 		const char *name = archive_entry_pathname(entry);
+		fprintf(stderr, "jezek - sdl2_identify_audio_pack: name: %s\n", name);
 
 		if (archive_entry_filetype(entry) == AE_IFDIR) {
 			const char *slash = strchr(name, '/');
@@ -12303,14 +12304,17 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
 			strncpy(pack_top_folder, name, len);
 			pack_top_folder[len] = '\0';
 			if (prefix_case(pack_top_folder, "music")) {
+				fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top music\n");
 				*music_pack = TRUE;
 				break;
 			}
 			if (prefix_case(pack_top_folder, "sound")) {
+				fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top sound\n");
 				*sound_pack = TRUE;
 				break;
 			}
 		} else if (!tarfile && suffix_case(name, ".tar")) {
+			fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top tar\n");
 			size_t size = archive_entry_size(entry);
 			char *data = malloc(size);
 			if (!data) {
@@ -12330,6 +12334,7 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
 				struct archive_entry *te;
 				while (archive_read_next_header(tar, &te) == ARCHIVE_OK) {
 					const char *tname = archive_entry_pathname(te);
+					fprintf(stderr, "jezek - sdl2_identify_audio_pack: tname: %s\n", tname);
 					if (archive_entry_filetype(te) == AE_IFDIR) {
 						const char *tslash = strchr(tname, '/');
 						size_t tlen = tslash ? (size_t)(tslash - tname) : strlen(tname);
@@ -12337,10 +12342,12 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password,
 						strncpy(pack_top_folder, tname, tlen);
 						pack_top_folder[tlen] = '\0';
 						if (prefix_case(pack_top_folder, "music")) {
+							fprintf(stderr, "jezek - sdl2_identify_audio_pack: found tar music\n");
 							*music_pack = TRUE;
 							break;
 						}
 						if (prefix_case(pack_top_folder, "sound")) {
+							fprintf(stderr, "jezek - sdl2_identify_audio_pack: found tar sound\n");
 							*sound_pack = TRUE;
 							break;
 						}
@@ -12923,7 +12930,7 @@ static void do_cmd_options_install_audio_packs(void) {
 	}
 	closedir(dr);
 	}
-#elif USE_SDL2
+#elif defined(USE_SDL2)
 	{
 	struct dirent *de;
 	DIR *dr;
@@ -12935,12 +12942,11 @@ static void do_cmd_options_install_audio_packs(void) {
 	while ((de = readdir(dr))) {
 		/* Clear screen */
 		Term_clear();
-		Term_putstr(0, 0, -1, TERM_WHITE,
-			"Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
-		Term_putstr(0, 1, -1, TERM_WHITE,
-			"Unarchiver support found.");
+		Term_putstr(0, 0, -1, TERM_WHITE, "Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
+		Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver support found.");
 
 		strcpy(pack_name, de->d_name);
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: pack_name: %s\n", pack_name);
 
 		pack_top_folder[0] = 0;
 		passworded = FALSE;
@@ -12956,10 +12962,8 @@ static void do_cmd_options_install_audio_packs(void) {
 		if (passworded) {
 			bool retry_pw = TRUE;
 
-			Term_putstr(0, 3, -1, TERM_ORANGE,
-				format("Found file '\377y%s\377o'", pack_name));
-			Term_putstr(0, 4, -1, TERM_ORANGE,
-				"which is password-protected. Enter the password:   ");
+			Term_putstr(0, 3, -1, TERM_ORANGE, format("Found file '\377y%s\377o'", pack_name));
+			Term_putstr(0, 4, -1, TERM_ORANGE, "which is password-protected. Enter the password:   ");
 			while (retry_pw) {
 				Term_gotoxy(49, 4);
 				password[0] = 0;
@@ -12971,12 +12975,10 @@ static void do_cmd_options_install_audio_packs(void) {
 				r = sdl2_identify_audio_pack(pack_name, password,
 						pack_top_folder, &sound_pack, &music_pack);
 				if (r > 0) {
-					Term_putstr(0, 5, -1, TERM_L_RED,
-						"                                               ");
+					Term_putstr(0, 5, -1, TERM_L_RED, "                                               ");
 					break;
 				}
-				Term_putstr(0, 5, -1, TERM_L_RED,
-					"You entered a wrong password. Please try again.");
+				Term_putstr(0, 5, -1, TERM_L_RED, "You entered a wrong password. Please try again.");
 			}
 			if (!retry_pw) continue;
 		}
@@ -12984,11 +12986,10 @@ static void do_cmd_options_install_audio_packs(void) {
 		if (!sound_pack && !music_pack) continue;
 
 		if (passworded)
-			Term_putstr(0, 5, -1, TERM_ORANGE,
-				"File is eligible. Install it? [Y/n]");
+			Term_putstr(0, 5, -1, TERM_ORANGE, "File is eligible. Install it? [Y/n]");
 		else
-			Term_putstr(0, 5, -1, TERM_ORANGE,
-				format("Found file '\377y%s\377o'. Install? [Y/n]", pack_name));
+			Term_putstr(0, 5, -1, TERM_ORANGE, format("Found file '\377y%s\377o'. Install? [Y/n]", pack_name));
+
 		picked = FALSE;
 		while (!picked) {
 			c = inkey();
@@ -13003,6 +13004,7 @@ static void do_cmd_options_install_audio_packs(void) {
 			}
 		}
 		if (c) break;
+		picked = FALSE;
 	}
 	closedir(dr);
 	}
@@ -13180,15 +13182,20 @@ static void do_cmd_options_install_audio_packs(void) {
 
 #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Windows OS: Need to close all related files so they can actually be overwritten, esp. the .cfg files */
+	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: close sdl audio.\n");
 	if (!quiet_mode) close_audio_sdl();
 #endif
 
 	/* install sound pack */
 	if (sound_pack) {
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: install sound pack.\n");
 		Term_putstr(0, 9, -1, TERM_WHITE, "Installing sound pack...                                                    ");
 		Term_putstr(0,10, -1, TERM_WHITE, "                                                                            ");
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: fresh.\n");
 		Term_fresh();
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: flush.\n");
 		Term_flush();
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: fush done.\n");
 
 #if defined(WINDOWS)
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
@@ -13197,6 +13204,7 @@ static void do_cmd_options_install_audio_packs(void) {
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
 		//TODO jezek - Test unpacking sound pack.
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: pack: %s.\n", pack_name);
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
 #else /* assume posix */
@@ -13221,6 +13229,7 @@ static void do_cmd_options_install_audio_packs(void) {
 
 	/* install music pack */
 	if (music_pack) {
+		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: install music pack.\n");
 		Term_putstr(0, 9, -1, TERM_WHITE, "Installing music pack...                                                    ");
 		Term_putstr(0,10, -1, TERM_WHITE, "                                                                            ");
 		Term_fresh();
@@ -14257,20 +14266,20 @@ static void print_tomb(cptr reason) {
 
 				strcpy(buf, reason2);
 
-				/* 1st: Try to end name at a comma, skipping the additional description.
-					"Gothmog, the High Captain of Balrogs" -> "Gothmog". */
+				/* 1st: Try to end name at a comma, skipping the additional description. */
+				/* "Gothmog, the High Captain of Balrogs" -> "Gothmog". */
 				if ((cp = strchr(buf, ','))) *cp = 0;
 
-				/* 2nd: Try to end name at a relative word such as "that", "which" etc.
-					"The disembodied hand that strangled people" -> "The disembodied hand". */
+				/* 2nd: Try to end name at a relative word such as "that", "which" etc. */
+				/* "The disembodied hand that strangled people" -> "The disembodied hand". */
 				else if ((cp = strstr(buf, " that "))) *cp = 0;
 				else if ((cp = strstr(buf, " who "))) *cp = 0;
 				else if ((cp = strstr(buf, " which "))) *cp = 0;
 				else if ((cp = strstr(buf, " whose "))) *cp = 0;
 				else if ((cp = strstr(buf, " what "))) *cp = 0;
 
-				/* 3rd: Try to end name at lineage descriptions aka " of ".
-					"Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
+				/* 3rd: Try to end name at lineage descriptions aka " of ". */
+				/* "Angamaite of Umbar" -> "Angamaite" (Note that Angamaite's name is actually not too long, just taken as example here). */
 				else if ((cp = strstr(buf, " of "))) *cp = 0;
 
 				strcpy(reason2, buf);
