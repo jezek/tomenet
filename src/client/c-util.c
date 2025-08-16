@@ -12224,7 +12224,6 @@ static int archive_copy_data(struct archive *ar, struct archive *aw) {
 /* Helper function to extract a 7z archive into a target directory using
  * libarchive. Returns TRUE on success. */
 static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
-	fprintf(stderr, "jezek - sdl2_extract_7z(archive_path: %s, dest: %s, password: %s)\n", archive_path, dest, (password == NULL ? "no" : "yes"));
 	struct archive *ar;
 	struct archive *aw;
 	struct archive_entry *entry;
@@ -12232,7 +12231,6 @@ static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
 	char cwd[1024];
 
 	if (!getcwd(cwd, sizeof(cwd))) return FALSE;
-	if (chdir(dest)) return FALSE;
 
 	ar = archive_read_new();
 	archive_read_support_format_7zip(ar);
@@ -12240,9 +12238,10 @@ static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
 	if (password && password[0]) archive_read_add_passphrase(ar, password);
 	if ((r = archive_read_open_filename(ar, archive_path, 10240))) {
 		archive_read_free(ar);
-		(void)chdir(cwd);
 		return FALSE;
 	}
+
+	if (chdir(dest)) return FALSE;
 
 	aw = archive_write_disk_new();
 	archive_write_disk_set_options(aw, ARCHIVE_EXTRACT_TIME |
@@ -12273,7 +12272,6 @@ static bool sdl2_extract_7z(cptr archive_path, cptr dest, cptr password) {
  * supplied this function returns -1. On success it returns 1 and sets
  * the appropriate flags and top folder name. */
 static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack_top_folder, bool *sound_pack, bool *music_pack) {
-	fprintf(stderr, "jezek - sdl2_identify_audio_pack(path: %s, pwd: %s)\n", archive_path, (password == NULL ? "no" : "yes"));
 	struct archive *ar;
 	struct archive_entry *entry;
 	int r;
@@ -12295,7 +12293,6 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack
 
 	while ((r = archive_read_next_header(ar, &entry)) == ARCHIVE_OK) {
 		const char *name = archive_entry_pathname(entry);
-		fprintf(stderr, "jezek - sdl2_identify_audio_pack: name: %s\n", name);
 
 		if (archive_entry_filetype(entry) == AE_IFDIR) {
 			const char *slash = strchr(name, '/');
@@ -12304,17 +12301,14 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack
 			strncpy(pack_top_folder, name, len);
 			pack_top_folder[len] = '\0';
 			if (prefix_case(pack_top_folder, "music")) {
-				fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top music\n");
 				*music_pack = TRUE;
 				break;
 			}
 			if (prefix_case(pack_top_folder, "sound")) {
-				fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top sound\n");
 				*sound_pack = TRUE;
 				break;
 			}
 		} else if (!tarfile && suffix_case(name, ".tar")) {
-			fprintf(stderr, "jezek - sdl2_identify_audio_pack: found top tar\n");
 			size_t size = archive_entry_size(entry);
 			char *data = malloc(size);
 			if (!data) {
@@ -12334,7 +12328,6 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack
 				struct archive_entry *te;
 				while (archive_read_next_header(tar, &te) == ARCHIVE_OK) {
 					const char *tname = archive_entry_pathname(te);
-					fprintf(stderr, "jezek - sdl2_identify_audio_pack: tname: %s\n", tname);
 					if (archive_entry_filetype(te) == AE_IFDIR) {
 						const char *tslash = strchr(tname, '/');
 						size_t tlen = tslash ? (size_t)(tslash - tname) : strlen(tname);
@@ -12342,12 +12335,10 @@ static int sdl2_identify_audio_pack(cptr archive_path, cptr password, char *pack
 						strncpy(pack_top_folder, tname, tlen);
 						pack_top_folder[tlen] = '\0';
 						if (prefix_case(pack_top_folder, "music")) {
-							fprintf(stderr, "jezek - sdl2_identify_audio_pack: found tar music\n");
 							*music_pack = TRUE;
 							break;
 						}
 						if (prefix_case(pack_top_folder, "sound")) {
-							fprintf(stderr, "jezek - sdl2_identify_audio_pack: found tar sound\n");
 							*sound_pack = TRUE;
 							break;
 						}
@@ -12638,7 +12629,6 @@ static bool verify_password(cptr path_7z_quoted, cptr pack_name, cptr pack_class
 /* Attempt to find sound+music pack 7z files in the client's root folder
    and to install them properly. - C. Blue */
 static void do_cmd_options_install_audio_packs(void) {
-	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs()\n");
 	FILE *fff;
 	char ins_path[1024] = { 0 }, out_val[1024 + 28], password[MAX_CHARS];
 	char c, ch, pack_name[1024], pack_top_folder[1024];
@@ -12779,7 +12769,6 @@ static void do_cmd_options_install_audio_packs(void) {
 	remove("tmp.7z");
 #endif
 	Term_fresh();
-	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: after remove\n");
 
 #ifdef WINDOWS
 	{ /* Use native Windows functions from dirent to query directory structure directly */
@@ -12946,7 +12935,6 @@ static void do_cmd_options_install_audio_packs(void) {
 		Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver support found.");
 
 		strcpy(pack_name, de->d_name);
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: pack_name: %s\n", pack_name);
 
 		pack_top_folder[0] = 0;
 		passworded = FALSE;
@@ -13182,20 +13170,15 @@ static void do_cmd_options_install_audio_packs(void) {
 
 #if defined(SOUND_SDL) || defined(SOUND_SDL2)
 	/* Windows OS: Need to close all related files so they can actually be overwritten, esp. the .cfg files */
-	fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: close sdl audio.\n");
 	if (!quiet_mode) close_audio_sdl();
 #endif
 
 	/* install sound pack */
 	if (sound_pack) {
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: install sound pack.\n");
 		Term_putstr(0, 9, -1, TERM_WHITE, "Installing sound pack...                                                    ");
 		Term_putstr(0,10, -1, TERM_WHITE, "                                                                            ");
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: fresh.\n");
 		Term_fresh();
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: flush.\n");
 		Term_flush();
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: fush done.\n");
 
 #if defined(WINDOWS)
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
@@ -13203,8 +13186,7 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
-		//TODO jezek - Test unpacking sound pack.
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: pack: %s.\n", pack_name);
+		//TODO jezek - Test unpacking sound pack with password, zipped tar, overwrites.
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
 #else /* assume posix */
@@ -13229,7 +13211,6 @@ static void do_cmd_options_install_audio_packs(void) {
 
 	/* install music pack */
 	if (music_pack) {
-		fprintf(stderr, "jezek - do_cmd_options_install_audio_packs: install music pack.\n");
 		Term_putstr(0, 9, -1, TERM_WHITE, "Installing music pack...                                                    ");
 		Term_putstr(0,10, -1, TERM_WHITE, "                                                                            ");
 		Term_fresh();
