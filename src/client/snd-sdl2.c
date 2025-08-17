@@ -96,6 +96,7 @@ SDL_Thread *load_audio_thread;
 SDL_mutex *load_sample_mutex_entrance, *load_song_mutex_entrance;
 SDL_mutex *load_sample_mutex, *load_song_mutex;
 
+static bool audio_initialized = FALSE;
 
 /* declare */
 static void fadein_next_music(void);
@@ -451,6 +452,9 @@ static void close_audio(void) {
 	size_t i;
 	int j;
 
+	if (!audio_initialized) return;
+	audio_initialized = FALSE;
+
 	/* Kill the loading thread if it's still running */
 	if (load_audio_thread) {
 		//kill_load_audio_thread = TRUE; -- not needed (see far above)
@@ -511,10 +515,22 @@ static void close_audio(void) {
 	/* Close the audio */
 	Mix_CloseAudio();
 
-	SDL_DestroyMutex(load_sample_mutex_entrance);
-	SDL_DestroyMutex(load_song_mutex_entrance);
-	SDL_DestroyMutex(load_sample_mutex);
-	SDL_DestroyMutex(load_song_mutex);
+	if (load_sample_mutex_entrance) {
+		SDL_DestroyMutex(load_sample_mutex_entrance);
+		load_sample_mutex_entrance = NULL;
+	}
+	if (load_song_mutex_entrance) {
+		SDL_DestroyMutex(load_song_mutex_entrance);
+		load_song_mutex_entrance = NULL;
+	}
+	if (load_sample_mutex) {
+		SDL_DestroyMutex(load_sample_mutex);
+		load_sample_mutex = NULL;
+	}
+	if (load_song_mutex) {
+		SDL_DestroyMutex(load_song_mutex);
+		load_song_mutex = NULL;
+	}
 
 	/* Only shut down audio so the video subsystem stays alive */
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
@@ -568,6 +584,8 @@ static bool open_audio(void) {
 	Mix_ChannelFinished(clear_channel);
 	/* set hook for fading over to next song */
 	Mix_HookMusicFinished(fadein_next_music);
+
+	audio_initialized = TRUE;
 
 	/* Success */
 	return(TRUE);
