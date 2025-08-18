@@ -1,6 +1,10 @@
 /* $Id$ */
 #include "angband.h"
 
+#ifdef USE_SDL2
+#include <SDL2/SDL.h>
+#endif
+
 #ifdef REGEX_SEARCH
  #include <regex.h>
 #endif
@@ -7377,9 +7381,22 @@ static void cmd_notes(void) {
  /* ..and according to him this works fine - but it doesn't work in Wine actually -_- : */
  //#define URLMAN(p) (res = system(format("start \"%s\"", p)));
 #elif defined(USE_SDL2)
- //TODO jezek - Implement FILEMAN(p) & URLMAN(p) macros to open files & url links.
- #define FILEMAN(p) (c_msg_format("Sorry, FILEMAN(%s) not implemented yet.", p));
- #define URLMAN(p) (c_msg_format("Sorry, URLMAN(%s) not implemented yet.", p));
+static int sdl_fileman(const char *p) {
+	char abspath[1024], url[1032];
+	const char *path = p;
+	if (realpath(p, abspath)) path = abspath;
+	strnfmt(url, sizeof(url), "file://%s", path);
+	int rc = SDL_OpenURL(url);
+	if (rc < 0) c_msg_format("SDL_OpenURL failed: %s", SDL_GetError());
+	return rc;
+}
+static int sdl_urlman(const char *p) {
+	int rc = SDL_OpenURL(p);
+	if (rc < 0) c_msg_format("SDL_OpenURL failed: %s", SDL_GetError());
+	return rc;
+}
+#define FILEMAN(p) (res = sdl_fileman(p))
+#define URLMAN(p) (res = sdl_urlman(p))
 #endif
 void cmd_check_misc(void) {
 	char i = 0, choice;
