@@ -154,6 +154,18 @@ void init_stuff(void) {
 		/* Get the environment variable */
 		tail = getenv("TOMENET_PATH");
 
+  #ifdef USE_SDL2a
+		if (!tail) {
+			/* Compose default: SDL2_GAME_PATH + DEFAULT_PATH */
+			int n = snprintf(path, sizeof(path), "%s%s", SDL2_GAME_PATH, DEFAULT_PATH);
+			if (n < 0 || (size_t)n >= sizeof(path)) {
+				plog("init_stuff: Absolute path too long, using relative instead");
+			} else {
+				/* No error, use the composed path below */
+				tail = path; 
+			}
+		}
+  #endif
 		/* Use the angband_path, or a default */
 		strcpy(path, tail ? tail : DEFAULT_PATH);
 	}

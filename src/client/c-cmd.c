@@ -7381,19 +7381,38 @@ static void cmd_notes(void) {
  /* ..and according to him this works fine - but it doesn't work in Wine actually -_- : */
  //#define URLMAN(p) (res = system(format("start \"%s\"", p)));
 #elif defined(USE_SDL2)
+/* 
+ * Opens provided filename in OS environment using associated application.
+ * The provided path should be an absolute path. Some detection with warning and fixing is done, but I wouldn't depend on it.
+ * Returns 0 on success, or -1 on error. The error is written as a chat message.
+ */
 static int sdl2_fileman(const char *p) {
-	fprintf(stderr, "jezek - sdl2_fileman(p: %s)\n", p);
-	char url[1032];
+	char url[1032], buf[1032];
+	bool is_abs = FALSE;
 	const char *path = p;
+
+	if (p[0] == '/' || p[0] == '\\') is_abs = TRUE;
+	else if (p[0] && p[1] == ':') is_abs = TRUE;
+	if (!is_abs) {
+		fprintf(stderr, "Warning: sdl2_fileman: File path \"%s\" is not absolute, trying to fix it, but please rewrite the code to call with absolute path.\n", p);
+		strnfmt(buf, sizeof(buf), "%s%s", SDL2_GAME_PATH, p);
+		path = buf;
+	}
+	fprintf(stderr, "jezek - sdl2_fileman: path: %s\n", path);
 	strnfmt(url, sizeof(url), "file://%s", path);
 	int rc = SDL_OpenURL(url);
-	if (rc < 0) c_msg_format("SDL_OpenURL failed: %s", SDL_GetError());
+	if (rc < 0) c_msg_format("Opening file \"%s\" failed with error: %s", path, SDL_GetError());
 	return rc;
 }
+
+/* 
+ * Opens provided url in default broser.
+ * Returns 0 on success, or -1 on error. The error is written as a chat message.
+ */
 static int sdl2_urlman(const char *p) {
 	fprintf(stderr, "jezek - sdl2_urlman(p: %s)\n", p);
 	int rc = SDL_OpenURL(p);
-	if (rc < 0) c_msg_format("SDL_OpenURL failed: %s", SDL_GetError());
+	if (rc < 0) c_msg_format("Opening url \"%s\" failed with error: %s", path, SDL_GetError());
 	return rc;
 }
  #define FILEMAN(p) (res = sdl2_fileman(p))
@@ -7472,13 +7491,33 @@ void cmd_check_misc(void) {
 			Term_putstr( 5, row + 1, -1, TERM_WHITE, "(\377UG\377w) Open git repository site");
 			Term_putstr(40, row + 1, -1, TERM_WHITE, "(\377UL\377w) Open oook.cz ladder site");
 			row += 3;
+			//TODO jezek - Converting too complex, open the screenshot.
 			Term_putstr( 5, row, -1, TERM_WHITE, "(\377o~\377w) Convert last screenshot to");
 			Term_putstr( 5, row + 1,   -1, TERM_WHITE, "    a PNG and leave this menu:");
 			Term_putstr( 5, row + 2,   -1, TERM_WHITE, format("    %s", screenshot_filename[0] ? screenshot_filename : "- no screenshot taken -"));
 			Term_putstr(40, row, -1, TERM_WHITE, "(\377oC\377w) Edit the current config file:");
-#if defined(USE_X11) || defined(USE_SDL2)
+#if defined(USE_X11)
 			Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
 			Term_putstr(40, row + 2, -1, TERM_WHITE, "    (Requires 'grep' to be installed.)");
+#elif defined(USE_SDL2)
+			if (strlen(mangrc_filename) <= 35)
+				Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %s", mangrc_filename));
+			else {
+				/* Try to cut line at backslash */
+				i = 35;
+				while (i && mangrc_filename[(int)i] != '\\') i--;
+				if (i != 35) i++;
+				/* ..but don't accept unreasonable lenght */
+				if (i < 20) {
+					/* Cut without regard, ouch */
+					Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename));
+					Term_putstr(40, row + 2,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename + 35));
+				} else {
+					/* Cut nicely & cleanly at backslash */
+					Term_putstr(40, row + 1,   -1, TERM_WHITE, format("    %-.*s", i, mangrc_filename));
+					Term_putstr(40, row + 2,   -1, TERM_WHITE, format("    %-.35s", mangrc_filename + i));
+				}
+			}
 #elif defined(WINDOWS)
 			/* The ini file contains a long path (unlike mangrc_filename), so use two lines for it.. */
 			if (strlen(ini_file) <= 35)
@@ -7647,7 +7686,13 @@ void cmd_check_misc(void) {
 			break;
 
 #if defined(USE_X11) || defined(WINDOWS) || defined(USE_SDL2)
-		case 'T': FILEMAN("."); break;
+		case 'T':
+ #ifdef USE_SDL2
+			FILEMAN(SDL2_GAME_PATH);
+ #else
+			FILEMAN(".");
+ #endif
+			break;
 		case 'U': FILEMAN(ANGBAND_DIR_USER); break;
 		case 'S':
 			path_build(path, 1024, ANGBAND_DIR_XTRA, "sound");

@@ -12920,6 +12920,7 @@ static void do_cmd_options_install_audio_packs(void) {
 	closedir(dr);
 	}
 #elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
 	{
 	struct dirent *de;
 	DIR *dr;
@@ -12996,6 +12997,7 @@ static void do_cmd_options_install_audio_packs(void) {
 	}
 	closedir(dr);
 	}
+ #endif
 #else /* assume POSIX */
 	{
 	FILE *fff_ls;
@@ -13186,9 +13188,11 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
 		//TODO jezek - Test unpacking sound pack with password, zipped tar, overwrites.
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
+ #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
@@ -13222,9 +13226,11 @@ static void do_cmd_options_install_audio_packs(void) {
 		else
 			_spawnl(_P_WAIT, path_7z, path_7z_quoted, "x", format("-o%s", ANGBAND_DIR_XTRA), format("\"%s\"", pack_name), NULL);
 #elif defined(USE_SDL2)
+ #ifdef SDL2_ARCHIVE
 		//TODO jezek - Test unpacking music pack.
 		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Music pack not correctly installed!");
+ #endif
 #else /* assume posix */
 		if (passworded) /* Note: We assume that the password does NOT contain '"' -_- */
 			r = system(format("7z -p\"%s\" x -o%s \"%s\"", password, ANGBAND_DIR_XTRA, pack_name));
