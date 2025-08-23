@@ -14,7 +14,9 @@
  #include <SDL2/SDL.h>
 #endif
 
+#ifdef TILE_CACHE_SIZE
 extern bool disable_tile_cache;
+#endif
 
 char mangrc_filename[MAX_PATH_LENGTH] = "";
 bool convert_rc = FALSE;
@@ -301,11 +303,11 @@ static bool read_mangrc(cptr filename) {
 
 			p = strtok(buf, " \t\n");
 			p = strtok(NULL, "\t\n");
-#ifdef GRAPHICS_BG_MASK
+ #ifdef GRAPHICS_BG_MASK
 			if (p) use_graphics_new = use_graphics = atoi(p) % 3; //max UG_2MASK
-#else
+ #else
 			if (p) use_graphics_new = use_graphics = (atoi(p) != 0);
-#endif
+ #endif
 		}
 		if (!strncmp(buf, "graphic_tiles", 13)) {
 			char *p;
@@ -314,6 +316,7 @@ static bool read_mangrc(cptr filename) {
 			p = strtok(NULL, "\t\n");
 			if (p) strcpy(graphic_tiles, p);
 		}
+ #ifdef TILE_CACHE_SIZE
 		if (!strncmp(buf, "disableGfxCache", 15)) { //TILE_CACHE_SIZE
 			char *p;
 
@@ -321,6 +324,7 @@ static bool read_mangrc(cptr filename) {
 			p = strtok(NULL, "\t\n");
 			if (atoi(p) != 0) disable_tile_cache = TRUE;
 		}
+ #endif
 #endif
 #ifdef USE_SOUND
 		/* sound */
@@ -1253,7 +1257,9 @@ int main(int argc, char **argv) {
 		case 'a': override_graphics = UG_NONE; ask_for_graphics = FALSE; break; // ASCII
 		case 'g': override_graphics = UG_NORMAL; ask_for_graphics = FALSE; break; // graphics
 		case 'G': override_graphics = UG_2MASK; ask_for_graphics = FALSE; break; // dual-mask graphics
+#ifdef TILE_CACHE_SIZE
 		case 'T': disable_tile_cache = TRUE; break; //TILE_CACHE_SIZE
+#endif
 		}
 
 		default:
@@ -1265,7 +1271,9 @@ int main(int argc, char **argv) {
 
 	if (override_graphics != -1) use_graphics_new = use_graphics = override_graphics;
 
+#ifdef TILE_CACHE_SIZE
 	if (disable_tile_cache) logprint("Graphics tiles cache disabled.\n");
+#endif
 
 	if (quiet_mode) use_sound = FALSE;
 
@@ -1301,6 +1309,9 @@ int main(int argc, char **argv) {
 		puts("  -V                 Save complete message log on exit, don't prompt");
 		puts("  -x                 Don't save chat/message log on exit (don't prompt)");
 		puts("  -a/-g/-G           Switch to ASCII/gfx/dualmask-gfx mode");
+#ifdef TILE_CACHE_SIZE
+		puts("  -T                 Disable graphics tile cache");
+#endif
 
 #ifdef USE_SOUND_2010
 #if 0 //we don't have 'modules' for everything, yet :-p only sound_modules for now - C. Blue

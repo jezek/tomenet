@@ -853,9 +853,9 @@ void resize_main_window_sdl2(int cols, int rows);
 void resize_window_sdl2(int term_idx, int cols, int rows);
 static term_data* term_idx_to_term_data(int term_idx);
 
-//TODO jezek - Hide `disable_tile_cache` into TILE_CACHE_SIZE ifdef everywhere in code.
-bool disable_tile_cache = FALSE;
 #if defined(USE_GRAPHICS) && defined(TILE_CACHE_SIZE)
+bool disable_tile_cache = FALSE;
+
 /*
  * The structure holds a single entry for tile cache.
  *

@@ -77,10 +77,6 @@ struct term_data {
 
 static term_data data[MAX_TERM_DATA_GCU]; // [4], defines.h
 
-#ifndef USE_X11
-bool disable_tile_cache = FALSE; //unused in GCU, just added because it's external in generic code
-#endif
-
 /*
  * Hack -- try to guess which systems use what commands
  * Hack -- allow one of the "USE_Txxxxx" flags to be pre-set.
