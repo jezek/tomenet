@@ -97,7 +97,6 @@ struct infowin {
 	uint32_t		shown:1;
 };
 
-//TODO jezek - Continue refactoring & structure alignment.
 /*
  * A Structure summarizing Operation+Color Information
  *
@@ -110,14 +109,20 @@ struct infoclr {
 	Pixel		bg;
 };
 
+/*
+ * Used font types.
+ */
+typedef enum {
+    FONT_TYPE_TTF,
+    FONT_TYPE_PCF
+} FontType;
 
 /*
  * A Structure to Hold Font Information
  *
- *	- The font type
- *	- The 'TTF_Font*' or 'PCF_Font' (yields the 'Font')
- *
- *	- The font name
+ *	- The 'TTF_Font*' or 'PCF_Font*' (points to the font structure)
+ *	- The font's name (name of the PCF or TTF font, the TTF name ends with ".ttf" and is followed by (a space character and ) a number, representing the size)
+ *	- The font type (`FONT_TYPE_TTF`, or `FONT_TYPE_PCF`)
  *
  *	- The default character width
  *	- The default character height
@@ -125,18 +130,12 @@ struct infoclr {
  *	- Flag: Force monospacing via 'wid'
  *	- Flag: Nuke font when done
  */
-typedef enum {
-    FONT_TYPE_TTF,
-    FONT_TYPE_PCF
-} FontType;
 
 struct infofnt {
-	// If type is `FONT_TYPE_TTF`, then font is `TTF_Font*`.
-	// If type is `FONT_TYPE_PCF`, then font is `PCF_Font*`.
-	FontType	type;
 	void			*font;
-
 	cptr			name;
+	FontType	type;
+
 
 	s16b			wid;
 	s16b			hgt;
@@ -147,6 +146,7 @@ struct infofnt {
 
 /**** Available Macros ****/
 
+//TODO jezek - Continue refactoring & structure alignment.
 /* Pixel helper macros */
 #define Pixel_equal(c1,c2) memcmp(&c1, &c2, sizeof(Pixel)) == 0
 #define Pixel_quadruplet(color) color.r, color.g, color.b, color.a
@@ -458,11 +458,19 @@ static errr Infofnt_init_ttf(cptr name) {
 
 typedef struct PCF_Font PCF_Font;
 
+/*
+ * A structure holding a monospaced PCF font.
+ *
+ * - A SDL2 surface with all the glyphs. The glyphs are stored in one row.
+ * - Number of glyphs in the font.
+ * - The glyph index that corresponds to each encoding value (a value of 0xffff means no glyph for that encoding).
+ * - The width and height of a glyph.
+ */
 struct PCF_Font {
-	uint32_t    nGlyphs;
-	uint16_t    glyphWidth, glyphHeight;
-	int16_t     *glyphIndexes;
 	SDL_Surface *bitmap;
+	uint32_t    nGlyphs;
+	int16_t     *glyphIndexes;
+	uint16_t    glyphWidth, glyphHeight;
 };
 
 static void PCF_CloseFont(PCF_Font *font);
@@ -848,16 +856,41 @@ static term_data* term_idx_to_term_data(int term_idx);
 //TODO jezek - Hide `disable_tile_cache` into TILE_CACHE_SIZE ifdef everywhere in code.
 bool disable_tile_cache = FALSE;
 #if defined(USE_GRAPHICS) && defined(TILE_CACHE_SIZE)
-
+/*
+ * The structure holds a single entry for tile cache.
+ *
+ * - Array of colors used to build the tile. Size of the array is `ncolors`.
+ * - A SDL2 surface holding the cached tile.
+ * - Tile index.
+ * - Size of the `colors` array.
+ */
 struct tile_cache_entry {
+	uint32_t *colors;
 	SDL_Surface *tile;
 	char32_t index;
 	uint16_t ncolors;
-	uint32_t *colors;
 };
 #endif
 
-// A structure for each "term".
+/* A structure for each "term".
+ *
+ * - The `term` structure for the terminal.
+ 
+ * - Font data for the terminal.
+ * - Graphical window data.
+ * - Timer used for terminal window resizing.
+ *
+ * Properties used when compiled with graphical tiles support:
+ * - Loaded tiles image, resized and split into multiple layers. Number of layers is 'nlayers'.
+ *   Each layer, except the first, contains only pixels, that belongs to it's mask color. All other pixels are fully transparent black color. The first layer contains also all other non-background mask color pixels.
+ *   Each layer has blend mode set to SDL_BLENDMODE_NONE and color key set to it's foreground mask color. This way, if you blit/blend the layer tile over a colored surface, you'll get a layer surface with desired color and transparent background. These layers blended over a tile colored with background color will create full tile with colors changed to desired values.
+ * - Used for preparing a tile layer during tile rendering. The size is always same as 'fnt' font size.
+ * - Number of layers in 'tiles_layers'. When using graphics and everything is properly initialized, this is always 'graphics_image_mpt - 1' (number of foreground mask colors).
+ *
+ * Properties used when compiled with graphical tiles support and tile cache
+ * - Array of cached tiles.
+ * - Position of the writing head for the array (at which index will be the next tile cached).
+ */
 struct term_data {
 	term t;
 
@@ -866,19 +899,13 @@ struct term_data {
 	uint32_t resize_timer;
 
 #ifdef USE_GRAPHICS
-
-	// Number of layers in 'tiles_layers'. When using graphics and everything is properly initialized, this is always 'graphics_image_mpt - 1' (number of foreground mask colors).
-	uint8_t nlayers;
-	// Loaded tiles image, resized and split into multiple layers. Number of layers is 'nlayers'.
-	// Each layer, except the first, contains only pixels, that belongs to it's mask color. All other pixels are fully transparent black color. The first layer contains also all other non-background mask color pixels.
-	// Each layer has blend mode set to SDL_BLENDMODE_NONE and color key set to it's foreground mask color. This way, if you blit/blend the layer tile over a colored surface, you'll get a layer surface with desired color and transparent background. These layers blended over a tile colored with background color will create full tile with colors changed to desired values.
 	SDL_Surface **tiles_layers;
-	// Used for preparing a tile layer during tile rendering. The size is always same as 'fnt' font size.
 	SDL_Surface *tilePreparation;
+	uint8_t nlayers;
 
  #ifdef TILE_CACHE_SIZE
-	int cache_position;
 	struct tile_cache_entry tile_cache[TILE_CACHE_SIZE];
+	int cache_position;
  #endif
 
 #endif
