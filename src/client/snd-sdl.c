@@ -20,11 +20,11 @@
  */
 
 
+#include "angband.h"
+
 /* Summer 2022 I migrated from SDL to SDL2, requiring SDL2_mixer v2.5 or higher
    for Mix_SetPanning() and Mix_GetMusicPosition(). - C. Blue */
 #ifdef SOUND_SDL
-
-#include "angband.h"
 
 /* Enable ALMixer, overriding SDL? */
 //#define SOUND_AL_SDL
@@ -112,7 +112,6 @@ SDL_Thread *load_audio_thread;
 SDL_mutex *load_sample_mutex_entrance, *load_song_mutex_entrance;
 SDL_mutex *load_sample_mutex, *load_song_mutex;
 
-static bool audio_initialized = FALSE;
 
 /* declare */
 static void fadein_next_music(void);
@@ -468,9 +467,6 @@ static void close_audio(void) {
 	size_t i;
 	int j;
 
-	if (!audio_initialized) return;
-	audio_initialized = FALSE;
-
 	/* Kill the loading thread if it's still running */
 	if (load_audio_thread) {
 		//kill_load_audio_thread = TRUE; -- not needed (see far above)
@@ -531,31 +527,13 @@ static void close_audio(void) {
 	/* Close the audio */
 	Mix_CloseAudio();
 
-	if (load_sample_mutex_entrance) {
-		SDL_DestroyMutex(load_sample_mutex_entrance);
-		load_sample_mutex_entrance = NULL;
-	}
-	if (load_song_mutex_entrance) {
-		SDL_DestroyMutex(load_song_mutex_entrance);
-		load_song_mutex_entrance = NULL;
-	}
-	if (load_sample_mutex) {
-		SDL_DestroyMutex(load_sample_mutex);
-		load_sample_mutex = NULL;
-	}
-	if (load_song_mutex) {
-		SDL_DestroyMutex(load_song_mutex);
-		load_song_mutex = NULL;
-	}
+	SDL_DestroyMutex(load_sample_mutex_entrance);
+	SDL_DestroyMutex(load_song_mutex_entrance);
+	SDL_DestroyMutex(load_sample_mutex);
+	SDL_DestroyMutex(load_song_mutex);
 
-/* In the improbable case when someone decides to compile SDL2 client with this file. */
-#ifdef USE_SDL2
-	/* Only shut down audio so the video subsystem stays alive */
-	SDL_QuitSubSystem(SDL_INIT_AUDIO);
-#else
 	/* XXX This may conflict with the SDL port */
 	SDL_Quit();
-#endif
 }
 
 /* Just for external call when using  = I  to install an audio pack while already running */
@@ -607,14 +585,11 @@ static bool open_audio(void) {
 	/* set hook for fading over to next song */
 	Mix_HookMusicFinished(fadein_next_music);
 
-	audio_initialized = TRUE;
-
 	/* Success */
 	return(TRUE);
 }
 
-//TODO jezek - Figure out what they do with sound here so it needs these functions.
-#if !defined(WINDOWS) && !defined(USE_SDL2) //assume POSIX
+#ifndef WINDOWS //assume POSIX
  #include <sys/resource.h> /* for rlimit et al */
 static int get_filedescriptor_limit(void) {
 	struct rlimit limit;
@@ -701,7 +676,7 @@ static bool sound_sdl_init(bool no_cache) {
 	bool reference_initial[REFERENCES_MAX];
 	char referenced_event[REFERENCES_MAX][MAX_CHARS_WIDE];
 
-#if !defined(WINDOWS) && !defined(USE_SDL2) //assume POSIX
+#ifndef WINDOWS //assume POSIX
 	/* for checking whether we have enough available file descriptors for loading a lot of audio files */
 	int max_files = get_filedescriptor_limit(), cur_files1 = count_open_fds1(), cur_files2 = count_open_fds2(max_files);
 

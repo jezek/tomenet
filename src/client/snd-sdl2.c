@@ -591,6 +591,72 @@ static bool open_audio(void) {
 	return(TRUE);
 }
 
+//TODO jezek - Figure out what they do with sound here so it needs these functions.
+#if 0
+#ifndef WINDOWS //assume POSIX
+ #include <sys/resource.h> /* for rlimit et al */
+static int get_filedescriptor_limit(void) {
+	struct rlimit limit;
+
+ #if 0
+	limit.rlim_cur = 65535;
+	limit.rlim_max = 65535;
+	if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
+		printf("setrlimit() failed with errno=%d\n", errno);
+		return(0);
+	}
+ #endif
+
+	/* Get max number of files. */
+	if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
+		printf("getrlimit() failed with errno=%d\n", errno);
+		return(1024); //assume default
+	}
+
+	if (limit.rlim_cur > 65536) limit.rlim_cur = 65536; //cap to sane values to save resources
+
+	return(limit.rlim_cur);
+}
+/* note: method 1 and method 2 report different amounts of free file descriptors at different times, and also different amounts before and after loading audio files -_- */
+ #include <dirent.h>
+int count_open_fds1(void) {
+	struct dirent *de;
+	int count = -3; // '.', '..', dp
+	DIR *dp = opendir("/proc/self/fd");
+
+	if (dp == NULL) return(-1);
+
+	while ((de = readdir(dp)) != NULL) count++;
+	(void)closedir(dp);
+
+	return(count + 3);
+}
+ #include <poll.h>
+int count_open_fds2(int max) {
+	struct pollfd fds[max];
+	int ret, i, count = 0;
+
+	for (i = 0; i < max; i++) fds[max].events = 0;
+
+	ret = poll(fds, max, 0);
+	if (ret <= 0) return(0);
+
+	for (i = 0; i < max; i++)
+		if (fds[i].revents & POLLNVAL) count++;
+
+	return(count);
+}
+void log_fd_usage(void) {
+	int max_files, cur_files1, cur_files2;
+
+	max_files = get_filedescriptor_limit();
+	cur_files1 = count_open_fds1();
+	cur_files2 = count_open_fds2(max_files);
+
+	logprint(format("max_files = %d, cur_files1/2 = %d/%d -> sdl_files_cur/max = %d\n", max_files, cur_files1, cur_files2, sdl_files_cur, sdl_files_max));
+}
+#endif
+#endif /* $#if 0 */
 
 
 /*
