@@ -214,6 +214,12 @@ cptr ANGBAND_DIR_USER;
 cptr ANGBAND_DIR_XTRA;
 cptr ANGBAND_DIR_GAME;
 
+cptr ANGBAND_USER_DIR_SCPT;
+cptr ANGBAND_USER_DIR_TEXT;
+cptr ANGBAND_USER_DIR_USER;
+cptr ANGBAND_USER_DIR_XTRA;
+cptr ANGBAND_USER_DIR_GAME;
+
 bool disable_numlock = FALSE;
 bool bad_solid_mapping = FALSE;
 #ifdef WINDOWS
