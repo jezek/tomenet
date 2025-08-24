@@ -8,6 +8,7 @@
 
 #include <sys/types.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 #ifdef REGEX_SEARCH
  #include <regex.h>
@@ -234,7 +235,7 @@ static errr path_parse(char *buf, cptr file) {
 	char	    user[128];
 #endif /* AMIGA */
 #endif /* WIN32 */
-#endif /* USE_SDL2 */
+ #endif 
 
 
 	/* Assume no result */
@@ -290,7 +291,7 @@ static errr path_parse(char *buf, cptr file) {
 
 #endif /* AMIGA */
 #endif /* WIN32 */
-#endif /* USE_SDL2 */
+ #endif 
 	/* Success */
 	return(0);
 }
@@ -645,6 +646,11 @@ void init_file_paths(char *path) {
 	string_free(ANGBAND_DIR_USER);
 	string_free(ANGBAND_DIR_XTRA);
 	string_free(ANGBAND_DIR_GAME);
+	string_free(ANGBAND_USER_DIR_SCPT);
+	string_free(ANGBAND_USER_DIR_TEXT);
+	string_free(ANGBAND_USER_DIR_USER);
+	string_free(ANGBAND_USER_DIR_XTRA);
+	string_free(ANGBAND_USER_DIR_GAME);
 
 
 	/*** Prepare the "path" ***/
@@ -732,6 +738,35 @@ void init_file_paths(char *path) {
 
 		/* terminate lib path again at it's actual location of the 'lib' folder */
 		strcpy(tail, ""); /* -> this is ANGBAND_DIR */
+ #ifdef USE_SDL2
+	{
+		char buf[1024], *btail;
+
+		strcpy(buf, SDL2_USER_PATH);
+		btail = buf + strlen(buf);
+
+		strcpy(btail, "scpt");
+		ANGBAND_USER_DIR_SCPT = string_make(buf);
+		if (!check_dir2(ANGBAND_USER_DIR_SCPT)) mkdir(ANGBAND_USER_DIR_SCPT, 0777);
+
+		strcpy(btail, "text");
+		ANGBAND_USER_DIR_TEXT = string_make(buf);
+		if (!check_dir2(ANGBAND_USER_DIR_TEXT)) mkdir(ANGBAND_USER_DIR_TEXT, 0777);
+
+		strcpy(btail, "user");
+		ANGBAND_USER_DIR_USER = string_make(buf);
+		if (!check_dir2(ANGBAND_USER_DIR_USER)) mkdir(ANGBAND_USER_DIR_USER, 0777);
+
+		strcpy(btail, "xtra");
+		ANGBAND_USER_DIR_XTRA = string_make(buf);
+		if (!check_dir2(ANGBAND_USER_DIR_XTRA)) mkdir(ANGBAND_USER_DIR_XTRA, 0777);
+
+		strcpy(btail, "game");
+		ANGBAND_USER_DIR_GAME = string_make(buf);
+		if (!check_dir2(ANGBAND_USER_DIR_GAME)) mkdir(ANGBAND_USER_DIR_GAME, 0777);
+	}
+ #endif /* USE_SDL2 */
+
 
 #endif /* VM */
 }

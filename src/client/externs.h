@@ -383,6 +383,12 @@ extern cptr ANGBAND_DIR_XTRA;
 extern cptr ANGBAND_DIR_SCPT;
 extern cptr ANGBAND_DIR_GAME;
 
+extern cptr ANGBAND_USER_DIR_SCPT;
+extern cptr ANGBAND_USER_DIR_TEXT;
+extern cptr ANGBAND_USER_DIR_USER;
+extern cptr ANGBAND_USER_DIR_XTRA;
+extern cptr ANGBAND_USER_DIR_GAME;
+
 extern bool disable_numlock;
 #ifdef WINDOWS
 extern bool use_logfont, use_logfont_ini;
