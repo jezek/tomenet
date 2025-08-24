@@ -214,11 +214,13 @@ cptr ANGBAND_DIR_USER;
 cptr ANGBAND_DIR_XTRA;
 cptr ANGBAND_DIR_GAME;
 
+#ifdef USE_SDL2
 cptr ANGBAND_USER_DIR_SCPT;
 cptr ANGBAND_USER_DIR_TEXT;
 cptr ANGBAND_USER_DIR_USER;
 cptr ANGBAND_USER_DIR_XTRA;
 cptr ANGBAND_USER_DIR_GAME;
+#endif
 
 bool disable_numlock = FALSE;
 bool bad_solid_mapping = FALSE;

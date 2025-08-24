@@ -154,7 +154,7 @@ void init_stuff(void) {
 		/* Get the environment variable */
 		tail = getenv("TOMENET_PATH");
 
-  #ifdef USE_SDL2a
+  #ifdef USE_SDL2
 		if (!tail) {
 			/* Compose default: SDL2_GAME_PATH + DEFAULT_PATH */
 			int n = snprintf(path, sizeof(path), "%s%s", SDL2_GAME_PATH, DEFAULT_PATH);

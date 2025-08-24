@@ -383,11 +383,13 @@ extern cptr ANGBAND_DIR_XTRA;
 extern cptr ANGBAND_DIR_SCPT;
 extern cptr ANGBAND_DIR_GAME;
 
+#ifdef USE_SDL2
 extern cptr ANGBAND_USER_DIR_SCPT;
 extern cptr ANGBAND_USER_DIR_TEXT;
 extern cptr ANGBAND_USER_DIR_USER;
 extern cptr ANGBAND_USER_DIR_XTRA;
 extern cptr ANGBAND_USER_DIR_GAME;
+#endif
 
 extern bool disable_numlock;
 #ifdef WINDOWS

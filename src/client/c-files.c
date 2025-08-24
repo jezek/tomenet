@@ -8,12 +8,20 @@
 
 #include <sys/types.h>
 #include <dirent.h>
-#include <sys/stat.h>
+#ifdef USE_SDL2
+ /* I don't like this hack, but mingw has other mkdir definition than linux. */
+ #ifdef MINGW
+  /* The mkdir is already included trough io.h (unistd.h, common/h-system.h, common/h-basic.h, angband.h). */
+  #define MKDIR(p) mkdir(p)
+ #else
+  #include <sys/stat.h>
+  #define MKDIR(p) mkdir(p, 0775)
+ #endif
+#endif
 
 #ifdef REGEX_SEARCH
  #include <regex.h>
 #endif
-
 
 /* Does WINDOWS client use the user's home folder instead of the TomeNET folder for 'scpt' and 'user' subfolders?
    This may be required in Windows 7 and higher, where access rights could cause problems when writing to these folders. - C. Blue */
@@ -235,7 +243,7 @@ static errr path_parse(char *buf, cptr file) {
 	char	    user[128];
 #endif /* AMIGA */
 #endif /* WIN32 */
- #endif 
+#endif /* USE_SDL2 */
 
 
 	/* Assume no result */
@@ -291,7 +299,7 @@ static errr path_parse(char *buf, cptr file) {
 
 #endif /* AMIGA */
 #endif /* WIN32 */
- #endif 
+#endif /* USE_SDL2 */
 	/* Success */
 	return(0);
 }
@@ -646,11 +654,13 @@ void init_file_paths(char *path) {
 	string_free(ANGBAND_DIR_USER);
 	string_free(ANGBAND_DIR_XTRA);
 	string_free(ANGBAND_DIR_GAME);
+#ifdef USE_SDL2
 	string_free(ANGBAND_USER_DIR_SCPT);
 	string_free(ANGBAND_USER_DIR_TEXT);
 	string_free(ANGBAND_USER_DIR_USER);
 	string_free(ANGBAND_USER_DIR_XTRA);
 	string_free(ANGBAND_USER_DIR_GAME);
+#endif
 
 
 	/*** Prepare the "path" ***/
@@ -738,6 +748,7 @@ void init_file_paths(char *path) {
 
 		/* terminate lib path again at it's actual location of the 'lib' folder */
 		strcpy(tail, ""); /* -> this is ANGBAND_DIR */
+
  #ifdef USE_SDL2
 	{
 		char buf[1024], *btail;
@@ -747,26 +758,25 @@ void init_file_paths(char *path) {
 
 		strcpy(btail, "scpt");
 		ANGBAND_USER_DIR_SCPT = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_SCPT)) mkdir(ANGBAND_USER_DIR_SCPT, 0777);
+		if (!check_dir2(ANGBAND_USER_DIR_SCPT)) MKDIR(ANGBAND_USER_DIR_SCPT);
 
 		strcpy(btail, "text");
 		ANGBAND_USER_DIR_TEXT = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_TEXT)) mkdir(ANGBAND_USER_DIR_TEXT, 0777);
+		if (!check_dir2(ANGBAND_USER_DIR_TEXT)) MKDIR(ANGBAND_USER_DIR_TEXT);
 
 		strcpy(btail, "user");
 		ANGBAND_USER_DIR_USER = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_USER)) mkdir(ANGBAND_USER_DIR_USER, 0777);
+		if (!check_dir2(ANGBAND_USER_DIR_USER)) MKDIR(ANGBAND_USER_DIR_USER);
 
 		strcpy(btail, "xtra");
 		ANGBAND_USER_DIR_XTRA = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_XTRA)) mkdir(ANGBAND_USER_DIR_XTRA, 0777);
+		if (!check_dir2(ANGBAND_USER_DIR_XTRA)) MKDIR(ANGBAND_USER_DIR_XTRA);
 
 		strcpy(btail, "game");
 		ANGBAND_USER_DIR_GAME = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_GAME)) mkdir(ANGBAND_USER_DIR_GAME, 0777);
+		if (!check_dir2(ANGBAND_USER_DIR_GAME)) MKDIR(ANGBAND_USER_DIR_GAME);
 	}
  #endif /* USE_SDL2 */
-
 
 #endif /* VM */
 }
