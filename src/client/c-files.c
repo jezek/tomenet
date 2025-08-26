@@ -8,16 +8,6 @@
 
 #include <sys/types.h>
 #include <dirent.h>
-#ifdef USE_SDL2
- /* I don't like this hack, but mingw has other mkdir definition than linux. */
- #ifdef MINGW
-  /* The mkdir is already included trough io.h (unistd.h, common/h-system.h, common/h-basic.h, angband.h). */
-  #define MKDIR(p) mkdir(p)
- #else
-  #include <sys/stat.h>
-  #define MKDIR(p) mkdir(p, 0775)
- #endif
-#endif
 
 #ifdef REGEX_SEARCH
  #include <regex.h>
@@ -756,25 +746,25 @@ void init_file_paths(char *path) {
 		strcpy(buf, SDL2_USER_PATH);
 		btail = buf + strlen(buf);
 
-		strcpy(btail, "scpt");
-		ANGBAND_USER_DIR_SCPT = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_SCPT)) MKDIR(ANGBAND_USER_DIR_SCPT);
+		char *dirs[5] = {"scpt", "text", "user", "xtra", "game"};
+		cptr *targets[5] = {&ANGBAND_USER_DIR_SCPT, &ANGBAND_USER_DIR_TEXT, &ANGBAND_USER_DIR_USER, &ANGBAND_USER_DIR_XTRA, &ANGBAND_USER_DIR_GAME};
 
-		strcpy(btail, "text");
-		ANGBAND_USER_DIR_TEXT = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_TEXT)) MKDIR(ANGBAND_USER_DIR_TEXT);
-
-		strcpy(btail, "user");
-		ANGBAND_USER_DIR_USER = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_USER)) MKDIR(ANGBAND_USER_DIR_USER);
-
-		strcpy(btail, "xtra");
-		ANGBAND_USER_DIR_XTRA = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_XTRA)) MKDIR(ANGBAND_USER_DIR_XTRA);
-
-		strcpy(btail, "game");
-		ANGBAND_USER_DIR_GAME = string_make(buf);
-		if (!check_dir2(ANGBAND_USER_DIR_GAME)) MKDIR(ANGBAND_USER_DIR_GAME);
+		for (int i = 0; i < 5; i++) {
+			strcpy(btail, dirs[i]);
+			*targets[i] = string_make(buf);
+			if (!check_dir2(*targets[i])) {
+				plog_fmt("Creating directory in user data location: %s", *targets[i]);
+				MKDIR(*targets[i]);
+				if (!check_dir2(*targets[i])) {
+					quit("Creation failed!");
+				}
+			}
+		}
+		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_SCPT: %s\n", ANGBAND_USER_DIR_SCPT);
+		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_TEXT: %s\n", ANGBAND_USER_DIR_TEXT);
+		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_USER: %s\n", ANGBAND_USER_DIR_USER);
+		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_XTRA: %s\n", ANGBAND_USER_DIR_XTRA);
+		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_GAME: %s\n", ANGBAND_USER_DIR_GAME);
 	}
  #endif /* USE_SDL2 */
 

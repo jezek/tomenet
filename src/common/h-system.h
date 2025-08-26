@@ -59,7 +59,16 @@
 #endif
 
 #if defined(USE_SDL2)
+#ifdef USE_SDL2
  #include <unistd.h>
+ /* I don't like this hack, but mingw has other mkdir definition than linux. */
+ #ifdef MINGW
+  #define MKDIR(p) mkdir(p)
+ #else
+  #include <sys/stat.h>
+  #define MKDIR(p) mkdir(p, 0775)
+ #endif
+#endif
 #endif
 
 
