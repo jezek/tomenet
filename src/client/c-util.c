@@ -3899,18 +3899,25 @@ byte get_3way(cptr prompt, bool default_no) {
 
 /* Kurzel reported that on Windows 10/11, printf() output is not shown in the terminal for unknown reason. So we need a log file, alternatively, as workaround: */
 void logprint(const char *out) {
-	static FILE *fp = NULL;
+        static FILE *fp = NULL;
+        char path[1024];
 
-	/* Atomic append, in case things go really wrong (paranoia) */
-	if (!fp) fp = fopen("tomenet-stdout.log", "w");
-	else fp = fopen("tomenet-stdout.log", "a");
+#ifdef USE_SDL2
+        path_build(path, 1024, os_temp_path, "tomenet-stdout.log");
+#else
+        strcpy(path, "tomenet-stdout.log");
+#endif
 
-	if (fp) {
-		fprintf(fp, "%s", out);
-		fclose(fp);
-	}
+        /* Atomic append, in case things go really wrong (paranoia) */
+        if (!fp) fp = fopen(path, "w");
+        else fp = fopen(path, "a");
 
-	printf("%s", out);
+        if (fp) {
+                fprintf(fp, "%s", out);
+                fclose(fp);
+        }
+
+        printf("%s", out);
 }
 
 
@@ -4888,7 +4895,13 @@ void c_msg_print(cptr msg) {
 		char path[1024];
 
 		/* Build the filename */
-		path_build(path, 1024, ANGBAND_DIR_USER, "stdout.txt");
+                path_build(path, 1024,
+#ifdef USE_SDL2
+                        os_temp_path,
+#else
+                        ANGBAND_DIR_USER,
+#endif
+                        "stdout.txt");
 
 		fp = my_fopen(path, "a");
 		/* success */
@@ -5619,7 +5632,11 @@ int macroset_scan(void) {
 	/* ---------- (b) Disk operations: Read macro files from TomeNET's user folder ---------- */
 
 	getcwd(cwd, sizeof(cwd)); //Remember TomeNET working directory
-	chdir(ANGBAND_DIR_USER); //Change to TomeNET user folder
+#ifdef USE_SDL2
+        chdir(ANGBAND_USER_DIR_USER); //Change to TomeNET user folder
+#else
+        chdir(ANGBAND_DIR_USER); //Change to TomeNET user folder
+#endif
 
 	/* For cyclic sets: These don't have keys to switch to each stage, but only 1 key that switches to the next stage.
 	   So to actually find all stages of a cyclic set, we therefore need to scan for all actually existing stage-filenames derived from the base filename.

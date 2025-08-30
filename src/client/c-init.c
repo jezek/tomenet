@@ -187,7 +187,11 @@ void init_stuff(void) {
 	/* Hack -- Validate the paths */
 	validate_dir(ANGBAND_DIR_SCPT);
 	validate_dir(ANGBAND_DIR_TEXT);
-	validate_dir(ANGBAND_DIR_USER);
+#ifdef USE_SDL2
+        validate_dir(ANGBAND_USER_DIR_USER);
+#else
+        validate_dir(ANGBAND_DIR_USER);
+#endif
 	validate_dir(ANGBAND_DIR_GAME);
 }
 #endif //not WINDOWS
@@ -3368,7 +3372,13 @@ static void quit_hook(cptr s) {
 	if (hist_chat_end || hist_chat_looped) {
 		FILE *fp;
 
-		path_build(buf, 1024, ANGBAND_DIR_USER, format("chathist-%s.tmp", nick));
+                path_build(buf, 1024,
+#ifdef USE_SDL2
+                        os_temp_path,
+#else
+                        ANGBAND_DIR_USER,
+#endif
+                        format("chathist-%s.tmp", nick));
 		fp = fopen(buf, "w");
 		if (fp) {
 			if (!hist_chat_looped) {
@@ -3391,7 +3401,13 @@ static void quit_hook(cptr s) {
 	{
 		FILE *fp;
 
-		path_build(buf, 1024, ANGBAND_DIR_USER, "bookmarks.tmp");
+                path_build(buf, 1024,
+#ifdef USE_SDL2
+                        os_temp_path,
+#else
+                        ANGBAND_DIR_USER,
+#endif
+                        "bookmarks.tmp");
 		fp = fopen(buf, "w");
 		if (fp) {
 			for (j = 0; j < GUIDE_BOOKMARKS; j++) {
@@ -3895,9 +3911,27 @@ again:
 		int x = 0;
 		char path[1024], path2[1024], pathbat[1024];
 
-		path_build(path, 1024, ANGBAND_DIR_USER, "__ipc");
-		path_build(path2, 1024, ANGBAND_DIR_USER, "__ipc_done");
-		path_build(pathbat, 1024, ANGBAND_DIR_USER, "__ipc.bat");
+        path_build(path, 1024,
+#ifdef USE_SDL2
+                os_temp_path,
+#else
+                ANGBAND_DIR_USER,
+#endif
+                "__ipc");
+        path_build(path2, 1024,
+#ifdef USE_SDL2
+                os_temp_path,
+#else
+                ANGBAND_DIR_USER,
+#endif
+                "__ipc_done");
+        path_build(pathbat, 1024,
+#ifdef USE_SDL2
+                os_temp_path,
+#else
+                ANGBAND_DIR_USER,
+#endif
+                "__ipc.bat");
 		fp = fopen(pathbat, "w");
 		if (fp) {
 			fprintf(fp, "ipconfig /all > %s\n", path);
@@ -4366,7 +4400,13 @@ again:
 
 	/* Remember chat input history across logins --
 	   ironically we 'reset message log' between logins in another place, not totally efficient.. */
-	path_build(buf, 1024, ANGBAND_DIR_USER, format("chathist-%s.tmp", nick));
+        path_build(buf, 1024,
+#ifdef USE_SDL2
+                os_temp_path,
+#else
+                ANGBAND_DIR_USER,
+#endif
+                format("chathist-%s.tmp", nick));
 	fp = fopen(buf, "r");
 	hist_chat_end = 0;
 	while (fp && hist_chat_end < MSG_HISTORY_MAX && my_fgets(fp, message_history_chat[hist_chat_end], MSG_LEN) == 0) hist_chat_end++;
@@ -4378,7 +4418,13 @@ again:
 
 #ifdef GUIDE_BOOKMARKS
 	/* Load guide bookmarks */
-	path_build(buf, 1024, ANGBAND_DIR_USER, "bookmarks.tmp");
+        path_build(buf, 1024,
+#ifdef USE_SDL2
+                os_temp_path,
+#else
+                ANGBAND_DIR_USER,
+#endif
+                "bookmarks.tmp");
 	fp = fopen(buf, "r");
 	temp = 0;
 	while (fp && temp < GUIDE_BOOKMARKS && fscanf(fp, "%d,%s\n", &bookmark_line[temp], bookmark_name[temp]) != EOF) temp++;
