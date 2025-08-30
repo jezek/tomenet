@@ -13,16 +13,6 @@
  #include <regex.h>
 #endif
 
-#ifdef USE_SDL2
-static bool file_exists_local(const char *path) {
-        FILE *f = fopen(path, "rb");
-        if (f) {
-                fclose(f);
-                return(TRUE);
-        }
-        return(FALSE);
-}
-#endif
 /* Does WINDOWS client use the user's home folder instead of the TomeNET folder for 'scpt' and 'user' subfolders?
    This may be required in Windows 7 and higher, where access rights could cause problems when writing to these folders. - C. Blue */
 #define WINDOWS_USER_HOME
@@ -319,31 +309,43 @@ FILE *my_fopen(cptr file, cptr mode) {
 		return(NULL);
 	}
 
-        /* SDL2 user dir redirection */
+	/* SDL2 user dir redirection */
 #ifdef USE_SDL2
-        if (prefix(buf, ANGBAND_DIR_USER)) {
-                char ubuf[1024];
-                cptr rel = buf + strlen(ANGBAND_DIR_USER);
-                if (*rel == PATH_SEP[0] || *rel == SDL2_PATH_SEP[0]) rel++;
-                path_build(ubuf, sizeof(ubuf), ANGBAND_USER_DIR_USER, rel);
+	/* Check if file is in the game storage. */
+	if (prefix(buf, ANGBAND_DIR)) {
+		fprintf(stderr, "jezek - my_fopen: file is in game dir: %s\n", buf);
+		char ubuf[1024];
+		cptr rel = buf + strlen(ANGBAND_DIR) + 1;
+		//if (*rel == SDL2_PATH_SEP[0]) rel++;
+		path_build(ubuf, sizeof(ubuf), ANGBAND_USER_DIR, rel);
+		fprintf(stderr, "jezek - my_fopen: user dir path: %s\n", ubuf);
 
-                if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a')) {
-                        FILE *fff = fopen(ubuf, mode);
-                        if (fff) return fff;
-                        return fopen(buf, mode);
-                }
+		/* If file exists in user storage, use it. */
+		if (my_fexists(ubuf)) return fopen(ubuf, mode);
 
-                if ((strchr(mode, 'a') || strchr(mode, '+')) &&
-                    !file_exists_local(ubuf) && file_exists_local(buf)) {
-                        copy_file(buf, ubuf);
-                }
+		/* Now we know, the file does not exist in user storage. */
+		fprintf(stderr, "jezek - my_fopen: file not in user storage\n");
 
-                return fopen(ubuf, mode);
-        }
+		/* If the file is opened in read-only mode, open the file in the game storage. */
+		if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a') && !strchr(mode, 'w')) {
+			fprintf(stderr, "jezek - my_fopen: opening for read in game storage\n");
+			return fopen(buf, mode);
+		}
+
+		/* If file exists in game storage, copy it to user storage. */
+		if (my_fexists(buf)) {
+			fprintf(stderr, "jezek - my_fopen: copying to user storage\n");
+			my_fcopy(buf, ubuf);
+		}
+
+		fprintf(stderr, "jezek - my_fopen: opening in user storage\n");
+		/* Open file in user storage. */
+		return fopen(ubuf, mode);
+	}
 #endif
 
-        /* Attempt to fopen the file anyway */
-        return(fopen(buf, mode));
+	/* Attempt to fopen the file anyway */
+	return(fopen(buf, mode));
 }
 
 
@@ -678,6 +680,7 @@ void init_file_paths(char *path) {
 	string_free(ANGBAND_DIR_XTRA);
 	string_free(ANGBAND_DIR_GAME);
 #ifdef USE_SDL2
+	string_free(ANGBAND_USER_DIR);
 	string_free(ANGBAND_USER_DIR_SCPT);
 	string_free(ANGBAND_USER_DIR_TEXT);
 	string_free(ANGBAND_USER_DIR_USER);
@@ -778,6 +781,7 @@ void init_file_paths(char *path) {
 
 		strcpy(buf, SDL2_USER_PATH);
 		btail = buf + strlen(buf);
+		ANGBAND_USER_DIR = string_make(buf);
 
 		char *dirs[5] = {"scpt", "text", "user", "xtra", "game"};
 		cptr *targets[5] = {&ANGBAND_USER_DIR_SCPT, &ANGBAND_USER_DIR_TEXT, &ANGBAND_USER_DIR_USER, &ANGBAND_USER_DIR_XTRA, &ANGBAND_USER_DIR_GAME};
@@ -788,16 +792,14 @@ void init_file_paths(char *path) {
 			if (!check_dir2(*targets[i])) {
 				plog_fmt("Creating directory in user data location: %s", *targets[i]);
 				MKDIR(*targets[i]);
-				if (!check_dir2(*targets[i])) {
-					quit("Creation failed!");
-				}
 			}
 		}
-		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_SCPT: %s\n", ANGBAND_USER_DIR_SCPT);
-		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_TEXT: %s\n", ANGBAND_USER_DIR_TEXT);
-		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_USER: %s\n", ANGBAND_USER_DIR_USER);
-		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_XTRA: %s\n", ANGBAND_USER_DIR_XTRA);
-		//fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_GAME: %s\n", ANGBAND_USER_DIR_GAME);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR: %s\n", ANGBAND_USER_DIR);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_SCPT: %s\n", ANGBAND_USER_DIR_SCPT);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_TEXT: %s\n", ANGBAND_USER_DIR_TEXT);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_USER: %s\n", ANGBAND_USER_DIR_USER);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_XTRA: %s\n", ANGBAND_USER_DIR_XTRA);
+		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_GAME: %s\n", ANGBAND_USER_DIR_GAME);
 	}
  #endif /* USE_SDL2 */
 
@@ -2192,10 +2194,9 @@ void xhtml_screenshot(cptr name, byte redux) {
 			struct dirent *entry;
 
 #ifdef USE_SDL2
-                        dp = opendir(ANGBAND_USER_DIR_USER);
-                        if (!dp) dp = opendir(ANGBAND_DIR_USER);
+			dp = opendir(ANGBAND_USER_DIR_USER);
 #else
-                        dp = opendir(ANGBAND_DIR_USER);
+			dp = opendir(ANGBAND_DIR_USER);
 #endif
 
 			if (!dp) {

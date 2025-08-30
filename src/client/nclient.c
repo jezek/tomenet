@@ -8171,13 +8171,11 @@ static void do_meta_pings(void) {
 			strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 		} else
 #endif
-                path_build(path, 1024,
 #ifdef USE_SDL2
-                        os_temp_path,
+		path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[i]));
 #else
-                        ANGBAND_DIR_USER,
+		path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[i]));
 #endif
-                        format("__ping_%s.tmp", meta_pings_server_name[i]));
 
 		/* Send a ping to each distinct server name, allowing for max 1000ms */
 		if (alt == 2) {

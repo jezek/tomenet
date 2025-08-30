@@ -2511,13 +2511,11 @@ bool get_server_name(void) {
 		strcat(buf, "\\__ping.tmp");
 	} else
  #endif
-        path_build(buf, 1024,
-#ifdef USE_SDL2
-                os_temp_path,
-#else
-                ANGBAND_DIR_USER,
-#endif
-                "__ping.tmp");
+ #ifdef USE_SDL2
+	path_build(buf, 1024, os_temp_path, "__ping.tmp");
+ #else
+	path_build(buf, 1024, ANGBAND_DIR_USER, "__ping.tmp");
+ #endif
  #ifdef WINDOWS
 	meta_pings_xpath[0] = 0;
 	r = system(format("ping /? > %s 2>&1", buf));
@@ -2688,13 +2686,11 @@ bool get_server_name(void) {
 				strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 			} else
    #endif
-                        path_build(path, 1024,
-#ifdef USE_SDL2
-                                os_temp_path,
-#else
-                                ANGBAND_DIR_USER,
-#endif
-                                format("__ping_%s.tmp", meta_pings_server_name[j]));
+   #ifdef USE_SDL2
+			path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[j]));
+   #else
+			path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[j]));
+   #endif
 			fhan[j] = CreateFile(path,
 			    FILE_WRITE_DATA, //FILE_APPEND_DATA,
    #if 0
@@ -2747,13 +2743,11 @@ bool get_server_name(void) {
 					strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 				} else
  #endif
-                              path_build(path, 1024,
-#ifdef USE_SDL2
-                                      os_temp_path,
-#else
-                                      ANGBAND_DIR_USER,
-#endif
-                                      format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #ifdef USE_SDL2
+				path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #else
+				path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #endif
 				remove(path);
 			}
  #if defined(WINDOWS) && defined(WINDOWS_USE_TEMP)
@@ -2764,13 +2758,11 @@ bool get_server_name(void) {
 				strcat(path, "\\__ping.tmp");
 			} else
  #endif
-                      path_build(path, 1024,
-#ifdef USE_SDL2
-                                os_temp_path,
-#else
-                                ANGBAND_DIR_USER,
-#endif
-                                "__ping.tmp");
+ #ifdef USE_SDL2
+			path_build(path, 1024, os_temp_path, "__ping.tmp");
+ #else
+			path_build(path, 1024, ANGBAND_DIR_USER, "__ping.tmp");
+ #endif
 			remove(path);
 			meta_pings_servers = 0;
 #endif
@@ -2790,13 +2782,11 @@ bool get_server_name(void) {
 					strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 				} else
  #endif
-                              path_build(path, 1024,
-#ifdef USE_SDL2
-                                      os_temp_path,
-#else
-                                      ANGBAND_DIR_USER,
-#endif
-                                      format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #ifdef USE_SDL2
+				path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #else
+				path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #endif
 				remove(path);
 			}
  #if defined(WINDOWS) && defined(WINDOWS_USE_TEMP)
@@ -2807,13 +2797,11 @@ bool get_server_name(void) {
 				strcat(path, "\\__ping.tmp");
 			} else
  #endif
-                      path_build(path, 1024,
-#ifdef USE_SDL2
-                                os_temp_path,
-#else
-                                ANGBAND_DIR_USER,
-#endif
-                                "__ping.tmp");
+ #ifdef USE_SDL2
+			path_build(path, 1024, os_temp_path, "__ping.tmp");
+ #else
+			path_build(path, 1024, ANGBAND_DIR_USER, "__ping.tmp");
+ #endif
 			remove(path);
 			meta_pings_servers = 0;
 #endif
@@ -2839,13 +2827,11 @@ bool get_server_name(void) {
 			strcat(path, format("\\__ping_%s.tmp", meta_pings_server_name[i]));
 		} else
  #endif
-              path_build(path, 1024,
-#ifdef USE_SDL2
-                        os_temp_path,
-#else
-                        ANGBAND_DIR_USER,
-#endif
-                        format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #ifdef USE_SDL2
+		path_build(path, 1024, os_temp_path, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #else
+		path_build(path, 1024, ANGBAND_DIR_USER, format("__ping_%s.tmp", meta_pings_server_name[i]));
+ #endif
 		remove(path);
 	}
  #if defined(WINDOWS) && defined(WINDOWS_USE_TEMP)
@@ -2856,13 +2842,11 @@ bool get_server_name(void) {
 		strcat(path, "\\__ping.tmp");
 	} else
  #endif
-      path_build(path, 1024,
-#ifdef USE_SDL2
-                os_temp_path,
-#else
-                ANGBAND_DIR_USER,
-#endif
-                "__ping.tmp");
+ #ifdef USE_SDL2
+	path_build(path, 1024, os_temp_path, "__ping.tmp");
+ #else
+	path_build(path, 1024, ANGBAND_DIR_USER, "__ping.tmp");
+ #endif
 	remove(path);
 	meta_pings_servers = 0;
 #endif

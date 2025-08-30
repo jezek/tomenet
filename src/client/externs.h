@@ -384,6 +384,7 @@ extern cptr ANGBAND_DIR_SCPT;
 extern cptr ANGBAND_DIR_GAME;
 
 #ifdef USE_SDL2
+extern cptr ANGBAND_USER_DIR;
 extern cptr ANGBAND_USER_DIR_SCPT;
 extern cptr ANGBAND_USER_DIR_TEXT;
 extern cptr ANGBAND_USER_DIR_USER;
@@ -785,7 +786,7 @@ extern void set_bigmap(int bm, bool verbose);
 extern void apply_auto_inscriptions(int insc_idx);
 extern int check_guard_inscription_str(cptr ax, char what);
 #ifdef USE_SDL2
-extern int copy_file(const char *source, const char *destination);
+extern int my_fcopy(const char *source, const char *destination);
 #endif
 
 /* c-store.c */

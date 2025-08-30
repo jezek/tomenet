@@ -3899,25 +3899,25 @@ byte get_3way(cptr prompt, bool default_no) {
 
 /* Kurzel reported that on Windows 10/11, printf() output is not shown in the terminal for unknown reason. So we need a log file, alternatively, as workaround: */
 void logprint(const char *out) {
-        static FILE *fp = NULL;
-        char path[1024];
+	static FILE *fp = NULL;
+	char path[1024];
 
 #ifdef USE_SDL2
-        path_build(path, 1024, os_temp_path, "tomenet-stdout.log");
+	path_build(path, 1024, os_temp_path, "tomenet-stdout.log");
 #else
-        strcpy(path, "tomenet-stdout.log");
+	strcpy(path, "tomenet-stdout.log");
 #endif
 
-        /* Atomic append, in case things go really wrong (paranoia) */
-        if (!fp) fp = fopen(path, "w");
-        else fp = fopen(path, "a");
+	/* Atomic append, in case things go really wrong (paranoia) */
+	if (!fp) fp = fopen(path, "w");
+	else fp = fopen(path, "a");
 
-        if (fp) {
-                fprintf(fp, "%s", out);
-                fclose(fp);
-        }
+	if (fp) {
+		fprintf(fp, "%s", out);
+		fclose(fp);
+	}
 
-        printf("%s", out);
+	printf("%s", out);
 }
 
 
@@ -4895,13 +4895,11 @@ void c_msg_print(cptr msg) {
 		char path[1024];
 
 		/* Build the filename */
-                path_build(path, 1024,
 #ifdef USE_SDL2
-                        os_temp_path,
+		path_build(path, 1024, os_temp_path, "stdout.txt");
 #else
-                        ANGBAND_DIR_USER,
+		path_build(path, 1024, ANGBAND_DIR_USER, "stdout.txt");
 #endif
-                        "stdout.txt");
 
 		fp = my_fopen(path, "a");
 		/* success */
@@ -5633,9 +5631,10 @@ int macroset_scan(void) {
 
 	getcwd(cwd, sizeof(cwd)); //Remember TomeNET working directory
 #ifdef USE_SDL2
-        chdir(ANGBAND_USER_DIR_USER); //Change to TomeNET user folder
+	//TODO jezek - Also scan macros in game storage location.
+	chdir(ANGBAND_USER_DIR_USER); //Change to TomeNET user folder in user storage
 #else
-        chdir(ANGBAND_DIR_USER); //Change to TomeNET user folder
+	chdir(ANGBAND_DIR_USER); //Change to TomeNET user folder
 #endif
 
 	/* For cyclic sets: These don't have keys to switch to each stage, but only 1 key that switches to the next stage.
@@ -16330,7 +16329,7 @@ bool my_fexists(const char *fname) {
 
 #ifdef USE_SDL2
 /**
- * copy_file - Copy the contents of one file to another.
+ * my_fcopy - Copy the contents of one file to another.
  *
  * This function opens the given source file for reading in binary mode
  * and creates or overwrites the destination file for writing in binary mode.
@@ -16341,7 +16340,7 @@ bool my_fexists(const char *fname) {
  *
  * @return 0 on success, -1 on error (e.g., file not found or permission denied).
  */
-int copy_file(const char *source, const char *destination) {
+int my_fcopy(const char *source, const char *destination) {
 	FILE *src;
 	FILE *dest;
 	char buffer[4096];
@@ -16349,13 +16348,13 @@ int copy_file(const char *source, const char *destination) {
 
 	src = fopen(source, "rb");
 	if (!src) {
-		fprintf(stderr, "copy_file: Error opening source file: %s\n", source);
+		fprintf(stderr, "my_fcopy: Error opening source file: %s\n", source);
 		return -1;
 	}
 
 	dest = fopen(destination, "wb");
 	if (!dest) {
-		fprintf(stderr, "copy_file: Error opening destination file: %s\n", destination);
+		fprintf(stderr, "my_fcopy: Error opening destination file: %s\n", destination);
 		fclose(src);
 		return -1;
 	}

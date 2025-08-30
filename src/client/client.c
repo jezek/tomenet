@@ -140,7 +140,7 @@ static bool read_mangrc(cptr filename) {
 			 If this also fails, our last chance will be the auto-generated minimal configuration file from write_mangrc() later. */
 #ifdef USE_SDL2
 		snprintf(default_config_path, 1024, "%s%s", SDL2_GAME_PATH, filename);
-		(void)copy_file(default_config_path, mangrc_filename); 
+		(void)my_fcopy(default_config_path, mangrc_filename); 
 #else
 		(void)system(format("cp .tomenetrc %s", mangrc_filename));
 #endif
