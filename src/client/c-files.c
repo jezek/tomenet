@@ -13,6 +13,16 @@
  #include <regex.h>
 #endif
 
+#ifdef USE_SDL2
+static bool file_exists_local(const char *path) {
+        FILE *f = fopen(path, "rb");
+        if (f) {
+                fclose(f);
+                return(TRUE);
+        }
+        return(FALSE);
+}
+#endif
 /* Does WINDOWS client use the user's home folder instead of the TomeNET folder for 'scpt' and 'user' subfolders?
    This may be required in Windows 7 and higher, where access rights could cause problems when writing to these folders. - C. Blue */
 #define WINDOWS_USER_HOME
@@ -309,8 +319,31 @@ FILE *my_fopen(cptr file, cptr mode) {
 		return(NULL);
 	}
 
-	/* Attempt to fopen the file anyway */
-	return(fopen(buf, mode));
+        /* SDL2 user dir redirection */
+#ifdef USE_SDL2
+        if (prefix(buf, ANGBAND_DIR_USER)) {
+                char ubuf[1024];
+                cptr rel = buf + strlen(ANGBAND_DIR_USER);
+                if (*rel == PATH_SEP[0] || *rel == SDL2_PATH_SEP[0]) rel++;
+                path_build(ubuf, sizeof(ubuf), ANGBAND_USER_DIR_USER, rel);
+
+                if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a')) {
+                        FILE *fff = fopen(ubuf, mode);
+                        if (fff) return fff;
+                        return fopen(buf, mode);
+                }
+
+                if ((strchr(mode, 'a') || strchr(mode, '+')) &&
+                    !file_exists_local(ubuf) && file_exists_local(buf)) {
+                        copy_file(buf, ubuf);
+                }
+
+                return fopen(ubuf, mode);
+        }
+#endif
+
+        /* Attempt to fopen the file anyway */
+        return(fopen(buf, mode));
 }
 
 
@@ -2158,7 +2191,12 @@ void xhtml_screenshot(cptr name, byte redux) {
 			DIR *dp;
 			struct dirent *entry;
 
-			dp = opendir(ANGBAND_DIR_USER);
+#ifdef USE_SDL2
+                        dp = opendir(ANGBAND_USER_DIR_USER);
+                        if (!dp) dp = opendir(ANGBAND_DIR_USER);
+#else
+                        dp = opendir(ANGBAND_DIR_USER);
+#endif
 
 			if (!dp) {
 				c_msg_print("Couldn't open the user directory.");

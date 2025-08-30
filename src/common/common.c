@@ -11,6 +11,7 @@
 
 #ifdef USE_SDL2
  #include "SDL2/SDL.h"
+ #include <sys/stat.h>
 #endif
 
 /*
@@ -317,16 +318,23 @@ void init_temp_path(void) {
 	else if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
 	else strcpy(os_temp_path, ".");
 #elif defined(USE_SDL2)
-	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
-	else if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
-	else {
-		/* Use `temp` directory in SDL2 preferences location. */
-		strcpy(os_temp_path, SDL2_USER_PATH);
-		strcat(os_temp_path, "temp");
-		strcat(os_temp_path, SDL2_PATH_SEP);
-	}
+        if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
+        else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
+        else if ((c = getenv("TEMPDIR"))) strcpy(os_temp_path, c);
+        else if ((c = getenv("TEMP"))) strcpy(os_temp_path, c);
+        else {
+                /* Use `temp` directory in SDL2 preferences location. */
+                strcpy(os_temp_path, SDL2_USER_PATH);
+                strcat(os_temp_path, "temp");
+                strcat(os_temp_path, SDL2_PATH_SEP);
+        }
+        {
+                struct stat st;
+                char tmp[1024];
+                strcpy(tmp, os_temp_path);
+                tmp[strlen(tmp) - 1] = '\0';
+                if (stat(tmp, &st)) MKDIR(tmp);
+        }
 #elif defined(USE_X11) || defined(USE_GCU)
 	if ((c = getenv("TMPDIR"))) strcpy(os_temp_path, c);
 	else if ((c = getenv("TMP"))) strcpy(os_temp_path, c);
