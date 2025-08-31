@@ -792,6 +792,26 @@ void init_file_paths(char *path) {
 			if (!check_dir2(*targets[i])) {
 				plog_fmt("Creating directory in user data location: %s", *targets[i]);
 				MKDIR(*targets[i]);
+
+				/* After creating the script directory, copy default scripts. */
+				if (i == 0) {
+					DIR *dp;
+					struct dirent *ep;
+					char src[1024], dst[1024];
+
+					dp = opendir(ANGBAND_DIR_SCPT);
+					if (dp) {
+						while ((ep = readdir(dp)) != NULL) {
+							if (ep->d_name[0] == '.') continue;
+							path_build(src, sizeof(src), ANGBAND_DIR_SCPT, ep->d_name);
+							path_build(dst, sizeof(dst), ANGBAND_USER_DIR_SCPT, ep->d_name);
+							if (my_fexists(src)) {
+								my_fcopy(src, dst);
+							}
+						}
+					closedir(dp);
+					}
+				}
 			}
 		}
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR: %s\n", ANGBAND_USER_DIR);
