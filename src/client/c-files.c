@@ -313,11 +313,11 @@ FILE *my_fopen(cptr file, cptr mode) {
 #ifdef USE_SDL2
 	/* Check if file is in the game storage. */
 	if (prefix(buf, ANGBAND_DIR)) {
+		fprintf(stderr, "jezek - my_fopen: opening mode: %s\n", mode);
 		fprintf(stderr, "jezek - my_fopen: file is in game dir: %s\n", buf);
 		char ubuf[1024];
-		cptr rel = buf + strlen(ANGBAND_DIR) + 1;
-		//if (*rel == SDL2_PATH_SEP[0]) rel++;
-		path_build(ubuf, sizeof(ubuf), ANGBAND_USER_DIR, rel);
+		cptr tail = buf + strlen(ANGBAND_DIR);
+		strnfmt(ubuf, sizeof(ubuf), "%s%s", ANGBAND_USER_DIR, tail);
 		fprintf(stderr, "jezek - my_fopen: user dir path: %s\n", ubuf);
 
 		/* If file exists in user storage, use it. */
@@ -327,7 +327,7 @@ FILE *my_fopen(cptr file, cptr mode) {
 		fprintf(stderr, "jezek - my_fopen: file not in user storage\n");
 
 		/* If the file is opened in read-only mode, open the file in the game storage. */
-		if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a') && !strchr(mode, 'w')) {
+		if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a')) {
 			fprintf(stderr, "jezek - my_fopen: opening for read in game storage\n");
 			return fopen(buf, mode);
 		}
@@ -338,7 +338,7 @@ FILE *my_fopen(cptr file, cptr mode) {
 			my_fcopy(buf, ubuf);
 		}
 
-		fprintf(stderr, "jezek - my_fopen: opening in user storage\n");
+		fprintf(stderr, "jezek - my_fopen: opening for write in user storage\n");
 		/* Open file in user storage. */
 		return fopen(ubuf, mode);
 	}
