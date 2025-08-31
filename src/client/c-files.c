@@ -778,6 +778,7 @@ void init_file_paths(char *path) {
  #ifdef USE_SDL2
 	{
 		char buf[1024], *btail;
+		bool scpt_created = false;
 
 		strcpy(buf, SDL2_USER_PATH);
 		btail = buf + strlen(buf);
@@ -792,26 +793,8 @@ void init_file_paths(char *path) {
 			if (!check_dir2(*targets[i])) {
 				plog_fmt("Creating directory in user data location: %s", *targets[i]);
 				MKDIR(*targets[i]);
+				if (targets[i] == &ANGBAND_USER_DIR_SCPT) scpt_created = true;
 
-				/* After creating the script directory, copy default scripts. */
-				if (i == 0) {
-					DIR *dp;
-					struct dirent *ep;
-					char src[1024], dst[1024];
-
-					dp = opendir(ANGBAND_DIR_SCPT);
-					if (dp) {
-						while ((ep = readdir(dp)) != NULL) {
-							if (ep->d_name[0] == '.') continue;
-							path_build(src, sizeof(src), ANGBAND_DIR_SCPT, ep->d_name);
-							path_build(dst, sizeof(dst), ANGBAND_USER_DIR_SCPT, ep->d_name);
-							if (my_fexists(src)) {
-								my_fcopy(src, dst);
-							}
-						}
-					closedir(dp);
-					}
-				}
 			}
 		}
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR: %s\n", ANGBAND_USER_DIR);
@@ -820,6 +803,29 @@ void init_file_paths(char *path) {
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_USER: %s\n", ANGBAND_USER_DIR_USER);
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_XTRA: %s\n", ANGBAND_USER_DIR_XTRA);
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_GAME: %s\n", ANGBAND_USER_DIR_GAME);
+
+
+		/* After creating the script directory, copy default scripts. */
+		if (scpt_created) {
+			fprintf(stderr, "jezek - init_file_paths: scpt was created, copy files from game storage\n");
+			DIR *dp;
+			struct dirent *ep;
+			char src[1024], dst[1024];
+
+			if ((dp = opendir(ANGBAND_DIR_SCPT)) != NULL) {
+				while ((ep = readdir(dp)) != NULL) {
+					fprintf(stderr, "jezek - init_file_paths: file: %s\n", ep->d_name);
+					if (ep->d_name[0] == '.') continue;
+					path_build(src, sizeof(src), ANGBAND_DIR_SCPT, ep->d_name);
+					path_build(dst, sizeof(dst), ANGBAND_USER_DIR_SCPT, ep->d_name);
+					if (my_fexists(src)) {
+						fprintf(stderr, "jezek - init_file_paths: copy: %s -> %s\n", src, dst);
+						my_fcopy(src, dst);
+					}
+				}
+				closedir(dp);
+			}
+		}
 	}
  #endif /* USE_SDL2 */
 
