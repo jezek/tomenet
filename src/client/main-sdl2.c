@@ -3610,7 +3610,7 @@ static PCF_Font* PCF_OpenFont(const char *name) {
 	void *row;
 
 	// Open the file.
-	f = fopen(name, "rb");
+	f = my_fopen(name, "rb");
 	if(!f) {
 		fprintf(stderr, "Error: Unable to open file %s.\n", name);
 		return NULL;
