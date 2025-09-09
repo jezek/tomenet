@@ -3305,7 +3305,8 @@ int Receive_message(void) {
 		struct tm* ctl = localtime(&ct);
 
 		path_build(path, 1024, ANGBAND_DIR_USER, format("notes-%s.txt", nick));
-		fp = fopen(path, "a");
+		//TODO jezek - Test this append.
+		fp = my_fopen(path, "a");
 		if (fp) {
 			char buf2[MSG_LEN] = { 0 }, *c = buf + (got_note ? 2 : 6 + 10), *c2 = buf2;
 

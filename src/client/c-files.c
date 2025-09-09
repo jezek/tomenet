@@ -298,6 +298,11 @@ static errr path_parse(char *buf, cptr file) {
 
 /*
  * Hack -- replacement for "fopen()"
+ * Parses the path and returns error > 900 when path is invalid.
+ *
+ * In SDL2 client the ANGBAND_DIR is considered read-only and ANGBAND_USER_DIR is for writing.
+ * So when opening a file in ANGBAND_DIR for writing, copy the file to ANGBAND_USER_DIR first and open it there.
+ * When opening a file in ANGBAND_DIR for reading only, first looks for the file in ANGBAND_USER_DIR and opens it if present.
  */
 FILE *my_fopen(cptr file, cptr mode) {
 	fprintf(stderr, "jezek - my_fopen(file: \"%s\", mode: %s)\n", file, mode);
@@ -2219,11 +2224,11 @@ void xhtml_screenshot(cptr name, byte redux) {
 			DIR *dp;
 			struct dirent *entry;
 
-#ifdef USE_SDL2
+ #ifdef USE_SDL2
 			dp = opendir(ANGBAND_USER_DIR_USER);
-#else
+ #else
 			dp = opendir(ANGBAND_DIR_USER);
-#endif
+ #endif
 
 			if (!dp) {
 				c_msg_print("Couldn't open the user directory.");
@@ -2262,23 +2267,31 @@ void xhtml_screenshot(cptr name, byte redux) {
 			    ctl->tm_hour, ctl->tm_min, ctl->tm_sec);
 		}
 
+#ifdef USE_SDL2
+		path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+#else
 		path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
+#endif
 	} else {
 		strncpy(file_name, name, 249);
 		file_name[249] = '\0';
 		strcat(file_name, ".xhtml");
+#ifdef USE_SDL2
+		path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+#else
 		path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
-		fp = fopen(buf, "rb");
-		if (fp) {
+#endif
+		if (my_fexists(buf)) {
 			char buf2[1028];
 
-			fclose(fp);
 			strcpy(buf2, buf);
 			strcat(buf2, ".bak");
+			fprintf(stderr, "jezek - xhtml_screenshot: backup %s\n", buf2);
 			/* Make a backup of an already existing file */
 			rename(buf, buf2);
 		}
 	}
+	fprintf(stderr, "jezek - xhtml_screenshot: screenshot to: %s\n", buf);
 
 #ifdef ENABLE_SHIFT_SPECIALKEYS
 	/* Hack: SHIFT+CTRL+T makes a real screenshot (PNG or BMP) instead of an xhtml screenshot - C. Blue */
@@ -2336,7 +2349,7 @@ void xhtml_screenshot(cptr name, byte redux) {
 	}
 #endif
 
-	fp = fopen(buf, "wb");
+	fp = my_fopen(buf, "wb");
 	if (!fp) {
 		/* Couldn't write */
 		silent_dump = FALSE;
@@ -2544,9 +2557,13 @@ void save_auto_inscriptions(cptr name) {
 		} else strcat(file_name, ".ins");
 	} else strcat(file_name, ".ins");
 
+#ifdef USE_SDL2
+	path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+#else
 	path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
+#endif
 
-	fp = fopen(buf, "w");
+	fp = my_fopen(buf, "w");
 	if (!fp) {
 		/* Couldn't write */
 		c_msg_print("Saving Auto-inscriptions failed!");
@@ -2614,9 +2631,13 @@ void load_auto_inscriptions(cptr name) {
 		} else strcat(file_name, ".ins");
 	} else strcat(file_name, ".ins");
 
+#ifdef USE_SDL2
+	path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+	if (!my_fexists(buf))
+#endif
 	path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
 
-	fp = fopen(buf, "r");
+	fp = my_fopen(buf, "r");
 	if (!fp) {
 		/* Couldn't open */
 		return;
@@ -2904,9 +2925,13 @@ void save_birth_file(cptr cname, bool touch) {
 		} else strcat(file_name, ".dna");
 	} else strcat(file_name, ".dna");
 
+#ifdef USE_SDL2
+	path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+#else
 	path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
+#endif
 
-	fp = fopen(buf, "w");
+	fp = my_fopen(buf, "w");
 	if (!fp) {
 		/* Couldn't write */
 		c_msg_print("Saving character birth dna failed!");
@@ -2981,9 +3006,13 @@ void load_birth_file(cptr cname) {
 		} else strcat(file_name, ".dna");
 	} else strcat(file_name, ".dna");
 
+#ifdef USE_SDL2
+	path_build(buf, 1024, ANGBAND_USER_DIR_USER, file_name);
+	if (!my_fexists(buf))
+#endif
 	path_build(buf, 1024, ANGBAND_DIR_USER, file_name);
 
-	fp = fopen(buf, "r");
+	fp = my_fopen(buf, "r");
 	if (!fp) {
 		/* Couldn't open */
 		return;
@@ -3129,10 +3158,12 @@ int check_guide_checksums(bool forced) {
 	if (!forced)
 		return 0;
 
-	snprintf(filepath, MAX_PATH_LENGTH, "%s%s", SDL2_GAME_PATH, "TomeNET-Guide.txt");
+	snprintf(filepath, MAX_PATH_LENGTH, "%s%s", ANGBAND_USER_DIR, "TomeNET-Guide.txt");
+	if (!my_fexists(buf))
+		snprintf(filepath, MAX_PATH_LENGTH, "%s%s", ANGBAND_DIR, "TomeNET-Guide.txt");
 	fprintf(stderr, "jezek - check_guide_checksums: filepath: %s\n", filepath);
 
-	fp = fopen(filepath, "rb");
+	fp = my_fopen(filepath, "rb");
 	if (fp == NULL) {
 		c_msg_print("\377yError verifying Guide version: Cannot read 'TomeNET-Guide.txt'.");
 		return 2;
