@@ -11891,6 +11891,7 @@ static void do_cmd_options_tilesets(void) {
 	/* read all locally available tilesets */
 	memset(tileset_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
+	//TODO jezek - Test loading tilesets from user and game dir.
   #ifdef USE_SDL2
   /* In SDL2 client, look for tilesets in user storage first. */
 	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "graphics");
@@ -11899,37 +11900,43 @@ static void do_cmd_options_tilesets(void) {
 			strcpy(tmp_name, ent->d_name);
 			j = -1;
 			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-			if (strstr(tmp_name, ".bmp")) {
-				if (tilesets == MAX_FONTS) continue;
+			if (!strstr(tmp_name, ".bmp")) continue;
 
-				strcpy(tileset_name[tilesets], ent->d_name);
-				tilesets++;
-				if (tilesets == MAX_FONTS) c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			strcpy(tileset_name[tilesets], ent->d_name);
+			tilesets++;
+
+			if (tilesets == MAX_FONTS) {
+				c_msg_format("Warning: Number of user tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+				break;
 			}
+
 		}
 		closedir(dir);
 	}
   #endif
 
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
-	//TODO jezek - Rewrite to load from user directory too.
 	if ((dir = opendir(path))) {
 		while ((ent = readdir(dir))) {
+			if (tilesets == MAX_FONTS) break;
+
 			strcpy(tmp_name, ent->d_name);
 			j = -1;
 			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-			if (strstr(tmp_name, ".bmp")) {
-				if (tilesets == MAX_FONTS) continue;
+			if (!strstr(tmp_name, ".bmp")) continue;
 
   #ifdef USE_SDL2
-				/* Check duplicate in tileset_name. */
-				for (k = 0; k < tilesets; k++) if (!strcmp(tileset_name[k], ent->d_name)) break;
-				if (k < tilesets) continue; /* duplicate */
+			/* Check duplicate in tileset_name. */
+			for (k = 0; k < tilesets; k++) if (!strcmp(tileset_name[k], ent->d_name)) break;
+			if (k < tilesets) continue; /* duplicate */
   #endif
 
-				strcpy(tileset_name[tilesets], ent->d_name);
-				tilesets++;
-				if (tilesets == MAX_FONTS) c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			strcpy(tileset_name[tilesets], ent->d_name);
+			tilesets++;
+
+			if (tilesets == MAX_FONTS) {
+				c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+				break;
 			}
 		}
 		closedir(dir);

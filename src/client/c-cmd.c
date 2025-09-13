@@ -7216,23 +7216,56 @@ static void cmd_notes(void) {
 	Term_clear();
 	topline_icky = TRUE;
 
+//TODO jezek - Test reading notes from user and game storage.
+#ifdef USE_SDL2
+	/* Read all locally available note files from user storage. */
+	path_build(path, 1024, ANGBAND_USER_DIR_USER, "");
+	if (!(dir = opendir(path))) {
+		c_msg_format("Couldn't open user directory (%s).", path);
+		return;
+	}
+	while ((ent = readdir(dir))) {
+		strcpy(tmp_name, ent->d_name);
+		if (strncmp(tmp_name, "notes-", 6)) continue;
+
+		strcpy(notes_fname[notes_files], tmp_name);
+		notes_files++;
+
+		if (notes_files == MAX_NOTES_FILES) {
+			c_msg_format("\377oWARNING: Amount of user 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
+			break;
+		}
+	}
+	closedir(dir);
+#endif
+
 	/* read all locally available note files */
 	path_build(path, 1024, ANGBAND_DIR_USER, "");
 	if (!(dir = opendir(path))) {
 		c_msg_format("Couldn't open user directory (%s).", path);
 		return;
 	}
-
 	while ((ent = readdir(dir))) {
+		if (notes_files == MAX_NOTES_FILES) break;
+
 		strcpy(tmp_name, ent->d_name);
-		if (!strncmp(tmp_name, "notes-", 6)) {
-			strcpy(notes_fname[notes_files], tmp_name);
-			notes_files++;
-			if (notes_files == MAX_NOTES_FILES) {
-				c_msg_format("\377oWARNING: Amount of 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
-				break;
-			}
+		if (strncmp(tmp_name, "notes-", 6)) continue;
+
+#ifdef USE_SDL2
+		int k;
+		/* Check duplicate in notes_fname. */
+		for (k = 0; k < notes_files; k++) if (!strcmp(notes_fname[k], tmp_name)) break;
+		if (k < notes_files) continue; /* duplicate */
+#endif
+
+		strcpy(notes_fname[notes_files], tmp_name);
+		notes_files++;
+
+		if (notes_files == MAX_NOTES_FILES) {
+			c_msg_format("\377oWARNING: Amount of 'notes-' files exceeds processable maximum (%d)!", MAX_NOTES_FILES);
+			break;
 		}
+
 	}
 	closedir(dir);
 
