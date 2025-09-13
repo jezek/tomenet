@@ -810,7 +810,7 @@ void init_file_paths(char *path) {
 		fprintf(stderr, "jezek - init_file_paths: ANGBAND_USER_DIR_GAME: %s\n", ANGBAND_USER_DIR_GAME);
 
 
-		/* After creating the script directory, copy default scripts. */
+		/* After creating the user script directory, copy scripts from game lib. */
 		if (scpt_created) {
 			fprintf(stderr, "jezek - init_file_paths: scpt was created, copy files from game storage\n");
 			DIR *dp;

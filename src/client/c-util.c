@@ -5475,7 +5475,7 @@ int macroset_scan(void) {
 	char buf_basename[1024], tmpbuf[1024];
 #ifndef WINDOWS
 	size_t glob_size;
-	glob_t glob_res;
+	glob_t glob_res = {0};
 	char **p;
 #else
 	WIN32_FIND_DATA FindFileData;
@@ -5630,12 +5630,7 @@ int macroset_scan(void) {
 	/* ---------- (b) Disk operations: Read macro files from TomeNET's user folder ---------- */
 
 	getcwd(cwd, sizeof(cwd)); //Remember TomeNET working directory
-#ifdef USE_SDL2
-	//TODO jezek - Also scan macros in game storage location.
-	chdir(ANGBAND_USER_DIR_USER); //Change to TomeNET user folder in user storage
-#else
 	chdir(ANGBAND_DIR_USER); //Change to TomeNET user folder
-#endif
 
 	/* For cyclic sets: These don't have keys to switch to each stage, but only 1 key that switches to the next stage.
 	   So to actually find all stages of a cyclic set, we therefore need to scan for all actually existing stage-filenames derived from the base filename.
@@ -5643,7 +5638,17 @@ int macroset_scan(void) {
 	for (k = 0; k < filesets_found; k++) {
 #ifndef WINDOWS
 c_msg_format("(1)scan disk for set (%d) <%s>", k, fileset[k].basefilename);
+ #ifdef USE_SDL2
+		//TODO jezek - Test glob fileset w/wo brace.
+  #ifdef GLOB_BRACE
+		glob(format("{%s,%s}%s%s-FS?.prf", ANGBAND_USER_DIR_USER, ANGBAND_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), GLOB_BRACE, NULL, &glob_res);
+  #else
+		glob(format("%s%s%s-FS?.prf", ANGBAND_USER_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), 0, NULL, &glob_res);
+		glob(format("%s%s%s-FS?.prf", ANGBAND_DIR_USER, SDL2_PATH_SEP, fileset[k].basefilename), ((glob_res.gl_pathc > 0) ? GLOB_APPEND : 0), NULL, &glob_res);
+  #endif
+ #else
 		glob(format("%s-FS?.prf", fileset[k].basefilename), 0, 0, &glob_res);
+ #endif
 		glob_size = glob_res.gl_pathc;
 		if (glob_size < 1) { /* No macro files found at all, ew. */
 			/* -- this warning is redundant with 'has no stage file(s)' warning further down ---
@@ -5701,7 +5706,17 @@ c_msg_format("(1)set (%d) <%s> registered stage %d", k, fileset[k].basefilename,
 	/* ---------- (c) Now also scan user folder for any macro sets that aren't referenced by our currently loaded macros: ---------- */
 
 #ifndef WINDOWS
+ #ifdef USE_SDL2
+	//TODO jezek - Test glob fileset w/wo brace.
+  #ifdef GLOB_BRACE
+	glob(format("{%s,%s}%s*-FS?.prf", ANGBAND_USER_DIR_USER, ANGBAND_DIR_USER, SDL2_PATH_SEP), GLOB_BRACE, NULL, &glob_res);
+  #else
+	glob(format("%s%s*-FS?.prf", ANGBAND_USER_DIR_USER, SDL2_PATH_SEP), 0, NULL, &glob_res);
+	glob(format("%s%s*-FS?.prf", ANGBAND_DIR_USER, SDL2_PATH_SEP), ((glob_res.gl_pathc > 0) ? GLOB_APPEND : 0), NULL, &glob_res);
+  #endif
+ #else
 	glob("*-FS?.prf", 0, 0, &glob_res);
+ #endif
 	glob_size = glob_res.gl_pathc;
 	if (glob_size < 1) //; /* No macro files found at all */
 c_msg_print("(2)nothing");
@@ -11281,37 +11296,85 @@ static void do_cmd_options_fonts(void) {
 	}
 	closedir(dir);
    #elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
+  //TODO jezek - Test loading fonts from user & game dir.
 	DIR *dir;
 	struct dirent *ent;
+	char base_name[256];
+	int k;
 
-	/* read all locally available fonts */
+	/* Prepare font arrays. */
 	memset(font_name, 0, sizeof(char) * (MAX_FONTS * 256));
 	memset(graphic_font_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
-	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
-	if (!(dir = opendir(path))) {
-		c_msg_format("Couldn't open fonts directory (%s).", path);
-		return;
+	/* Read all locally available fonts, first from user storage, then from game storage. */
+	/* First user-specific fonts. */
+	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "font");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".pcf")) {
+				if (graphic_fonts == MAX_FONTS) continue;
+
+				/* PCF font is stored without extenstion. */
+				strcpy(graphic_font_name[graphic_fonts], ent->d_name);
+				graphic_font_name[graphic_fonts][strlen(tmp_name) - 4] = '\0';
+				graphic_fonts++;
+
+				if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			} else if (strstr(tmp_name, ".ttf")) {
+				if (fonts == MAX_FONTS) continue;
+
+				/* Just store the font. */
+				strcpy(font_name[fonts], ent->d_name);
+				fonts++;
+
+				if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
+		}
+		closedir(dir);
 	}
 
-	while ((ent = readdir(dir))) {
-		strcpy(tmp_name, ent->d_name);
-		j = -1;
-		while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-		if (strstr(tmp_name, ".pcf")) {
-			if (graphic_fonts == MAX_FONTS) continue;
-			strcpy(graphic_font_name[graphic_fonts], ent->d_name);
-			graphic_font_name[graphic_fonts][strlen(tmp_name) - 4] = '\0';
-			graphic_fonts++;
-			if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
-		} else if (strstr(tmp_name, ".ttf")) {
-			if (fonts == MAX_FONTS) continue;
-			strcpy(font_name[fonts], ent->d_name);
-			fonts++;
-			if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+	/* Then game fonts (fallback), skipping duplicates. */
+	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".pcf")) {
+				if (graphic_fonts == MAX_FONTS) continue;
+
+				/* Get PCF font file name without extension. */
+				strncpy(base_name, ent->d_name, sizeof(base_name) - 1);
+				base_name[sizeof(base_name) - 1] = '\0';
+				if (strlen(base_name) >= 4) base_name[strlen(base_name) - 4] = '\0';
+
+				/* Check duplicate in graphic_font_name */
+				for (k = 0; k < graphic_fonts; k++) if (!strcmp(graphic_font_name[k], base_name)) break;
+				if (k < graphic_fonts) continue; /* duplicate */
+
+				/* Not duplicate, store font. */
+				strcpy(graphic_font_name[graphic_fonts], base_name);
+				graphic_fonts++;
+				if (graphic_fonts == MAX_FONTS) c_msg_format("Warning: Number of graphic fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			} else if (strstr(tmp_name, ".ttf")) {
+				if (fonts == MAX_FONTS) continue;
+
+				/* Check duplicate in font_name */
+				for (k = 0; k < fonts; k++) if (!strcmp(font_name[k], ent->d_name)) break;
+				if (k < fonts) continue; /* duplicate */
+
+				/* Not a duplicate, store. */
+				strcpy(font_name[fonts], ent->d_name);
+				fonts++;
+
+				if (fonts == MAX_FONTS) c_msg_format("Warning: Number of fonts exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
 		}
+		closedir(dir);
 	}
-	closedir(dir);
    #elif defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
@@ -11366,19 +11429,17 @@ static void do_cmd_options_fonts(void) {
 
 	if (!fonts && !graphic_fonts) {
    #ifdef USE_SDL2
-		c_msg_format("No .pcf or .ttf font files found in directory (%s).", path);
+		c_msg_format("No .pcf or .ttf font files found in user (%s%sfont) nor in game (%s%sfont) font directory.", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ANGBAND_DIR_XTRA, SDL2_PATH_SEP);
    #else
 		c_msg_format("No font files found in directory (%s).", path);
    #endif
 		return;
 	}
 
-//  #ifdef WINDOWS /* actually never sort fonts on X11, because they come in a sorted manner from fonts.alias and fonts.txt files already. */
 	qsort(font_name, fonts, sizeof(char[256]), font_name_cmp);
    #if defined(WINDOWS) || defined(USE_SDL2)
 	qsort(graphic_font_name, graphic_fonts, sizeof(char[256]), font_name_cmp);
    #endif
-//  #endif
 
    #ifdef WINDOWS /* windows client currently saves full paths (todo: just change to filename only) */
 	for (j = 0; j < fonts; j++) {
@@ -11823,31 +11884,63 @@ static void do_cmd_options_tilesets(void) {
 
 	DIR *dir;
 	struct dirent *ent;
+  #ifdef USE_SDL2
+	int k;
+  #endif
 
 	/* read all locally available tilesets */
 	memset(tileset_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
-	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
-	if (!(dir = opendir(path))) {
-		c_msg_format("Couldn't open tilesets directory (%s).", path);
-		return;
-	}
+  #ifdef USE_SDL2
+  /* In SDL2 client, look for tilesets in user storage first. */
+	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "graphics");
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".bmp")) {
+				if (tilesets == MAX_FONTS) continue;
 
-	while ((ent = readdir(dir))) {
-		strcpy(tmp_name, ent->d_name);
-		j = -1;
-		while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-		if (strstr(tmp_name, ".bmp")) {
-			if (tilesets == MAX_FONTS) continue;
-			strcpy(tileset_name[tilesets], ent->d_name);
-			tilesets++;
-			if (tilesets == MAX_FONTS) c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+				strcpy(tileset_name[tilesets], ent->d_name);
+				tilesets++;
+				if (tilesets == MAX_FONTS) c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
 		}
+		closedir(dir);
 	}
-	closedir(dir);
+  #endif
+
+	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
+	//TODO jezek - Rewrite to load from user directory too.
+	if ((dir = opendir(path))) {
+		while ((ent = readdir(dir))) {
+			strcpy(tmp_name, ent->d_name);
+			j = -1;
+			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
+			if (strstr(tmp_name, ".bmp")) {
+				if (tilesets == MAX_FONTS) continue;
+
+  #ifdef USE_SDL2
+				/* Check duplicate in tileset_name. */
+				for (k = 0; k < tilesets; k++) if (!strcmp(tileset_name[k], ent->d_name)) break;
+				if (k < tilesets) continue; /* duplicate */
+  #endif
+
+				strcpy(tileset_name[tilesets], ent->d_name);
+				tilesets++;
+				if (tilesets == MAX_FONTS) c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
+			}
+		}
+		closedir(dir);
+	}
 
 	if (!tilesets) {
+  #ifdef USE_SDL2
+		c_msg_format("No .bmp tileset files found in user (%s%sgraphics) nor in game (%s%sgraphics) graphics directory.", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ANGBAND_DIR_XTRA, SDL2_PATH_SEP);
+  #else
 		c_msg_format("No .bmp tileset files found in directory (%s).", path);
+  #endif
 		return;
 	}
 
@@ -12941,23 +13034,23 @@ static void do_cmd_options_install_audio_packs(void) {
 	struct dirent *de;
 	DIR *dr;
 
-	if (!(dr = opendir("."))) {
-		c_message_add("\377oError: Couldn't scan TomeNET folder.");
+	//TODO jezek - Test extracting again.
+	if (!(dr = opendir(ANGBAND_USER_DIR))) {
+		c_message_add("\377oError: Couldn't scan TomeNET user folder.");
 		return;
 	}
 	while ((de = readdir(dr))) {
-		/* Clear screen */
-		Term_clear();
-		Term_putstr(0, 0, -1, TERM_WHITE, "Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
-		Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver support found.");
-
 		strcpy(pack_name, de->d_name);
-
 		pack_top_folder[0] = 0;
 		passworded = FALSE;
 		maybe_sound_pack = !strncmp(pack_name, "TomeNET-soundpack", 17) || prefix_case(pack_name, "sound");
 		maybe_music_pack = !strncmp(pack_name, "TomeNET-musicpack", 17) || prefix_case(pack_name, "music");
 		if (!maybe_sound_pack && !maybe_music_pack) continue;
+
+		/* Clear screen */
+		Term_clear();
+		Term_putstr(0, 0, -1, TERM_WHITE, "Install a sound or music pack from \377y7z\377w files within your \377yTomeNET\377w folder...");
+		Term_putstr(0, 1, -1, TERM_WHITE, "Unarchiver support found.");
 
 		r = sdl2_identify_audio_pack(pack_name, NULL, pack_top_folder,
 				&sound_pack, &music_pack);
@@ -13173,7 +13266,7 @@ static void do_cmd_options_install_audio_packs(void) {
 #ifdef WINDOWS
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s\\%s'", ANGBAND_DIR_XTRA, ins_path));
 #elif defined(USE_SDL2)
-	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s%s%s'", ANGBAND_DIR_XTRA, SDL2_PATH_SEP, ins_path));
+	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s%s%s'", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ins_path));
 #else
 	Term_putstr(0, 7, -1, TERM_YELLOW, format(" '%s/%s'", ANGBAND_DIR_XTRA, ins_path));
 #endif
@@ -13206,7 +13299,7 @@ static void do_cmd_options_install_audio_packs(void) {
 #elif defined(USE_SDL2)
  #ifdef SDL2_ARCHIVE
 		//TODO jezek - Test unpacking sound pack with password, zipped tar, overwrites.
-		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
+		if (!sdl2_extract_7z(format("%s%s%s", ANGBAND_USER_DIR, SDL2_PATH_SEP, pack_name), ANGBAND_USER_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Sound pack not correctly installed!");
  #endif
 #else /* assume posix */
@@ -13218,7 +13311,11 @@ static void do_cmd_options_install_audio_packs(void) {
 
 		/* Verify installation */
 		password_ok = TRUE;
+#ifdef USE_SDL2
+		if (!(fff = fopen(format("%s%s%s%ssound.cfg", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, pack_top_folder, SDL2_PATH_SEP), "r"))) password_ok = FALSE;
+#else
 		if (!(fff = fopen(format("%s/%s/sound.cfg", ANGBAND_DIR_XTRA, pack_top_folder), "r"))) password_ok = FALSE;
+#endif
 		else if (fgetc(fff) == EOF) { //paranoia
 			password_ok = FALSE;
 			fclose(fff);
@@ -13244,7 +13341,7 @@ static void do_cmd_options_install_audio_packs(void) {
 #elif defined(USE_SDL2)
  #ifdef SDL2_ARCHIVE
 		//TODO jezek - Test unpacking music pack.
-		if (!sdl2_extract_7z(pack_name, ANGBAND_DIR_XTRA, passworded ? password : NULL))
+		if (!sdl2_extract_7z(format("%s%s%s", ANGBAND_USER_DIR, SDL2_PATH_SEP, pack_name), ANGBAND_USER_DIR_XTRA, passworded ? password : NULL))
 			Term_putstr(0, 12, -1, TERM_L_RED, "Error: Extraction failed! Music pack not correctly installed!");
  #endif
 #else /* assume posix */
@@ -13256,7 +13353,11 @@ static void do_cmd_options_install_audio_packs(void) {
 
 		/* Verify installation */
 		password_ok = TRUE;
+#ifdef USE_SDL2
+		if (!(fff = fopen(format("%s%s%s%smusic.cfg", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, pack_top_folder, SDL2_PATH_SEP), "r"))) password_ok = FALSE;
+#else
 		if (!(fff = fopen(format("%s/%s/music.cfg", ANGBAND_DIR_XTRA, pack_top_folder), "r"))) password_ok = FALSE;
+#endif
 		else if (fgetc(fff) == EOF) { //paranoia
 			password_ok = FALSE;
 			fclose(fff);

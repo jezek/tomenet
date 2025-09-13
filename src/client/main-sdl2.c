@@ -354,6 +354,7 @@ static errr Infoclr_init_data(Pixel fg, Pixel bg) {
 
 
 static cptr ANGBAND_DIR_XTRA_FONT;
+static cptr ANGBAND_USER_DIR_XTRA_FONT;
 
 /*
  * Init an infofnt by its Name and Size. Assumes font is a true type font.
@@ -362,7 +363,7 @@ static cptr ANGBAND_DIR_XTRA_FONT;
  *	name: The name of the requested Font followed by a space and a number, which defines the size of font to load.
  */
 static errr Infofnt_init_ttf(cptr name) {
-	//fprintf(stderr, "jezek - Infofnt_init_ttf(cptr name: \"%s\"\n", name);
+	fprintf(stderr, "jezek - Infofnt_init_ttf(cptr name: \"%s\"\n", name);
 	/*** Load the info Fresh, using the name ***/
 
 	/* If the name is not given, report an error */
@@ -371,6 +372,7 @@ static errr Infofnt_init_ttf(cptr name) {
 	TTF_Font *font;
 	char font_name[256];
 	int font_size;
+	char buf[1024];
 
 	/* Parse the name to extract font name and size */
 	if (sscanf(name, "%255s %d", font_name, &font_size) != 2) {
@@ -378,13 +380,16 @@ static errr Infofnt_init_ttf(cptr name) {
 		fprintf(stderr, "Font \"%s\" does not match pattern \"<font_name> <font_size>\"", name);
 		return(-1);
 	}
-	//fprintf(stderr, "jezek -  Infofnt_init_ttf: load font %s, size %d\n", font_name, font_size);
+	fprintf(stderr, "jezek -  Infofnt_init_ttf: load font %s, size %d\n", font_name, font_size);
 
-	char buf[1024];
-	path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
+	path_build(buf, 1024, ANGBAND_USER_DIR_XTRA_FONT, font_name);
+	if (!my_fexists(buf)) {
+		path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
+	}
 
-	//fprintf(stderr, "jezek -  Infofnt_init_ttf: load font path %s\n", buf);
+	fprintf(stderr, "jezek -  Infofnt_init_ttf: load font path %s\n", buf);
 	/* Attempt to load the font with the given size */
+  //TODO jezek - Test loading ttf font from user & game dir.
 	font = TTF_OpenFont(buf, font_size);
 
 	/* The load failed, try to recover */
@@ -493,6 +498,7 @@ static errr Infofnt_init_pcf(cptr name) {
 	PCF_Font *font;
 	char font_name[256];
 	size_t len = strlen(name);
+	char buf[1024];
 	
 	/* Append .pcf extension if missing */
 	if ((len >= 4) && strcasecmp(name + len - 4, ".pcf") == 0) {
@@ -505,10 +511,13 @@ static errr Infofnt_init_pcf(cptr name) {
 
 	fprintf(stderr, "jezek -  Infofnt_init_pcf: load font %s\n", font_name);
 
-	char buf[1024];
-	path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
+	path_build(buf, 1024, ANGBAND_USER_DIR_XTRA_FONT, font_name);
+	if (!my_fexists(buf)) {
+		path_build(buf, 1024, ANGBAND_DIR_XTRA_FONT, font_name);
+	}
 
-	/* Attempt to load the font with the given size */
+	/* Attempt to load the font with the given size. */
+  //TODO jezek - Test loading pcf font from user & game dir.
 	font = PCF_OpenFont(buf);
 
 	/* The load failed, try to recover */
@@ -2672,10 +2681,15 @@ errr init_sdl2(void) {
 	init_stuff();
 
 	char path[1024];
-	// Build the "font" path
+	/* Build the "game font" path. */
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "font");
 	ANGBAND_DIR_XTRA_FONT = string_make(path);
-	//fprintf(stderr, "jezek - init_sdl2: ANGBAND_DIR_XTRA_FONT: %s\n", ANGBAND_DIR_XTRA_FONT);
+	fprintf(stderr, "jezek - init_sdl2: ANGBAND_DIR_XTRA_FONT: %s\n", ANGBAND_DIR_XTRA_FONT);
+
+	/* Build the "user font" path. */
+	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "font");
+	ANGBAND_USER_DIR_XTRA_FONT = string_make(path);
+	fprintf(stderr, "jezek - init_sdl2: ANGBAND_USER_DIR_XTRA_FONT: %s\n", ANGBAND_USER_DIR_XTRA_FONT);
 
 #ifdef USE_GRAPHICS
 	fprintf(stderr, "jezek - use_graphics: %u\n", use_graphics);
