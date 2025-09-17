@@ -132,6 +132,11 @@ LIBS_SDL2_SOUND_LINUX := -lSDL2_mixer
 FLAGS_SDL2_SOUND_MINGW := -DSOUND_SDL2
 LIBS_SDL2_SOUND_MINGW := -lSDL2_mixer
 
+ifneq ($(strip $(DEBUG_SOUND)),)
+FLAGS_SDL2_SOUND_LINUX += -DDEBUG_SOUND
+FLAGS_SDL2_SOUND_MINGW += -DDEBUG_SOUND
+endif
+
 # Check for SDL2_image library and set flags accordingly
 SDL2_IMAGE_LINUX ?= $(shell $(PKG_CONFIG_LINUX) --exists SDL2_image && echo yes)
 SDL2_IMAGE_MINGW ?= $(shell $(PKG_CONFIG_MINGW) --exists SDL2_image && echo yes)

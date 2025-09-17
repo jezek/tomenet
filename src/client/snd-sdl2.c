@@ -74,8 +74,8 @@
 /* disabled because this can cause delays up to a few seconds */
 bool on_demand_loading = FALSE;
 
-/* assume normal softlimit for maximum amount of file descriptors, minus some very generous overhead */
-int sdl_files_max = 1024 - 32, sdl_files_cur = 0;
+/* Track usage of audio file descriptors. The sdl_files_max variable will be set on init. */
+int sdl_files_max = 0, sdl_files_cur = 0;
 
 /* output various status messages about initializing audio */
 //#define DEBUG_SOUND
@@ -591,73 +591,67 @@ static bool open_audio(void) {
 	return(TRUE);
 }
 
-//TODO jezek - Figure out what they do with sound here so it needs these functions.
-#if 0
-#ifndef WINDOWS //assume POSIX
- #include <sys/resource.h> /* for rlimit et al */
-static int get_filedescriptor_limit(void) {
-	struct rlimit limit;
-
- #if 0
-	limit.rlim_cur = 65535;
-	limit.rlim_max = 65535;
-	if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
-		printf("setrlimit() failed with errno=%d\n", errno);
-		return(0);
+/*
+ * Probe the runtime file descriptor limit in a portable way.  We attempt to
+ * open the null device repeatedly until failure and use the number of
+ * successful opens to estimate how many additional files can be opened.
+ * The null device is "/dev/null" on POSIX systems and "NUL" on Windows, but
+ * we avoid compile-time OS checks by trying both at runtime.
+ *
+ * Note: probe_fd_available() exhausts every remaining descriptor by repeatedly
+ * fopen-ing the null device. During that window any other thread trying to
+ * open a socket/file will see EMFILE/ENFILE, so we can fail networking or
+ * logging during audio init.
+ */
+#define FD_PROBE_MAX   4096
+static int probe_fd_available(void) {
+	FILE *fps[FD_PROBE_MAX];
+	const char *names[] = { "/dev/null", "NUL", NULL };
+	const char *path = NULL;
+	int i, res;
+	/* find a working null device */
+	for (i = 0; names[i]; i++) {
+		fps[0] = fopen(names[i], "rb");
+		if (fps[0]) {
+			path = names[i];
+			fclose(fps[0]);
+			break;
+		}
 	}
- #endif
+	if (!path) return(-1);
 
-	/* Get max number of files. */
-	if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
-		printf("getrlimit() failed with errno=%d\n", errno);
-		return(1024); //assume default
+	logprint("Probing available file descriptors");
+	for (i = 0; i < FD_PROBE_MAX; i++) {
+		fps[i] = fopen(path, "rb");
+		if (i%1000 == 0) logprint(".");
+		if (!fps[i]) break;
 	}
+	res = i;
+	while (i > 0) fclose(fps[--i]);
+	logprint("done\n");
 
-	if (limit.rlim_cur > 65536) limit.rlim_cur = 65536; //cap to sane values to save resources
-
-	return(limit.rlim_cur);
+	return(res);
 }
-/* note: method 1 and method 2 report different amounts of free file descriptors at different times, and also different amounts before and after loading audio files -_- */
- #include <dirent.h>
-int count_open_fds1(void) {
-	struct dirent *de;
-	int count = -3; // '.', '..', dp
-	DIR *dp = opendir("/proc/self/fd");
 
-	if (dp == NULL) return(-1);
-
-	while ((de = readdir(dp)) != NULL) count++;
-	(void)closedir(dp);
-
-	return(count + 3);
+static int fd_avail = 0;
+/*
+ * Sets the limit of how many files can we open for sound.
+ */
+static void init_fd_limit(void) {
+	fd_avail = probe_fd_available();
+	if (fd_avail < 0) sdl_files_max = 256; /* Can't determine, use sane minimum.*/
+	else if (fd_avail > 32) sdl_files_max = fd_avail - 32; /* Keep some descriptors for other in-game use. */
+	else sdl_files_max = 0; /* Nearly no file descriptors left, there will be no sound. */
+#ifdef DEBUG_SOUND
+	logprint(format("init_fd_limit: available fds: %d -> sdl_files_max = %d\n", fd_avail, sdl_files_max));
+#endif
 }
- #include <poll.h>
-int count_open_fds2(int max) {
-	struct pollfd fds[max];
-	int ret, i, count = 0;
 
-	for (i = 0; i < max; i++) fds[max].events = 0;
-
-	ret = poll(fds, max, 0);
-	if (ret <= 0) return(0);
-
-	for (i = 0; i < max; i++)
-		if (fds[i].revents & POLLNVAL) count++;
-
-	return(count);
-}
+#ifdef DEBUG_SOUND
 void log_fd_usage(void) {
-	int max_files, cur_files1, cur_files2;
-
-	max_files = get_filedescriptor_limit();
-	cur_files1 = count_open_fds1();
-	cur_files2 = count_open_fds2(max_files);
-
-	logprint(format("max_files = %d, cur_files1/2 = %d/%d -> sdl_files_cur/max = %d\n", max_files, cur_files1, cur_files2, sdl_files_cur, sdl_files_max));
+	logprint(format("available fds: %d -> sdl_files_cur/max = %d/%d\n", fd_avail, sdl_files_cur, sdl_files_max));
 }
 #endif
-#endif /* $#if 0 */
-
 
 /*
  * Read sound.cfg and map events to sounds; then load all the sounds into
@@ -714,6 +708,9 @@ static bool sound_sdl_init(bool no_cache) {
 
 	/* Initialise the mixer  */
 	if (!open_audio()) return(FALSE);
+
+	/* Determine how many files we can keep open for cached audio. */
+	init_fd_limit();
 
 #ifdef DEBUG_SOUND
 	puts(format("sound_sdl_init() opened at %d Hz.", cfg_audio_rate));
