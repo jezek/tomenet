@@ -75,7 +75,10 @@
 bool on_demand_loading = FALSE;
 
 /* Track usage of audio file descriptors. The sdl_files_max variable will be set on init. */
-int sdl_files_max = 0, sdl_files_cur = 0;
+int sdl_files_max = 0;
+int sdl_music_fds_cur = 0;
+int sdl_samples_loaded = 0;
+int sdl_music_loaded = 0;
 
 /* output various status messages about initializing audio */
 //#define DEBUG_SOUND
@@ -514,6 +517,9 @@ static void close_audio(void) {
 
 	/* Close the audio */
 	Mix_CloseAudio();
+	sdl_music_fds_cur = 0;
+	sdl_samples_loaded = 0;
+	sdl_music_loaded = 0;
 
 	if (load_sample_mutex_entrance) {
 		SDL_DestroyMutex(load_sample_mutex_entrance);
@@ -649,7 +655,8 @@ static void init_fd_limit(void) {
 
 #ifdef DEBUG_SOUND
 void log_fd_usage(void) {
-	logprint(format("available fds: %d -> sdl_files_cur/max = %d/%d\n", fd_avail, sdl_files_cur, sdl_files_max));
+	logprint(format("available fds: %d -> music fds used/max = %d/%d, samples loaded = %d, music loaded = %d\n",
+		fd_avail, sdl_music_fds_cur, sdl_files_max, sdl_samples_loaded, sdl_music_loaded));
 }
 #endif
 
@@ -970,15 +977,6 @@ static bool sound_sdl_init(bool no_cache) {
 				/* Just save the path for later */
 				samples[event].paths[num] = string_make(path);
 			} else {
-				sdl_files_cur++;
-				if (sdl_files_cur >= sdl_files_max) {
-					logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
-					goto next_token_snd;
-				}
-#ifdef DEBUG_SOUND
-				logprint(format("s-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, path));
-#endif
-
 				/* Load the file now */
 				samples[event].wavs[num] = Mix_LoadWAV(path);
 				if (!samples[event].wavs[num]) {
@@ -986,6 +984,10 @@ static bool sound_sdl_init(bool no_cache) {
 					puts(format("%s: %s (%s)", SDL_GetError(), strerror(errno), path));//DEBUG USE_SOUND_2010
 					goto next_token_snd;
 				}
+				sdl_samples_loaded++;
+#ifdef DEBUG_SOUND
+				logprint(format("sample cached (%d total): %s\n", sdl_samples_loaded, path));
+#endif
 			}
 			/* Initialize as 'not being played' */
 			samples[event].current_channel = -1;
@@ -1364,15 +1366,10 @@ static bool sound_sdl_init(bool no_cache) {
 				/* Just save the path for later */
 				songs[event].paths[num] = string_make(path);
 			} else {
-				sdl_files_cur++;
-				if (sdl_files_cur >= sdl_files_max) {
+				if (sdl_music_fds_cur >= sdl_files_max) {
 					logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
 					goto next_token_mus;
 				}
-#ifdef DEBUG_SOUND
-				logprint(format("m-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, path));
-#endif
-
 				/* Load the file now */
 				songs[event].wavs[num] = Mix_LoadMUS(path);
 				if (!songs[event].wavs[num]) {
@@ -1381,6 +1378,11 @@ static bool sound_sdl_init(bool no_cache) {
 					//puts(format("%s: %s", SDL_GetError(), strerror(errno)));//DEBUG USE_SOUND_2010
 					goto next_token_mus;
 				}
+				sdl_music_fds_cur++;
+				sdl_music_loaded++;
+#ifdef DEBUG_SOUND
+				logprint(format("music cached (%d streams, %d/%d fds): %s\n", sdl_music_loaded, sdl_music_fds_cur, sdl_files_max, path));
+#endif
 			}
 
 			//puts(format("loaded song %s (ev %d, #%d).", songs[event].paths[num], event, num));//debug
@@ -3485,7 +3487,9 @@ errr re_init_sound_sdl(void) {
 	browse_sound_idx = -1; browsebook_sound_idx = -1; browseinven_sound_idx = -1;
 	casino_craps_sound_idx = -1; casino_inbetween_sound_idx = -1; casino_wheel_sound_idx = -1; casino_slots_sound_idx = -1;
 
-	sdl_files_cur = 0;
+	sdl_music_fds_cur = 0;
+	sdl_samples_loaded = 0;
+	sdl_music_loaded = 0;
 
 	/* --- init --- */
 
@@ -3598,7 +3602,9 @@ static int thread_load_audio(void *dummy) {
 
 #ifdef DEBUG_SOUND
 	log_fd_usage();
-	logprint(format("Opened %d audio files (of %d max OS fds. Change via 'ulimit -n').\n", sdl_files_cur, sdl_files_max));
+	logprint(format("Loaded %d sound samples into memory.\n", sdl_samples_loaded));
+	logprint(format("Streaming %d music tracks using %d/%d file descriptors. Change via 'ulimit -n'.\n",
+		sdl_music_loaded, sdl_music_fds_cur, sdl_files_max));
 #endif
 
 	return(0);
@@ -3633,24 +3639,13 @@ static Mix_Chunk* load_sample(int idx, int subidx) {
 		return(NULL);
 	}
 
-	sdl_files_cur++;
-	if (sdl_files_cur >= sdl_files_max) {
-		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
-		// and for now just disable the whole event, to be safe against repeated attempts to load it
-		samples[idx].disabled = TRUE;
-		SDL_UnlockMutex(load_sample_mutex);
-		return(NULL);
-	}
-#ifdef DEBUG_SOUND
-	logprint(format("LS-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, filename));
-#endif
-
 	/* Load */
 	wave = Mix_LoadWAV(filename);
 
 	/* Did we get it now? */
 	if (wave) {
 		samples[idx].wavs[subidx] = wave;
+		sdl_samples_loaded++;
 #ifdef DEBUG_SOUND
 		puts(format("loaded sample %d, %d: %s.", idx, subidx, filename));
 #endif
@@ -3723,17 +3718,13 @@ static Mix_Music* load_song(int idx, int subidx) {
 		return(NULL);
 	}
 
-	sdl_files_cur++;
-	if (sdl_files_cur >= sdl_files_max) {
-		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, path));
+	if (sdl_music_fds_cur >= sdl_files_max) {
+		logprint(format("Too many audio files. Reached maximum of %d, discarding <%s>.\n", sdl_files_max, filename));
 		// and for now just disable the whole event, to be safe against repeated attempts to load it
 		songs[idx].disabled = TRUE;
-		SDL_UnlockMutex(load_sample_mutex);
+		SDL_UnlockMutex(load_song_mutex);
 		return(NULL);
 	}
-#ifdef DEBUG_SOUND
-	logprint(format("LM-sdl_files_cur++ = %d/%d (%s)\n", sdl_files_cur, sdl_files_max, filename));
-#endif
 
 	/* Load */
 	waveMUS = Mix_LoadMUS(filename);
@@ -3741,6 +3732,8 @@ static Mix_Music* load_song(int idx, int subidx) {
 	/* Did we get it now? */
 	if (waveMUS) {
 		songs[idx].wavs[subidx] = waveMUS;
+		sdl_music_fds_cur++;
+		sdl_music_loaded++;
 #ifdef DEBUG_SOUND
 		puts(format("loaded song %d, %d: %s.", idx, subidx, filename));
 #endif
