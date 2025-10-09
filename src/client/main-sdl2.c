@@ -1334,13 +1334,15 @@ static int CheckEvent(bool wait) {
 static void free_graphics(term_data *td) {
 	int i;
 
-	if (td->nlayers > 0) {
+	if (td->nlayers > 0 && td->tiles_layers != NULL) {
 		for (i = 0; i < td->nlayers; i++) {
 			if (td->tiles_layers[i] != NULL) SDL_FreeSurface(td->tiles_layers[i]);
 		}
-		td->nlayers = 0;
-		td->tiles_layers = NULL;
+
+		C_FREE(td->tiles_layers, td->nlayers, SDL_Surface*);
 	}
+	td->tiles_layers = NULL;
+	td->nlayers = 0;
 	if (td->tilePreparation) {
 		SDL_FreeSurface(td->tilePreparation);
 		td->tilePreparation = NULL;
@@ -1354,6 +1356,7 @@ static void free_graphics(term_data *td) {
 	C_WIPE(td->tiles_rawpict, MAX_TILES_RAWPICT + 1, rawpict_tile);
 
  #ifdef TILE_CACHE_SIZE
+	td->cache_position = 0;
 	for (int i = 0; i < TILE_CACHE_SIZE; i++) {
 		if (td->tile_cache[i].tile) {
 			SDL_FreeSurface(td->tile_cache[i].tile);
@@ -1777,6 +1780,7 @@ static SDL_Surface* graphics_tile_cache_search(term_data *td, char32_t index, ui
 
 	for (i = 0; i < TILE_CACHE_SIZE; i++) {
 		entry = &td->tile_cache[i];
+		if (entry->tile == NULL || entry->colors == NULL || entry->ncolors == 0) continue;
 		if (entry->index == index && memcmp(entry->colors, &colors[1], sizeof(uint32_t) * entry->ncolors) == 0) {
 			return(entry->tile);
 		}
@@ -1797,8 +1801,12 @@ static SDL_Surface* graphics_tile_cache_new(term_data *td, char32_t index, uint3
 
 	// Fill entry with values and clear surface.
 	entry->index = index;
-	entry->colors = memcpy(entry->colors, &colors[1], sizeof(uint32_t) * entry->ncolors);
-	SDL_FillRect(entry->tile, NULL, 0x00000000);
+	if (entry->colors && entry->ncolors > 0) {
+		memcpy(entry->colors, &colors[1], sizeof(uint32_t) * entry->ncolors);
+	}
+	if (entry->tile) {
+		SDL_FillRect(entry->tile, NULL, 0x00000000);
+	}
 
 	return(entry->tile);
 }
@@ -1806,6 +1814,8 @@ static SDL_Surface* graphics_tile_cache_new(term_data *td, char32_t index, uint3
 
 static void draw_colored_layers_to_surface(SDL_Rect dst_rect, SDL_Surface *dst, uint8_t n, SDL_Rect src_rect, SDL_Surface *layers[], SDL_Color colors[], SDL_Surface *preparation) {
 	for (uint32_t i = 0; i < n; i++) {
+		if (colors[i].a == 0) continue;
+
 		// Draw the mask of i-th layer in desired color to preparation surface.
 		SDL_FillRect(preparation, NULL, SDL_MapRGBA(preparation->format, Pixel_quadruplet(colors[i])));
 		SDL_BlitSurface(layers[i], &src_rect, preparation, NULL);
@@ -1995,7 +2005,7 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
   #endif
  #endif
 	indexes[1] = c - MAX_FONT_CHAR - 1;
-	// Background color. For all tiles except bottom tile background color is ignored. Set to transparent black anyway.
+	// Background color. For all tiles except bottom tile background color is ignored. Set to fully transparent so we don't overpaint terrain.
 	colors[graphics_image_mpt + 0] = (Pixel){0x00, 0x00, 0x00, 0x00};
 	// Foreground color.
 	colors[graphics_image_mpt + 1] = Infoclr->fg;
