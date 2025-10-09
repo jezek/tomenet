@@ -11933,72 +11933,54 @@ static void do_cmd_options_tilesets(void) {
 	memset(tileset_name, 0, sizeof(char) * (MAX_FONTS * 256));
 
 	//TODO jezek - Test loading tilesets from user and game dir.
+	/* Read all eligible filenames (*.bmp), ... */
   #ifdef USE_SDL2
   /* In SDL2 client, look for tilesets in user storage first. */
 	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "graphics");
 	if ((dir = opendir(path))) {
 		while ((ent = readdir(dir))) {
 			strcpy(tmp_name, ent->d_name);
-			j = -1;
-			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-			if (!strstr(tmp_name, ".bmp")) continue;
 
-			strcpy(tileset_name[tilesets], ent->d_name);
-			tilesets++;
+			/* file must end on '.bmp' */
+			j = strlen(tmp_name) - 4;
+			if (j < 1) continue;
+			if ((tolower(tmp_name[j++]) != '.' || tolower(tmp_name[j++] != 'b') || tolower(tmp_name[j++] != 'm') || tolower(tmp_name[j] != 'p'))) continue;
+			/* cut off extension */
+			tmp_name[j - 3] = 0;
 
-			if (tilesets == MAX_FONTS) {
-				c_msg_format("Warning: Number of user tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
-				break;
-			}
-
+			strcpy(filename_tmp[filenames_tmp++], tmp_name);
 		}
 		closedir(dir);
 	}
   #endif
-
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
 	if ((dir = opendir(path))) {
 		while ((ent = readdir(dir))) {
-			if (tilesets == MAX_FONTS) break;
-
 			strcpy(tmp_name, ent->d_name);
-			j = -1;
-			while (tmp_name[++j]) tmp_name[j] = tolower(tmp_name[j]);
-			if (!strstr(tmp_name, ".bmp")) continue;
+
+			/* file must end on '.bmp' */
+			j = strlen(tmp_name) - 4;
+			if (j < 1) continue;
+			if ((tolower(tmp_name[j++]) != '.' || tolower(tmp_name[j++] != 'b') || tolower(tmp_name[j++] != 'm') || tolower(tmp_name[j] != 'p'))) continue;
+			/* cut off extension */
+			tmp_name[j - 3] = 0;
 
   #ifdef USE_SDL2
-			/* Check duplicate in tileset_name. */
-			for (k = 0; k < tilesets; k++) if (!strcmp(tileset_name[k], ent->d_name)) break;
-			if (k < tilesets) continue; /* duplicate */
+			/* Check duplicate in filename_tmp. */
+			for (k = 0; k < filenames_tmp; k++) if (!strcmp(filename_tmp[k], tmp_name)) break;
+			if (k < filenames_tmp) continue; /* duplicate */
   #endif
 
-			strcpy(tileset_name[tilesets], ent->d_name);
-			tilesets++;
-
-			if (tilesets == MAX_FONTS) {
-				c_msg_format("Warning: Number of tilesets exceeds max of %d. Ignoring the rest.", MAX_FONTS);
-				break;
-			}
+			strcpy(filename_tmp[filenames_tmp++], tmp_name);
 		}
 		closedir(dir);
 	}
-
-	/* Read all eligible filenames (*.bmp), ... */
-	while ((ent = readdir(dir))) {
-		strcpy(tmp_name, ent->d_name);
-
-		/* file must end on '.bmp' */
-		j = strlen(tmp_name) - 4;
-		if (j < 1) continue;
-		if ((tolower(tmp_name[j++]) != '.' || tolower(tmp_name[j++] != 'b') || tolower(tmp_name[j++] != 'm') || tolower(tmp_name[j] != 'p'))) continue;
-		/* cut off extension */
-		tmp_name[j - 3] = 0;
-
-		strcpy(filename_tmp[filenames_tmp++], tmp_name);
-	}
-	closedir(dir);
 	if (!filenames_tmp) {
+  #ifdef USE_SDL2
+		c_msg_print("No .bmp tilesets found in the graphics directories.");
+  #else
 		c_msg_format("No .bmp files found in directory (%s).", path);
+  #endif
 		return;
 	}
 	/* ...sort them... */
