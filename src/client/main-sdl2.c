@@ -2111,15 +2111,15 @@ SDL_Surface *ScaleSurface(SDL_Surface *src, uint16_t src_tile_wdt, uint16_t src_
 static uint32_t graphics_default_mask(uint8_t n) {
 	if (graphics_image_mpt == 2) {
 		switch (n) {
-			case 0: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
-			case 1: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
+			case 0: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
+			case 1: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
 		}
 	}
 	else if (graphics_image_mpt == 3) {
 		switch (n) {
-			case 0: return (GFXMASK_BG2_R << 24) | (GFXMASK_BG2_G << 16) | (GFXMASK_BG2_B << 8) | 0xFF;
-			case 1: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
-			case 2: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
+			case 0: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
+			case 1: return (GFXMASK_BG2_R << 24) | (GFXMASK_BG2_G << 16) | (GFXMASK_BG2_B << 8) | 0xFF;
+			case 2: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
 		}
 	}
 	fprintf(stderr, "Warning: Color for mask no %d, when there are %d masks per tile is undefined!\n", n, graphics_image_mpt);
@@ -2190,13 +2190,13 @@ static void term_data_init_graphics(term_data *td) {
 	for (int i = 0; i < td->nlayers; i++) {
 		td->tiles_layers[i] = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
 		// The transparent color has to be different from mask color (color key is only RGB, alpha is not considered).
-		SDL_FillRect(td->tiles_layers[i], NULL, SDL_MapRGBA(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
-		SDL_SetColorKey(td->tiles_layers[i], SDL_TRUE, SDL_MapRGB(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF)));
+		SDL_FillRect(td->tiles_layers[i], NULL, SDL_MapRGBA(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[i] >> 8) & 0xFF) ^ 0xFF, 0x00));
+		SDL_SetColorKey(td->tiles_layers[i], SDL_TRUE, SDL_MapRGB(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF), ((graphics_image_masks_colors[i] >> 16) & 0xFF), ((graphics_image_masks_colors[i] >> 8) & 0xFF)));
 		SDL_SetSurfaceBlendMode(td->tiles_layers[i], SDL_BLENDMODE_NONE);
 	}
 
 	// Create first layer by making background color fully transparent black.
-	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
+	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[td->nlayers] >> 24) & 0xFF), ((graphics_image_masks_colors[td->nlayers] >> 16) & 0xFF), ((graphics_image_masks_colors[td->nlayers] >> 8) & 0xFF)));
 	SDL_BlitSurface(scaled_image, NULL, td->tiles_layers[0], NULL);
 
 	// The scaled image is not needed anymore.
@@ -2209,10 +2209,10 @@ static void term_data_init_graphics(term_data *td) {
 			for (int x = 0; x < td->tiles_layers[0]->w; x++) {
 				uint32_t pos = (y * td->tiles_layers[0]->w) + x;
 				for (int i = 1; i < td->nlayers; i++) {
-					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF), 0xFF)) {
+					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF), ((graphics_image_masks_colors[i] >> 16) & 0xFF), ((graphics_image_masks_colors[i] >> 8) & 0xFF), 0xFF)) {
 						uint32_t* dstPixels = (uint32_t*)td->tiles_layers[i]->pixels;
 						dstPixels[pos] = srcPixels[pos];
-						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[1] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[1] >> 8) & 0xFF) ^ 0xFF, 0);
+						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
 					}
 				}
 			}
