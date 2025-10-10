@@ -2049,6 +2049,150 @@ static errr Term_rawpict_sdl2(int x, int y, int c) {
 	return(0);
 }
 
+static SDL_Color sdl2_tileset_preview_mask_color(int index, int count) {
+	SDL_Color color = {255, 0, 0, 255};
+
+	if (count <= 0) return(color);
+
+	if (index < 0) index = 0;
+	if (index >= count) index = count - 1;
+
+	int denom = (count > 1) ? (count - 1) : 1;
+	color.b = (Uint8)((index * 255) / denom);
+	return(color);
+}
+
+static term_data *sdl2_tileset_preview_term(void) {
+	term_data *td = term_idx_to_term_data(0);
+
+	if (!td || !td->win || !td->win->surface || !td->fnt) return(NULL);
+	return(td);
+}
+
+bool sdl2_tileset_preview_ready(void) {
+	term_data *td = sdl2_tileset_preview_term();
+
+	if (!td) return(FALSE);
+	if (!use_graphics) return(FALSE);
+	if (td->tiles_layers == NULL || td->nlayers <= 0) return(FALSE);
+
+	return(TRUE);
+}
+
+int sdl2_tileset_preview_mask_count(void) {
+	term_data *td = sdl2_tileset_preview_term();
+
+	if (!td || td->nlayers <= 0) return(0);
+	return(td->nlayers);
+}
+
+int sdl2_tileset_preview_tiles_per_coord(void) {
+	return(graphics_image_tpc);
+}
+
+void sdl2_tileset_preview_fill_cell(int col, int row, uint8_t background_value) {
+	term_data *td = sdl2_tileset_preview_term();
+
+	if (!td) return;
+
+	SDL_Rect rect = {td->win->bw + col * td->fnt->wid, td->win->bh + row * td->fnt->hgt,
+			 td->fnt->wid, td->fnt->hgt};
+	Uint32 fill = SDL_MapRGBA(td->win->surface->format, background_value, background_value, background_value, 255);
+
+	SDL_FillRect(td->win->surface, &rect, fill);
+}
+
+void sdl2_tileset_preview_draw_tile(int col, int row, char32_t tile_char, uint8_t background_value, int highlight_layer) {
+	term_data *td = sdl2_tileset_preview_term();
+
+	if (!td || !sdl2_tileset_preview_ready()) {
+		sdl2_tileset_preview_fill_cell(col, row, background_value);
+		return;
+	}
+
+	if (tile_char <= MAX_FONT_CHAR) {
+		sdl2_tileset_preview_fill_cell(col, row, background_value);
+		return;
+	}
+
+	int mask_count = td->nlayers;
+	if (mask_count <= 0) {
+		sdl2_tileset_preview_fill_cell(col, row, background_value);
+		return;
+	}
+
+	if (highlight_layer < 0 || highlight_layer >= mask_count) highlight_layer = -1;
+
+	SDL_Color colors[GRAPHICS_MAX_MPT];
+	colors[0] = (SDL_Color){background_value, background_value, background_value, 255};
+
+	for (int i = 0; i < mask_count; i++) {
+		SDL_Color color = sdl2_tileset_preview_mask_color(i, mask_count);
+		if (highlight_layer >= 0 && i != highlight_layer) color.a = 0;
+		colors[1 + i] = color;
+	}
+
+	int px = td->win->bw + col * td->fnt->wid;
+	int py = td->win->bh + row * td->fnt->hgt;
+	SDL_Rect rect = {px, py, td->fnt->wid, td->fnt->hgt};
+	Uint32 fill = SDL_MapRGBA(td->win->surface->format, background_value, background_value, background_value, 255);
+
+	SDL_FillRect(td->win->surface, &rect, fill);
+	term_data_draw_graphics_tile(td, px, py, tile_char - MAX_FONT_CHAR - 1, colors);
+}
+
+void sdl2_tileset_preview_draw_overlay(int col, int row, char32_t background_tile_char, char32_t overlay_tile_char, uint8_t background_value) {
+	term_data *td = sdl2_tileset_preview_term();
+
+	if (!td || !sdl2_tileset_preview_ready()) {
+		sdl2_tileset_preview_fill_cell(col, row, background_value);
+		return;
+	}
+
+	if (graphics_image_tpc <= 1) {
+		sdl2_tileset_preview_draw_tile(col, row, overlay_tile_char, background_value, -1);
+		return;
+	}
+
+	int mask_count = td->nlayers;
+	if (mask_count <= 0) {
+		sdl2_tileset_preview_fill_cell(col, row, background_value);
+		return;
+	}
+
+	SDL_Color colors[GRAPHICS_MAX_TPC * GRAPHICS_MAX_MPT];
+	char32_t indexes[GRAPHICS_MAX_TPC];
+
+	memset(colors, 0, sizeof(colors));
+	for (int i = 0; i < GRAPHICS_MAX_TPC; i++) indexes[i] = 0xFFFFFFFF;
+
+	int px = td->win->bw + col * td->fnt->wid;
+	int py = td->win->bh + row * td->fnt->hgt;
+	SDL_Rect rect = {px, py, td->fnt->wid, td->fnt->hgt};
+	Uint32 fill = SDL_MapRGBA(td->win->surface->format, background_value, background_value, background_value, 255);
+
+	SDL_FillRect(td->win->surface, &rect, fill);
+
+	if (background_tile_char > MAX_FONT_CHAR) {
+		indexes[0] = background_tile_char - MAX_FONT_CHAR - 1;
+		colors[0] = (SDL_Color){background_value, background_value, background_value, 255};
+		for (int i = 0; i < mask_count; i++) {
+			colors[1 + i] = sdl2_tileset_preview_mask_color(i, mask_count);
+		}
+	}
+
+	if (overlay_tile_char > MAX_FONT_CHAR) {
+		int base = graphics_image_mpt;
+		indexes[1] = overlay_tile_char - MAX_FONT_CHAR - 1;
+		colors[base] = (SDL_Color){0, 0, 0, 0};
+		for (int i = 0; i < mask_count; i++) {
+			colors[base + 1 + i] = sdl2_tileset_preview_mask_color(i, mask_count);
+		}
+	}
+
+	term_data_draw_graphics_tiles(td, px, py, indexes, colors);
+}
+
 void tiles_rawpict_scale(void) {
 	for (int t = 0; t < ANGBAND_TERM_MAX; t++) {
 		term_data *td = term_idx_to_term_data(t);

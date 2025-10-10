@@ -24,6 +24,13 @@
  #include <dirent.h> /* we now need it for scanning for audio packs too */
 //#endif
 
+#if defined(USE_SDL2) && defined(USE_GRAPHICS)
+/* Keep track of the currently previewed feature/item/monster tiles in the SDL2 UI */
+static int sdl2_tileset_preview_idx_feat = 0;
+static int sdl2_tileset_preview_idx_item = 0;
+static int sdl2_tileset_preview_idx_mon = 0;
+#endif
+
 #ifdef REGEX_SEARCH
 /* For extract_url(): able to utilize regexps? */
  #define REGEX_URL
@@ -11915,15 +11922,15 @@ static void do_cmd_options_tilesets(void) {
 	int filenames_tmp = 0, tilesets = 0;
 	char tmp_name[256], tmp_name2[256], *csub, *csub_end;
 
-  #ifdef WINDOWS
+   #ifdef WINDOWS
 	char *cp, *cpp;
-  #endif
+   #endif
 
 	DIR *dir;
 	struct dirent *ent;
-  #ifdef USE_SDL2
+   #ifdef USE_SDL2
 	int k;
-  #endif
+   #endif
 
 
 	/* Paranoia: 0 tileset allowed? */
@@ -11934,7 +11941,7 @@ static void do_cmd_options_tilesets(void) {
 
 	//TODO jezek - Test loading tilesets from user and game dir.
 	/* Read all eligible filenames (*.bmp), ... */
-  #ifdef USE_SDL2
+   #ifdef USE_SDL2
   /* In SDL2 client, look for tilesets in user storage first. */
 	path_build(path, 1024, ANGBAND_USER_DIR_XTRA, "graphics");
 	if ((dir = opendir(path))) {
@@ -11952,7 +11959,7 @@ static void do_cmd_options_tilesets(void) {
 		}
 		closedir(dir);
 	}
-  #endif
+   #endif
 	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
 	if ((dir = opendir(path))) {
 		while ((ent = readdir(dir))) {
@@ -11965,22 +11972,22 @@ static void do_cmd_options_tilesets(void) {
 			/* cut off extension */
 			tmp_name[j - 3] = 0;
 
-  #ifdef USE_SDL2
+   #ifdef USE_SDL2
 			/* Check duplicate in filename_tmp. */
 			for (k = 0; k < filenames_tmp; k++) if (!strcmp(filename_tmp[k], tmp_name)) break;
 			if (k < filenames_tmp) continue; /* duplicate */
-  #endif
+   #endif
 
 			strcpy(filename_tmp[filenames_tmp++], tmp_name);
 		}
 		closedir(dir);
 	}
 	if (!filenames_tmp) {
-  #ifdef USE_SDL2
+   #ifdef USE_SDL2
 		c_msg_print("No .bmp tilesets found in the graphics directories.");
-  #else
+   #else
 		c_msg_format("No .bmp files found in directory (%s).", path);
-  #endif
+   #endif
 		return;
 	}
 	/* ...sort them... */
@@ -12065,7 +12072,63 @@ static void do_cmd_options_tilesets(void) {
 		clear_from(0);
 		l = 0;
 
-		/* Prompt XXX XXX XXX */
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		/* SDL preview state: track candidates, selections, and drawing hints */
+		int preview_feat_indices[MAX_F_IDX];
+		int preview_item_indices[MAX_K_IDX];
+		int preview_mon_indices[MAX_R_IDX];
+		int preview_feat_count = 0;
+		int preview_item_count = 0;
+		int preview_mon_count = 0;
+		char32_t preview_feat_tile = 0;
+		char32_t preview_item_tile = 0;
+		char32_t preview_mon_tile = 0;
+		char32_t preview_background_tile = 0;
+		bool preview_ready = FALSE;
+		int preview_masks = 0;
+		int preview_tpc = 0;
+
+		/* Only gather data when the SDL preview widget is visible */
+		if (screen_hgt == MAX_SCREEN_HGT && sdl2_tileset_preview_ready()) {
+			preview_ready = TRUE;
+			preview_masks = sdl2_tileset_preview_mask_count();
+			preview_tpc = sdl2_tileset_preview_tiles_per_coord();
+
+			/* Collect glyphs that are rendered via the tileset (beyond font range) */
+			for (int i = 0; i < MAX_F_IDX; i++) {
+				if (Client_setup.f_char[i] > MAX_FONT_CHAR) preview_feat_indices[preview_feat_count++] = i;
+			}
+			for (int i = 0; i < MAX_K_IDX; i++) {
+				if (Client_setup.k_char[i] > MAX_FONT_CHAR) preview_item_indices[preview_item_count++] = i;
+			}
+			for (int i = 0; i < MAX_R_IDX; i++) {
+				if (Client_setup.r_char[i] > MAX_FONT_CHAR) preview_mon_indices[preview_mon_count++] = i;
+			}
+
+			/* Keep selection indices within the collected range */
+			if (preview_feat_count <= 0) sdl2_tileset_preview_idx_feat = 0;
+			else if (sdl2_tileset_preview_idx_feat >= preview_feat_count)
+				sdl2_tileset_preview_idx_feat = preview_feat_count - 1;
+			if (preview_item_count <= 0) sdl2_tileset_preview_idx_item = 0;
+			else if (sdl2_tileset_preview_idx_item >= preview_item_count)
+				sdl2_tileset_preview_idx_item = preview_item_count - 1;
+			if (preview_mon_count <= 0) sdl2_tileset_preview_idx_mon = 0;
+			else if (sdl2_tileset_preview_idx_mon >= preview_mon_count)
+				sdl2_tileset_preview_idx_mon = preview_mon_count - 1;
+
+			/* Promote the chosen indices to actual glyphs for painting */
+			if (preview_feat_count > 0) {
+				preview_feat_tile = Client_setup.f_char[preview_feat_indices[sdl2_tileset_preview_idx_feat]];
+				preview_background_tile = preview_feat_tile;
+			}
+			if (preview_item_count > 0)
+				preview_item_tile = Client_setup.k_char[preview_item_indices[sdl2_tileset_preview_idx_item]];
+			if (preview_mon_count > 0)
+				preview_mon_tile = Client_setup.r_char[preview_mon_indices[sdl2_tileset_preview_idx_mon]];
+		}
+   #endif
+
+	/* Prompt XXX XXX XXX */
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset (requires restart), \377yENTER\377w enter a specific tileset name,");
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y0\377w...\377y9\377w to enable/disable subset of currently selected tileset, if available,");
    #ifdef GRAPHICS_BG_MASK
@@ -12101,6 +12164,72 @@ static void do_cmd_options_tilesets(void) {
 		Term_putstr(1, l++, -1, TERM_WHITE, format("Optional mapping filename:  "));
 		Term_putstr(1, l++, -1, TERM_WHITE, format("  '\377Bgraphics-%s.bmp\377-'", graphic_tiles));
 		l += 2;
+
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+			/* Draw preview panes and navigation hints when data is ready */
+			if (preview_ready) {
+				/* Map preview slots to their UI labels and navigation keys */
+				const char *type_names[3] = {"Backgrounds", "Items", "Monsters"};
+				char prev_keys[3] = {'q', 'a', 'z'};
+				char next_keys[3] = {'w', 's', 'x'};
+				char32_t tiles[3] = {preview_feat_tile, preview_item_tile, preview_mon_tile};
+				int counts[3] = {preview_feat_count, preview_item_count, preview_mon_count};
+				int selections[3] = {sdl2_tileset_preview_idx_feat, sdl2_tileset_preview_idx_item, sdl2_tileset_preview_idx_mon};
+				int index_values[3] = {
+					preview_feat_count > 0 ? preview_feat_indices[selections[0]] : -1,
+					preview_item_count > 0 ? preview_item_indices[selections[1]] : -1,
+					preview_mon_count > 0 ? preview_mon_indices[selections[2]] : -1
+				};
+				int preview_col = 32;
+				bool have_background = (preview_background_tile > MAX_FONT_CHAR);
+
+				/* Iterate each preview slot to paint glyph, caption, and controls */
+				for (int type = 0; type < 3; type++) {
+				int count = counts[type];
+				int selected = selections[type];
+				int index_value = index_values[type];
+				char32_t tile_char = tiles[type];
+
+				if (count > 0)
+					Term_putstr(1, l, -1, TERM_WHITE, format("%s [%d]", type_names[type], index_value));
+				else
+					Term_putstr(1, l, -1, TERM_WHITE, format("%s [-]", type_names[type]));
+
+				if (count > 0) {
+					sdl2_tileset_preview_draw_tile(preview_col, l, tile_char, 0, -1);
+					for (int mask = 0; mask < preview_masks; mask++)
+						sdl2_tileset_preview_draw_tile(preview_col + 1 + mask, l, tile_char, 0, mask);
+				} else {
+					for (int ccol = 0; ccol < preview_masks + 1; ccol++)
+						sdl2_tileset_preview_fill_cell(preview_col + ccol, l, 0);
+				}
+
+				if (count > 0)
+					Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w %d/%d \377y%c\377w>", prev_keys[type], selected + 1, count, next_keys[type]));
+				else
+					Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w 0/0 \377y%c\377w>", prev_keys[type], next_keys[type]));
+
+				if (count > 0) {
+					sdl2_tileset_preview_draw_tile(preview_col, l + 1, tile_char, 255, -1);
+					for (int mask = 0; mask < preview_masks; mask++)
+						sdl2_tileset_preview_draw_tile(preview_col + 1 + mask, l + 1, tile_char, 255, mask);
+				} else {
+					for (int ccol = 0; ccol < preview_masks + 1; ccol++)
+						sdl2_tileset_preview_fill_cell(preview_col + ccol, l + 1, 255);
+				}
+
+				l += 2;
+
+				if (type > 0 && preview_tpc > 1 && count > 0 && have_background) {
+					Term_putstr(1, l, -1, TERM_WHITE, "With background tile:");
+					sdl2_tileset_preview_draw_overlay(preview_col, l, preview_background_tile, tile_char, 0);
+					for (int ccol = 1; ccol < preview_masks + 1; ccol++)
+						sdl2_tileset_preview_fill_cell(preview_col + ccol, l, 0);
+					l++;
+				}
+			}
+		}
+   #endif
 
 		found_subset = 0;
 		l2++;
@@ -12156,6 +12285,55 @@ static void do_cmd_options_tilesets(void) {
 				break;
 			}
 		} else switch (ch) {
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		case 'q':
+		case 'Q':
+			if (preview_ready && preview_feat_count > 0) {
+				sdl2_tileset_preview_idx_feat--;
+				if (sdl2_tileset_preview_idx_feat < 0) sdl2_tileset_preview_idx_feat = preview_feat_count - 1;
+			} else bell();
+			break;
+
+		case 'w':
+		case 'W':
+			if (preview_ready && preview_feat_count > 0) {
+				sdl2_tileset_preview_idx_feat++;
+				if (sdl2_tileset_preview_idx_feat >= preview_feat_count) sdl2_tileset_preview_idx_feat = 0;
+			} else bell();
+			break;
+
+		case 'a':
+		case 'A':
+			if (preview_ready && preview_item_count > 0) {
+				sdl2_tileset_preview_idx_item--;
+				if (sdl2_tileset_preview_idx_item < 0) sdl2_tileset_preview_idx_item = preview_item_count - 1;
+			} else bell();
+			break;
+
+		case 's':
+		case 'S':
+			if (preview_ready && preview_item_count > 0) {
+				sdl2_tileset_preview_idx_item++;
+				if (sdl2_tileset_preview_idx_item >= preview_item_count) sdl2_tileset_preview_idx_item = 0;
+			} else bell();
+			break;
+
+		case 'z':
+		case 'Z':
+			if (preview_ready && preview_mon_count > 0) {
+				sdl2_tileset_preview_idx_mon--;
+				if (sdl2_tileset_preview_idx_mon < 0) sdl2_tileset_preview_idx_mon = preview_mon_count - 1;
+			} else bell();
+			break;
+
+		case 'x':
+		case 'X':
+			if (preview_ready && preview_mon_count > 0) {
+				sdl2_tileset_preview_idx_mon++;
+				if (sdl2_tileset_preview_idx_mon >= preview_mon_count) sdl2_tileset_preview_idx_mon = 0;
+			} else bell();
+			break;
+   #endif
 		case ESCAPE:
 			go = FALSE;
 

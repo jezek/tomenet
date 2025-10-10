@@ -1170,6 +1170,12 @@ extern errr sdl2_win_term_main_screenshot(cptr name);
  #ifdef USE_GRAPHICS
 extern void sdl2_graphics_pref_file_processed();
 extern uint32_t graphics_image_masks_colors[GRAPHICS_MAX_MPT];
+extern bool sdl2_tileset_preview_ready(void);
+extern int sdl2_tileset_preview_mask_count(void);
+extern int sdl2_tileset_preview_tiles_per_coord(void);
+extern void sdl2_tileset_preview_fill_cell(int col, int row, uint8_t background_value);
+extern void sdl2_tileset_preview_draw_tile(int col, int row, char32_t tile_char, uint8_t background_value, int highlight_layer);
+extern void sdl2_tileset_preview_draw_overlay(int col, int row, char32_t background_tile_char, char32_t overlay_tile_char, uint8_t background_value);
  #endif
 #endif
 
