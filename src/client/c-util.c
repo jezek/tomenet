@@ -12066,6 +12066,17 @@ static void do_cmd_options_tilesets(void) {
 	Term_clear();
 
 	strcpy(old_tileset, graphic_tiles);
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	int preview_feat_indices[MAX_F_IDX];
+	int preview_item_indices[MAX_K_IDX];
+	int preview_mon_indices[MAX_R_IDX];
+	int preview_feat_count = 0;
+	int preview_item_count = 0;
+	int preview_mon_count = 0;
+	int preview_masks = 0;
+	int preview_tpc = 0;
+	bool reload_preview_indices = TRUE;
+   #endif
 
 	/* Interact */
 	while (go) {
@@ -12074,35 +12085,31 @@ static void do_cmd_options_tilesets(void) {
 
    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
 		/* SDL preview state: track candidates, selections, and drawing hints */
-		int preview_feat_indices[MAX_F_IDX];
-		int preview_item_indices[MAX_K_IDX];
-		int preview_mon_indices[MAX_R_IDX];
-		int preview_feat_count = 0;
-		int preview_item_count = 0;
-		int preview_mon_count = 0;
 		char32_t preview_feat_tile = 0;
 		char32_t preview_item_tile = 0;
 		char32_t preview_mon_tile = 0;
-		char32_t preview_background_tile = 0;
 		bool preview_ready = FALSE;
-		int preview_masks = 0;
-		int preview_tpc = 0;
 
 		/* Only gather data when the SDL preview widget is visible */
 		if (screen_hgt == MAX_SCREEN_HGT && sdl2_tileset_preview_ready()) {
 			preview_ready = TRUE;
-			preview_masks = sdl2_tileset_preview_mask_count();
-			preview_tpc = sdl2_tileset_preview_tiles_per_coord();
 
-			/* Collect glyphs that are rendered via the tileset (beyond font range) */
-			for (int i = 0; i < MAX_F_IDX; i++) {
-				if (Client_setup.f_char[i] > MAX_FONT_CHAR) preview_feat_indices[preview_feat_count++] = i;
-			}
-			for (int i = 0; i < MAX_K_IDX; i++) {
-				if (Client_setup.k_char[i] > MAX_FONT_CHAR) preview_item_indices[preview_item_count++] = i;
-			}
-			for (int i = 0; i < MAX_R_IDX; i++) {
-				if (Client_setup.r_char[i] > MAX_FONT_CHAR) preview_mon_indices[preview_mon_count++] = i;
+			if (reload_preview_indices) {
+				preview_masks = sdl2_tileset_preview_mask_count();
+				preview_tpc = sdl2_tileset_preview_tiles_per_coord();
+
+				/* Collect glyphs that are rendered via the tileset (beyond font range) */
+				for (int i = 0; i < MAX_F_IDX; i++) {
+					if (Client_setup.f_char[i] > MAX_FONT_CHAR) preview_feat_indices[preview_feat_count++] = i;
+				}
+				for (int i = 0; i < MAX_K_IDX; i++) {
+					if (Client_setup.k_char[i] > MAX_FONT_CHAR) preview_item_indices[preview_item_count++] = i;
+				}
+				for (int i = 0; i < MAX_R_IDX; i++) {
+					if (Client_setup.r_char[i] > MAX_FONT_CHAR) preview_mon_indices[preview_mon_count++] = i;
+				}
+
+				reload_preview_indices = FALSE;
 			}
 
 			/* Keep selection indices within the collected range */
@@ -12117,14 +12124,9 @@ static void do_cmd_options_tilesets(void) {
 				sdl2_tileset_preview_idx_mon = preview_mon_count - 1;
 
 			/* Promote the chosen indices to actual glyphs for painting */
-			if (preview_feat_count > 0) {
-				preview_feat_tile = Client_setup.f_char[preview_feat_indices[sdl2_tileset_preview_idx_feat]];
-				preview_background_tile = preview_feat_tile;
-			}
-			if (preview_item_count > 0)
-				preview_item_tile = Client_setup.k_char[preview_item_indices[sdl2_tileset_preview_idx_item]];
-			if (preview_mon_count > 0)
-				preview_mon_tile = Client_setup.r_char[preview_mon_indices[sdl2_tileset_preview_idx_mon]];
+			if (preview_feat_count > 0) preview_feat_tile = Client_setup.f_char[preview_feat_indices[sdl2_tileset_preview_idx_feat]];
+			if (preview_item_count > 0) preview_item_tile = Client_setup.k_char[preview_item_indices[sdl2_tileset_preview_idx_item]];
+			if (preview_mon_count > 0) preview_mon_tile = Client_setup.r_char[preview_mon_indices[sdl2_tileset_preview_idx_mon]];
 		}
    #endif
 
@@ -12181,53 +12183,31 @@ static void do_cmd_options_tilesets(void) {
 					preview_mon_count > 0 ? preview_mon_indices[selections[2]] : -1
 				};
 				int preview_col = 32;
-				bool have_background = (preview_background_tile > MAX_FONT_CHAR);
 
 				/* Iterate each preview slot to paint glyph, caption, and controls */
 				for (int type = 0; type < 3; type++) {
-				int count = counts[type];
-				int selected = selections[type];
-				int index_value = index_values[type];
-				char32_t tile_char = tiles[type];
+					int count = counts[type];
+					int selected = selections[type];
+					int index_value = index_values[type];
+					char32_t tile_char = count > 0 ? tiles[type] : 0;
 
-				if (count > 0)
-					Term_putstr(1, l, -1, TERM_WHITE, format("%s [%d]", type_names[type], index_value));
-				else
-					Term_putstr(1, l, -1, TERM_WHITE, format("%s [-]", type_names[type]));
+					if (count > 0) {
+						Term_putstr(1, l, -1, TERM_WHITE, format("%s [%d]", type_names[type], index_value));
+						Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w %d/%d \377y%c\377w>", prev_keys[type], selected + 1, count, next_keys[type]));
+					} else {
+						Term_putstr(1, l, -1, TERM_WHITE, format("%s [-]", type_names[type]));
+						Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w 0/0 \377y%c\377w>", prev_keys[type], next_keys[type]));
+					}
 
-				if (count > 0) {
-					sdl2_tileset_preview_draw_tile(preview_col, l, tile_char, 0, -1);
-					for (int mask = 0; mask < preview_masks; mask++)
-						sdl2_tileset_preview_draw_tile(preview_col + 1 + mask, l, tile_char, 0, mask);
-				} else {
-					for (int ccol = 0; ccol < preview_masks + 1; ccol++)
-						sdl2_tileset_preview_fill_cell(preview_col + ccol, l, 0);
+					sdl2_tileset_preview_draw_tile(preview_col, l, tile_char, type);
+					l += 2;
+
+					if (type > 0 && preview_tpc > 1 && count > 0 && preview_feat_tile > MAX_FONT_CHAR) {
+						Term_putstr(1, l, -1, TERM_WHITE, "With background tile:");
+						sdl2_tileset_preview_draw_overlay(preview_col, l, preview_feat_tile, tile_char, type);
+						l++;
+					}
 				}
-
-				if (count > 0)
-					Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w %d/%d \377y%c\377w>", prev_keys[type], selected + 1, count, next_keys[type]));
-				else
-					Term_putstr(1, l + 1, -1, TERM_WHITE, format("<\377y%c\377w 0/0 \377y%c\377w>", prev_keys[type], next_keys[type]));
-
-				if (count > 0) {
-					sdl2_tileset_preview_draw_tile(preview_col, l + 1, tile_char, 255, -1);
-					for (int mask = 0; mask < preview_masks; mask++)
-						sdl2_tileset_preview_draw_tile(preview_col + 1 + mask, l + 1, tile_char, 255, mask);
-				} else {
-					for (int ccol = 0; ccol < preview_masks + 1; ccol++)
-						sdl2_tileset_preview_fill_cell(preview_col + ccol, l + 1, 255);
-				}
-
-				l += 2;
-
-				if (type > 0 && preview_tpc > 1 && count > 0 && have_background) {
-					Term_putstr(1, l, -1, TERM_WHITE, "With background tile:");
-					sdl2_tileset_preview_draw_overlay(preview_col, l, preview_background_tile, tile_char, 0);
-					for (int ccol = 1; ccol < preview_masks + 1; ccol++)
-						sdl2_tileset_preview_fill_cell(preview_col + ccol, l, 0);
-					l++;
-				}
-			}
 		}
    #endif
 
