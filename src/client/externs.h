@@ -1175,6 +1175,7 @@ extern int sdl2_tileset_preview_mask_count(void);
 extern int sdl2_tileset_preview_tiles_per_coord(void);
 extern void sdl2_tileset_preview_draw_tile(int col, int row, char32_t tile_char, int type);
 extern void sdl2_tileset_preview_draw_overlay(int col, int row, char32_t background_tile_char, char32_t overlay_tile_char, int type);
+extern bool sdl2_set_graphics_mode(byte mode);
  #endif
 #endif
 

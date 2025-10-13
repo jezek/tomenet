@@ -11908,6 +11908,96 @@ static void do_cmd_options_fonts(void) {
 
 	check_for_playerlist();
 }
+#if defined(USE_SDL2) && defined(USE_GRAPHICS)
+
+static bool graphics_changes_pending(void) {
+	 return (use_graphics_new != use_graphics);
+}
+
+static bool send_graphics_mode_request(byte mode) {
+	byte previous = use_graphics;
+	int res;
+
+	Net_flush();
+	use_graphics = mode;
+	res = Send_font();
+	use_graphics = previous;
+
+	if (res <= 0) {
+		return(FALSE);
+	}
+	if (Net_flush() == -1) {
+		return(FALSE);
+	}
+
+	return(TRUE);
+}
+
+/* 
+ * Changes graphics mode to use_graphics_new.
+ *
+ * Note: This solution for graphics mode switching is not ideal.
+ * It sometimes produces invalid packet, but does not crash the game.
+ */
+static bool apply_graphics_mode_change(void) {
+	byte target = use_graphics_new;
+	byte previous = use_graphics;
+
+	if (target == previous) {
+		c_msg_print("Graphical tileset mode already active.");
+		return(TRUE);
+	}
+
+	if (target != UG_NONE) {
+		if (is_older_than(&server_version, 4, 8, 1, 0, 0, 0)) {
+			c_msg_print("Server does not support graphical tilesets.");
+			use_graphics_new = previous;
+			return(FALSE);
+		}
+#ifdef GRAPHICS_BG_MASK
+		if (target == UG_2MASK && !is_atleast(&server_version, 4, 9, 2, 1, 0, 0)) {
+			c_msg_print("Server does not support dual-mask graphics.");
+			use_graphics_new = previous;
+			return(FALSE);
+		}
+#endif
+	}
+
+	if (!send_graphics_mode_request(target)) {
+		c_msg_print("Failed to send graphics mode update to server.");
+		return(FALSE);
+	}
+	if (!sdl2_set_graphics_mode(target)) {
+		if (use_graphics_errstr[0]) c_msg_format("Failed to initialize graphics: %s", use_graphics_errstr);
+		else c_msg_print("Failed to initialize selected graphics mode.");
+
+		if (!send_graphics_mode_request(previous)) {
+			quit("Unable to restore previous graphics mode on server after graphics mode set failed.");
+		}
+		if (!sdl2_set_graphics_mode(previous)) {
+			quit("Unable to restore previous graphics mode on client after graphics mode set failed.");
+		}
+
+		use_graphics_new = use_graphics;
+		handle_process_font_file();
+		if (in_game) Send_redraw(0);
+		return(FALSE);
+	}
+
+	use_graphics_new = use_graphics;
+	handle_process_font_file();
+	if (in_game) Send_redraw(0);
+
+	if (use_graphics == UG_NONE) c_msg_print("Graphical tileset usage disabled.");
+ #ifdef GRAPHICS_BG_MASK
+	else if (use_graphics == UG_2MASK) c_msg_print("Graphical tileset usage enabled (dual-mask).");
+ #endif
+	else c_msg_print("Graphical tileset usage enabled.");
+
+	return(TRUE);
+}
+#endif /* defined(USE_SDL2) && defined(USE_GRAPHICS) */
+
 /* These are .bmp files in xtra/graphics, on all systems. - C. Blue
    The global vars are use_graphics (TRUE/FALSE) and graphic_tiles (string of filename, without path, without '.bmp' extension, gets inserted to "graphics-%s.prf").
    Filename convention added: "graphics-<tilesetname>[#<0..9>_<subname>].bmp" */
@@ -12134,9 +12224,25 @@ static void do_cmd_options_tilesets(void) {
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset (requires restart), \377yENTER\377w enter a specific tileset name,");
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y0\377w...\377y9\377w to enable/disable subset of currently selected tileset, if available,");
    #ifdef GRAPHICS_BG_MASK
+    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode (\377yp\377w apply pending change, \377yESC\377w exit).");
+		if (graphics_changes_pending())
+			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics mode change. Press \377yp\377w to apply or \377yESC\377w to review.");
+		else
+			Term_putstr(0, l++, -1, TERM_L_DARK, "    No pending graphics mode changes.");
+    #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode - requires client restart! \377yESC\377w keep changes and exit.");
+    #endif
    #else
+    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off (\377yp\377w apply pending change, \377yESC\377w exit).");
+		if (graphics_changes_pending())
+			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics mode change. Press \377yp\377w to apply or \377yESC\377w to review.");
+		else
+			Term_putstr(0, l++, -1, TERM_L_DARK, "    No pending graphics mode changes.");
+    #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off - requires client restart! \377yESC\377w keep changes and exit.");
+    #endif
    #endif
 		l++;
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377sTilesets AUTO-ZOOM to font size which you can change in Window Fonts menu (\377yf\377s).");
@@ -12315,6 +12421,22 @@ static void do_cmd_options_tilesets(void) {
 			break;
    #endif
 		case ESCAPE:
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+			if (graphics_changes_pending()) {
+				if (get_check2("Apply pending graphics mode change?", TRUE)) {
+					if (!apply_graphics_mode_change()) break;
+				} else if (get_check2("Discard pending graphics mode change?", FALSE)) {
+					use_graphics_new = use_graphics;
+					c_msg_print("Pending graphics mode change discarded.");
+				} else {
+					break;
+				}
+			}
+			go = FALSE;
+			if (strcmp(old_tileset, graphic_tiles)) c_msg_print("\377yGraphical tileset was changed.");
+
+			break;
+   #endif
 			go = FALSE;
 
 			if (strcmp(old_tileset, graphic_tiles))
@@ -12337,7 +12459,34 @@ static void do_cmd_options_tilesets(void) {
 			do_cmd_options_fonts();
 			break;
 
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		case 'p':
+		case 'P':
+			if (graphics_changes_pending()) apply_graphics_mode_change();
+			else c_msg_print("No pending graphics mode changes.");
+
+			break;
+   #endif
+
 		case 'v':
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+    #ifdef GRAPHICS_BG_MASK
+			use_graphics_new = (use_graphics_new + 1) % 3;
+    #else
+			use_graphics_new = !use_graphics_new;
+    #endif
+
+			if (graphics_changes_pending() == FALSE) c_msg_print("Graphical tileset usage matches current setting.");
+			else {
+    #ifdef GRAPHICS_BG_MASK
+				if (use_graphics_new == UG_2MASK) c_msg_print("Graphical tileset usage enabled (dual-mask). Pending apply with 'p'.");
+				else
+    #endif
+				if (use_graphics_new) c_msg_print("Graphical tileset usage enabled. Pending apply with 'p'.");
+				else c_msg_print("Graphical tileset usage disabled. Pending apply with 'p'.");
+			}
+			break;
+   #endif
 			/* Hack: Never switch graphics settings, especially UG_2MASK, live,
 			   as it will cause instant packet corruption due to missing server-client synchronisation.
 			   So we just switch the savegame-affecting 'use_graphics_new' instead of actual 'use_graphics'. */

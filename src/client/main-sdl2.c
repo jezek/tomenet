@@ -1698,7 +1698,7 @@ static errr Term_text_sdl2(int x, int y, int n, byte a, cptr s) {
 #ifdef USE_GRAPHICS // Huge block.
 
 // Directory with graphics tiles files (should be lib/xtra/grapics).
-static cptr ANGBAND_DIR_XTRA_GRAPHICS;
+static cptr ANGBAND_DIR_XTRA_GRAPHICS = NULL;
 
 
 // Loaded tiles image.
@@ -2177,7 +2177,7 @@ void sdl2_tileset_preview_draw_overlay(int col, int row, char32_t background_til
 	SDL_Color colors[GRAPHICS_MAX_TPC * GRAPHICS_MAX_MPT];
 	char32_t indexes[GRAPHICS_MAX_TPC];
 
-	memset(colors, 0, sizeof(colors));
+	WIPE(colors, colors);
 	for (int i = 0; i < GRAPHICS_MAX_TPC; i++) indexes[i] = 0xFFFFFFFF;
 
 	if (background_tile_char > MAX_FONT_CHAR) {
@@ -2803,9 +2803,11 @@ errr init_graphics_sdl2(void) {
 		return(102);
 	}
 
-	/* Build & allocate the graphics path. */
-	path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
-	ANGBAND_DIR_XTRA_GRAPHICS = string_make(path);
+	if (ANGBAND_DIR_XTRA_GRAPHICS == NULL) {
+		/* Build & allocate the graphics path. */
+		path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
+		ANGBAND_DIR_XTRA_GRAPHICS = string_make(path);
+	}
 
 	/* Build the name of the graphics file. */
 	path_build(filename, 1024, ANGBAND_DIR_XTRA_GRAPHICS, graphic_tiles);
@@ -2858,6 +2860,48 @@ errr init_graphics_sdl2(void) {
 	graphics_reinitialize = true;
 
 	return(0);
+}
+
+static void nuke_graphics_sdl2(void) {
+		for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
+			term_data *td = term_idx_to_term_data(i);
+			if (!td) continue;
+ #ifdef GRAPHICS_BG_MASK
+			td->t.pict_hook_2mask = NULL;
+ #endif
+			td->t.pict_hook = NULL;
+			td->t.rawpict_hook = NULL;
+			td->t.higher_pict = FALSE;
+			free_graphics(td);
+		}
+		if (graphics_image) {
+			SDL_FreeSurface(graphics_image);
+			graphics_image = NULL;
+		}
+		graphics_image_tpr = 0;
+		graphics_image_mpt = 0;
+		graphics_image_tpc = 0;
+		graphics_reinitialize = false;
+}
+
+bool sdl2_set_graphics_mode(byte mode) {
+	if (mode == use_graphics) return(TRUE);
+
+	byte previous = use_graphics;
+	use_graphics = mode;
+
+	if (previous != UG_NONE) nuke_graphics_sdl2();
+
+	if (use_graphics == UG_NONE) return(TRUE);
+
+	WIPE(graphics_image_masks_colors, graphics_image_masks_colors);
+	use_graphics_err = init_graphics_sdl2();
+	if (use_graphics_err != 0) {
+		use_graphics = UG_NONE;
+		return(FALSE);
+	}
+
+	return(TRUE);
 }
 #endif
 /*
