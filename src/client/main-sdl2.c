@@ -2104,11 +2104,12 @@ void sdl2_tileset_preview_fill_cell(int col, int row, int count, uint8_t backgro
 	SDL_FillRect(td->win->surface, &rect, SDL_MapRGBA(td->win->surface->format, background_value, background_value, background_value, 255));
 }
 
-void sdl2_tileset_preview_draw_tile(int col, int row, char32_t tile_char, int type) {
+void sdl2_tileset_preview_draw_tile(int col, int row, int type, char32_t tile_char, char32_t background_char) {
 	term_data *td = sdl2_tileset_preview_term();
 
-	sdl2_tileset_preview_fill_cell(col, row, 2 + (2 * GRAPHICS_MAX_MPT), 128);
-	sdl2_tileset_preview_fill_cell(col, row + 1, 2 + (2 * GRAPHICS_MAX_MPT), 128);
+	sdl2_tileset_preview_fill_cell(col, row, 4 + (2 * GRAPHICS_MAX_MPT), 0);
+	sdl2_tileset_preview_fill_cell(col, row + 1, 4 + (2 * GRAPHICS_MAX_MPT), 0);
+
 	if (!td || !sdl2_tileset_preview_ready()) {
 		return;
 	}
@@ -2124,90 +2125,65 @@ void sdl2_tileset_preview_draw_tile(int col, int row, char32_t tile_char, int ty
 	}
 
 
-	SDL_Color colors[GRAPHICS_MAX_MPT];
+	SDL_Color colors[GRAPHICS_MAX_TPC * GRAPHICS_MAX_MPT];
+	WIPE(colors, colors);
+	/* Set and foreground color depending on type. */
 	for (int i = 0; i < mask_count; i++) {
 		colors[1 + i] = sdl2_tileset_preview_mask_color(type, i, mask_count);
 	}
 
 	for (int i = 0; i < 2; i++) {
-		uint8_t bg = i%2==0 ? 0 : 255;
-		/* Draw the requested tile on black/white background, with outline of the same color and foreground color depening on type. */
-		colors[0] = (SDL_Color){bg, bg, bg, 255};
-		if (mask_count > 1) {
-			/* If there are more masks, last one is outline. Make it background color. */
-			colors[1 + mask_count - 1] = colors[0];
-		}
-		int px = td->win->bw + col * td->fnt->wid;
-		int py = td->win->bh + (row + i) * td->fnt->hgt;
+		/* Draw the requested tile on black/white background, with outline of the same color. */
+		colors[0] = (SDL_Color){255*(i%2), 255*(i%2), 255*(i%2), 255};
+		/* The last mask is outline. Make it background color. */
+		if (mask_count > 1) colors[1 + mask_count - 1] = colors[0];
+		int px = td->win->bw + (col + i) * td->fnt->wid;
+		int py = td->win->bh + row * td->fnt->hgt;
 		SDL_FillRect(td->win->surface, &(SDL_Rect){px, py, td->fnt->wid, td->fnt->hgt}, SDL_MapRGBA(td->win->surface->format, Pixel_quadruplet(colors[0])));
 		term_data_draw_graphics_tile(td, px, py, tile_index, colors);
-
-		uint32_t srcX = (tile_index % graphics_image_tpr) * td->fnt->wid;
-		uint32_t srcY = (tile_index / graphics_image_tpr) * td->fnt->hgt;
-		uint32_t dstY = td->win->bh + (row + i) * td->fnt->hgt;
-		Uint32 fill = SDL_MapRGBA(td->win->surface->format, bg, bg, bg, 255);
-		for (int l = 0; l < td->nlayers; l++) {
-			uint32_t dstX = td->win->bw + (col + 2 + (2*l)) * td->fnt->wid;
-			SDL_Rect src_rect = {srcX, srcY, td->fnt->wid, td->fnt->hgt};
-			SDL_Rect dst_rect = {dstX, dstY, td->fnt->wid, td->fnt->hgt};
-			SDL_FillRect(td->win->surface, &dst_rect, fill);
-			draw_colored_layers_to_surface(dst_rect, td->win->surface, 1, src_rect, &td->tiles_layers[l], &((SDL_Color){255, 0, 255, 255}), td->tilePreparation);
-		}
-	}
-}
-
-void sdl2_tileset_preview_draw_overlay(int col, int row, char32_t background_tile_char, char32_t overlay_tile_char, int type) {
-	term_data *td = sdl2_tileset_preview_term();
-
-	sdl2_tileset_preview_fill_cell(col, row, 2 + (2 * GRAPHICS_MAX_MPT), 128);
-
-	if (!td || !sdl2_tileset_preview_ready()) {
-		return;
 	}
 
-	if (graphics_image_tpc <= 1) {
-		return;
+	uint32_t srcX = (tile_index % graphics_image_tpr) * td->fnt->wid;
+	uint32_t srcY = (tile_index / graphics_image_tpr) * td->fnt->hgt;
+	uint32_t dstY = td->win->bh + row * td->fnt->hgt;
+	Uint32 fill = SDL_MapRGBA(td->win->surface->format, 0, 0, 0, 255);
+	for (int l = 0; l < td->nlayers; l++) {
+		uint32_t dstX = td->win->bw + (col + 4 + (2*l)) * td->fnt->wid;
+		SDL_Rect src_rect = {srcX, srcY, td->fnt->wid, td->fnt->hgt};
+		SDL_Rect dst_rect = {dstX, dstY, td->fnt->wid, td->fnt->hgt};
+		SDL_FillRect(td->win->surface, &dst_rect, fill);
+		draw_colored_layers_to_surface(dst_rect, td->win->surface, 1, src_rect, &td->tiles_layers[l], &((SDL_Color){255, 0, 255, 255}), td->tilePreparation);
 	}
 
-	int mask_count = td->nlayers;
-	if (mask_count <= 0) {
-		return;
-	}
-
-	SDL_Color colors[GRAPHICS_MAX_TPC * GRAPHICS_MAX_MPT];
-	char32_t indexes[GRAPHICS_MAX_TPC];
-
+	if (background_char <= MAX_FONT_CHAR || background_char == tile_char) return;
+	if (graphics_image_tpc <= 1) return;
+	
 	WIPE(colors, colors);
+	char32_t indexes[GRAPHICS_MAX_TPC];
 	for (int i = 0; i < GRAPHICS_MAX_TPC; i++) indexes[i] = 0xFFFFFFFF;
 
-	if (background_tile_char > MAX_FONT_CHAR) {
-		indexes[0] = background_tile_char - MAX_FONT_CHAR - 1;
+	indexes[0] = background_char - MAX_FONT_CHAR - 1;
+	indexes[1] = tile_index;
 
-		colors[0] = (SDL_Color){0, 0, 0, 255};
-		for (int i = 0; i < mask_count; i++) {
-			colors[1 + i] = sdl2_tileset_preview_mask_color(0, i, mask_count);
-		}
-		/* Set outline color to background color for lowest tile. */
-		if (mask_count > 1) {
-			colors[mask_count] = colors[0];
-		}
+	for (int i = 0; i < mask_count; i++) {
+		colors[1 + i] = sdl2_tileset_preview_mask_color(0, i, mask_count);
+		colors[graphics_image_mpt + 1 + i] = sdl2_tileset_preview_mask_color(type, i, mask_count);
 	}
+	colors[graphics_image_mpt] = (SDL_Color){0, 0, 0, 0};
 
-	if (overlay_tile_char > MAX_FONT_CHAR) {
-		indexes[1] = overlay_tile_char - MAX_FONT_CHAR - 1;
-
-		colors[graphics_image_mpt] = (SDL_Color){0, 0, 0, 0};
-		for (int i = 0; i < mask_count; i++) {
-			colors[graphics_image_mpt + 1 + i] = sdl2_tileset_preview_mask_color(type, i, mask_count);
-		}
+	for (int i = 0; i < 2; i++) {
+		/* Draw the requested tile on black/white background, with outline of the same color. */
+		colors[0] = (SDL_Color){255*((i+1)%2), 255*((i+1)%2), 255*((i+1)%2), 255};
+		/* The next masks are outline. Make it background color. */
 		if (mask_count > 1) {
+			colors[1 + mask_count - 1] = colors[0];
 			colors[graphics_image_mpt + mask_count] = colors[0];
 		}
-	}
 
-	int px = td->win->bw + col * td->fnt->wid;
-	int py = td->win->bh + row * td->fnt->hgt;
-	term_data_draw_graphics_tiles(td, px, py, indexes, colors);
+		int px = td->win->bw + (col + i) * td->fnt->wid;
+		int py = td->win->bh + (row + 1) * td->fnt->hgt;
+		term_data_draw_graphics_tiles(td, px, py, indexes, colors);
+	}
 }
 
 void tiles_rawpict_scale(void) {
