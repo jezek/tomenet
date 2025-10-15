@@ -127,7 +127,7 @@ static int new_fileid() {
    Returns TRUE if newpath has been rebuilt and is therefore ready to use. */
 static bool client_user_path(char *newpath, cptr oldpath) {
 #ifndef WINDOWS
-	fprintf(stderr, "jezek - client_user_path(oldpath: %s)\n", oldpath);
+	//fprintf(stderr, "jezek - client_user_path(oldpath: %s)\n", oldpath);
 	strcpy(newpath, oldpath);
 	return(FALSE);
 #endif

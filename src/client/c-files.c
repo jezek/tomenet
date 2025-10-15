@@ -305,7 +305,7 @@ static errr path_parse(char *buf, cptr file) {
  * When opening a file in ANGBAND_DIR for reading only, first looks for the file in ANGBAND_USER_DIR and opens it if present.
  */
 FILE *my_fopen(cptr file, cptr mode) {
-	fprintf(stderr, "jezek - my_fopen(file: \"%s\", mode: %s)\n", file, mode);
+	//fprintf(stderr, "jezek - my_fopen(file: \"%s\", mode: %s)\n", file, mode);
 	char		buf[1024];
 	int err;
 
@@ -322,28 +322,28 @@ FILE *my_fopen(cptr file, cptr mode) {
 		char ubuf[1024];
 		cptr tail = buf + strlen(ANGBAND_DIR);
 		strnfmt(ubuf, sizeof(ubuf), "%s%s", ANGBAND_USER_DIR, tail);
-		fprintf(stderr, "jezek - my_fopen: user: %s\n", ubuf);
+		//fprintf(stderr, "jezek - my_fopen: user: %s\n", ubuf);
 
 		/* If file exists in user storage, use it. */
 		if (my_fexists(ubuf)) {
-			fprintf(stderr, "jezek - my_fopen: open existing user\n");
+			//fprintf(stderr, "jezek - my_fopen: open existing user\n");
 			return fopen(ubuf, mode);
 		}
 		/* Now we know, the file does not exist in user storage. */
 
 		/* If the file is opened in read-only mode, open the file in the game storage. */
 		if (mode[0] == 'r' && !strchr(mode, '+') && !strchr(mode, 'a')) {
-			fprintf(stderr, "jezek - my_fopen: open read game\n");
+			//fprintf(stderr, "jezek - my_fopen: open read game\n");
 			return fopen(buf, mode);
 		}
 
 		/* If file exists in game storage, copy it to user storage. */
 		if (my_fexists(buf)) {
-			fprintf(stderr, "jezek - my_fopen: copy to user\n");
+			//fprintf(stderr, "jezek - my_fopen: copy to user\n");
 			my_fcopy(buf, ubuf);
 		}
 
-		fprintf(stderr, "jezek - my_fopen: open write user\n");
+		//fprintf(stderr, "jezek - my_fopen: open write user\n");
 		/* Open file in user storage. */
 		return fopen(ubuf, mode);
 	}
