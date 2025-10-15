@@ -12186,16 +12186,13 @@ static void do_cmd_options_tilesets(void) {
 			preview_ready = TRUE;
 
 			if (reload_preview_indices) {
-				sdl2_tileset_preview_idx_feat = 0;
-				sdl2_tileset_preview_idx_item = 0;
-				sdl2_tileset_preview_idx_mon = 0;
-				preview_feat_count = 0;
-				preview_item_count = 0;
-				preview_mon_count = 0;
 
 				preview_masks = sdl2_tileset_preview_mask_count();
 				preview_tpc = sdl2_tileset_preview_tiles_per_coord();
 
+				preview_feat_count = 0;
+				preview_item_count = 0;
+				preview_mon_count = 0;
 				/* Collect glyphs that are rendered via the tileset (beyond font range) */
 				for (int i = 0; i < MAX_F_IDX; i++) {
 					if (Client_setup.f_char[i] > MAX_FONT_CHAR) preview_feat_indices[preview_feat_count++] = i;
@@ -12209,18 +12206,24 @@ static void do_cmd_options_tilesets(void) {
 
 				/* Keep selection indices within the collected range */
 				/* Promote the chosen indices to actual glyphs for painting */
-				if (preview_feat_count <= 0) sdl2_tileset_preview_idx_feat = 0;
-				else {
+				if (preview_feat_count <= 0) {
+					sdl2_tileset_preview_idx_feat = 0;
+					preview_feat_tile = 0;
+				} else {
 					if (sdl2_tileset_preview_idx_feat >= preview_feat_count) sdl2_tileset_preview_idx_feat = preview_feat_count - 1;
 					preview_feat_tile = Client_setup.f_char[preview_feat_indices[sdl2_tileset_preview_idx_feat]];
 				}
-				if (preview_item_count <= 0) sdl2_tileset_preview_idx_item = 0;
-				else {
+				if (preview_item_count <= 0) {
+					sdl2_tileset_preview_idx_item = 0;
+					preview_item_tile = 0;
+				} else {
 					if (sdl2_tileset_preview_idx_item >= preview_item_count) sdl2_tileset_preview_idx_item = preview_item_count - 1;
 					preview_item_tile = Client_setup.k_char[preview_item_indices[sdl2_tileset_preview_idx_item]];
 				}
-				if (preview_mon_count <= 0) sdl2_tileset_preview_idx_mon = 0;
-				else {
+				if (preview_mon_count <= 0) {
+					sdl2_tileset_preview_idx_mon = 0;
+					preview_mon_tile = 0;
+				} else {
 					if (sdl2_tileset_preview_idx_mon >= preview_mon_count) sdl2_tileset_preview_idx_mon = preview_mon_count - 1;
 					preview_mon_tile = Client_setup.r_char[preview_mon_indices[sdl2_tileset_preview_idx_mon]];
 				}
