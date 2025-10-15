@@ -12186,6 +12186,15 @@ static void do_cmd_options_tilesets(void) {
 			preview_ready = TRUE;
 
 			if (reload_preview_indices) {
+				/*
+				 * Flush terminal before we draw preview tiles and block on inkey().
+				 *
+				 * The first Term_fresh() after entering the menu is otherwise invoked by
+				 * inkey(), which still compares against the previous screen contents and
+				 * wipes them. Explicitly refreshing here keeps the preview visible on the
+				 * first frame.
+				 */
+				Term_fresh();
 
 				preview_masks = sdl2_tileset_preview_mask_count();
 				preview_tpc = sdl2_tileset_preview_tiles_per_coord();
