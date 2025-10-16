@@ -11911,7 +11911,34 @@ static void do_cmd_options_fonts(void) {
 #if defined(USE_SDL2) && defined(USE_GRAPHICS)
 
 static bool graphics_changes_pending(void) {
-	 return (use_graphics_new != use_graphics);
+	return (use_graphics_new != use_graphics);
+}
+
+static bool tileset_settings_match(const char *tileset_a, const bool subtiles_a[], const char *tileset_b, const bool subtiles_b[]) {
+	if (strcasecmp(tileset_a, tileset_b)) return(FALSE);
+
+	for (int i = 0; i < MAX_SUBFONTS; i++) {
+		if (subtiles_a[i] != subtiles_b[i]) return(FALSE);
+	}
+
+	return(TRUE);
+}
+
+static bool tileset_changes_pending(const char *active_tileset, const bool active_subtiles[]) {
+	return(!tileset_settings_match(active_tileset, active_subtiles, graphic_tiles, graphic_subtiles));
+}
+
+static void tileset_copy_subtiles(bool dest[], const bool src[]) {
+	for (int i = 0; i < MAX_SUBFONTS; i++) {
+		dest[i] = src[i];
+	}
+}
+
+static void tileset_restore_previous(const char *previous_tileset, const bool previous_subtiles[]) {
+	strnfmt(graphic_tiles, sizeof(graphic_tiles), "%s", previous_tileset);
+	for (int i = 0; i < MAX_SUBFONTS; i++) {
+		graphic_subtiles[i] = previous_subtiles[i];
+	}
 }
 
 static bool send_graphics_mode_request(byte mode) {
@@ -11996,6 +12023,59 @@ static bool apply_graphics_mode_change(void) {
 
 	return(TRUE);
 }
+
+static bool apply_graphics_tileset_change(const char *previous_tileset, const bool previous_subtiles[]) {
+	bool same_tileset = (strcasecmp(previous_tileset, graphic_tiles) == 0);
+	bool same_subtiles = TRUE;
+
+	for (int i = 0; i < MAX_SUBFONTS; i++) {
+		if (previous_subtiles[i] != graphic_subtiles[i]) {
+			same_subtiles = FALSE;
+			break;
+		}
+	}
+
+	if (same_tileset && same_subtiles) {
+		c_msg_print("Graphical tileset already active.");
+		return(TRUE);
+	}
+
+	if (!send_graphics_mode_request(use_graphics)) {
+		c_msg_print("Failed to send graphics tileset update to server.");
+		return(FALSE);
+	}
+
+	if (use_graphics == UG_NONE) {
+		handle_process_font_file();
+		c_msg_print("Graphical tileset preference updated. Enable graphics to view changes.");
+		return(TRUE);
+	}
+
+	if (!sdl2_reload_graphics_tileset()) {
+		if (use_graphics_errstr[0]) c_msg_format("Failed to initialize graphics: %s", use_graphics_errstr);
+		else c_msg_print("Failed to initialize selected graphical tileset.");
+
+		tileset_restore_previous(previous_tileset, previous_subtiles);
+
+		if (!send_graphics_mode_request(use_graphics)) {
+			quit("Unable to restore previous graphics tileset on server after graphics tileset set failed.");
+		}
+		if (!sdl2_reload_graphics_tileset()) {
+			quit("Unable to restore previous graphics tileset on client after graphics tileset set failed.");
+		}
+		handle_process_font_file();
+		if (in_game) Send_redraw(0);
+		return(FALSE);
+	}
+
+	handle_process_font_file();
+	if (in_game) Send_redraw(0);
+
+	if (!same_tileset) c_msg_print("Graphical tileset applied.");
+	else c_msg_print("Graphical tileset subsets applied.");
+
+	return(TRUE);
+}
 #endif /* defined(USE_SDL2) && defined(USE_GRAPHICS) */
 
 /* These are .bmp files in xtra/graphics, on all systems. - C. Blue
@@ -12006,6 +12086,9 @@ static void do_cmd_options_tilesets(void) {
 	int j, l, l2, cur_set = -1, found_subset, t;
 	char ch, old_tileset[MAX_CHARS];
 	bool go = TRUE, inkey_msg_old, subset_enabled[MAX_FONTS][MAX_SUBFONTS];
+#if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	bool old_subtiles[MAX_SUBFONTS];
+#endif
 
 	char filename_tmp[MAX_FONTS][256], tileset_name[MAX_FONTS][256], path[1024];
 	char tileset_subname[MAX_FONTS][MAX_SUBFONTS][256] = { 0 };
@@ -12156,6 +12239,9 @@ static void do_cmd_options_tilesets(void) {
 	Term_clear();
 
 	strcpy(old_tileset, graphic_tiles);
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	tileset_copy_subtiles(old_subtiles, graphic_subtiles);
+   #endif
 
    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
 	/* SDL preview state: track candidates, selections, and drawing hints */
@@ -12165,8 +12251,6 @@ static void do_cmd_options_tilesets(void) {
 	int preview_feat_count = 0;
 	int preview_item_count = 0;
 	int preview_mon_count = 0;
-	int preview_masks = 0;
-	int preview_tpc = 0;
 	char32_t preview_feat_tile = 0;
 	char32_t preview_item_tile = 0;
 	char32_t preview_mon_tile = 0;
@@ -12180,7 +12264,7 @@ static void do_cmd_options_tilesets(void) {
 		l = 0;
 
    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
-
+		bool pending_graphics_changes = graphics_changes_pending() || tileset_changes_pending(old_tileset, old_subtiles);
 		/* Only gather data when the SDL preview widget is visible */
 		if (screen_hgt == MAX_SCREEN_HGT && sdl2_tileset_preview_ready()) {
 			preview_ready = TRUE;
@@ -12195,9 +12279,6 @@ static void do_cmd_options_tilesets(void) {
 				 * first frame.
 				 */
 				Term_fresh();
-
-				preview_masks = sdl2_tileset_preview_mask_count();
-				preview_tpc = sdl2_tileset_preview_tiles_per_coord();
 
 				preview_feat_count = 0;
 				preview_item_count = 0;
@@ -12243,28 +12324,30 @@ static void do_cmd_options_tilesets(void) {
    #endif
 
 /* Prompt XXX XXX XXX */
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset, \377yENTER\377w enter a specific tileset name,");
+   #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset (requires restart), \377yENTER\377w enter a specific tileset name,");
+   #endif
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y0\377w...\377y9\377w to enable/disable subset of currently selected tileset, if available,");
    #ifdef GRAPHICS_BG_MASK
     #if defined(USE_SDL2) && defined(USE_GRAPHICS)
-		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode (\377yp\377w apply pending change, \377yESC\377w exit).");
-		if (graphics_changes_pending())
-			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics mode change. Press \377yp\377w to apply or \377yESC\377w to review.");
-		else
-			Term_putstr(0, l++, -1, TERM_L_DARK, "    No pending graphics mode changes.");
+		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode, \377yESC\377w exit).");
     #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode - requires client restart! \377yESC\377w keep changes and exit.");
     #endif
    #else
     #if defined(USE_SDL2) && defined(USE_GRAPHICS)
-		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off (\377yp\377w apply pending change, \377yESC\377w exit).");
-		if (graphics_changes_pending())
-			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics mode change. Press \377yp\377w to apply or \377yESC\377w to review.");
-		else
-			Term_putstr(0, l++, -1, TERM_L_DARK, "    No pending graphics mode changes.");
+		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off, \377yESC\377w exit).");
     #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off - requires client restart! \377yESC\377w keep changes and exit.");
     #endif
+   #endif
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		if (pending_graphics_changes)
+			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics settings change. Press \377yp\377w to apply or \377yESC\377w to review.");
+		else
+			Term_putstr(0, l++, -1, TERM_L_DARK, "    No pending graphics settings changes.");
    #endif
 		l++;
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377sTilesets AUTO-ZOOM to font size which you can change in Window Fonts menu (\377yf\377s).");
@@ -12376,6 +12459,12 @@ static void do_cmd_options_tilesets(void) {
 		Term->scr->cx = Term->wid;
 		Term->scr->cu = 1;
 
+   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+		bool preview_refresh = FALSE;
+		bool apply_failed = FALSE;
+
+   #endif
+
 		/* Get key */
 		ch = inkey();
 		/* Analyze */
@@ -12450,17 +12539,64 @@ static void do_cmd_options_tilesets(void) {
    #endif
 		case ESCAPE:
    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
-			if (graphics_changes_pending()) {
-				if (get_check2("Apply pending graphics mode change?", TRUE)) {
-					if (!apply_graphics_mode_change()) break;
-					reload_preview_indices = TRUE;
+			if (pending_graphics_changes) {
+				if (get_check2("Apply pending graphics settings changes?", TRUE)) {
+					if (graphics_changes_pending()) {
+						if (!apply_graphics_mode_change()) break;
+						preview_refresh = TRUE;
+					}
+					if (tileset_changes_pending(old_tileset, old_subtiles)) {
+						if (!apply_graphics_tileset_change(old_tileset, old_subtiles)) {
+							if (cur_set >= 0) {
+								for (int i = 0; i < MAX_SUBFONTS; i++) {
+									subset_enabled[cur_set][i] = graphic_subtiles[i];
+								}
+							}
+							break;
+						}
+
+						strnfmt(old_tileset, sizeof(old_tileset), "%s", graphic_tiles);
+						tileset_copy_subtiles(old_subtiles, graphic_subtiles);
+						preview_refresh = TRUE;
+					}
 				} else if (get_check2("Discard pending graphics mode change?", FALSE)) {
-					use_graphics_new = use_graphics;
-					c_msg_print("Pending graphics mode change discarded.");
+					if (graphics_changes_pending()) {
+						use_graphics_new = use_graphics;
+						c_msg_print("Pending graphics mode change discarded.");
+					}
+					if (tileset_changes_pending(old_tileset, old_subtiles)) {
+						tileset_restore_previous(old_tileset, old_subtiles);
+						int restored_set = -1;
+						for (j = 0; j < tilesets; j++) {
+							if (!strcasecmp(tileset_name[j], graphic_tiles)) {
+								restored_set = j;
+								break;
+							}
+						}
+						if (restored_set >= 0) {
+							for (int i = 0; i < MAX_SUBFONTS; i++) {
+								subset_enabled[restored_set][i] = graphic_subtiles[i];
+							}
+							cur_set = restored_set;
+						}
+						preview_refresh = TRUE;
+						c_msg_print("Pending graphics tileset change discarded.");
+					}
 				} else {
 					break;
 				}
+				if (tileset_changes_pending(old_tileset, old_subtiles)) {
+					for (j = 0; j < tilesets; j++) {
+						if (!strcasecmp(tileset_name[j], graphic_tiles)) {
+							cur_set = j;
+							break;
+						}
+					}
+				}
 			}
+
+			if (preview_refresh) reload_preview_indices = TRUE;
+
 			go = FALSE;
 			if (strcmp(old_tileset, graphic_tiles)) c_msg_print("\377yGraphical tileset was changed.");
 
@@ -12491,11 +12627,45 @@ static void do_cmd_options_tilesets(void) {
    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
 		case 'p':
 		case 'P':
-			if (graphics_changes_pending()) {
-				if (!apply_graphics_mode_change()) break;
+			if (!pending_graphics_changes) {
+				c_msg_print("No pending graphics changes.");
+				break;
+			}
 
-				reload_preview_indices = TRUE;
-			} else c_msg_print("No pending graphics mode changes.");
+			if (graphics_changes_pending()) {
+				if (!apply_graphics_mode_change()) {
+					apply_failed = TRUE;
+				} else {
+					preview_refresh = TRUE;
+				}
+			}
+
+			if (!apply_failed && tileset_changes_pending(old_tileset, old_subtiles)) {
+				if (!apply_graphics_tileset_change(old_tileset, old_subtiles)) {
+					apply_failed = TRUE;
+				} else {
+					preview_refresh = TRUE;
+					strnfmt(old_tileset, sizeof(old_tileset), "%s", graphic_tiles);
+					tileset_copy_subtiles(old_subtiles, graphic_subtiles);
+				}
+
+				if (cur_set >= 0) {
+					for (int i = 0; i < MAX_SUBFONTS; i++) {
+						subset_enabled[cur_set][i] = graphic_subtiles[i];
+					}
+				}
+
+				for (j = 0; j < tilesets; j++) {
+					if (!strcasecmp(tileset_name[j], graphic_tiles)) {
+						cur_set = j;
+						break;
+					}
+				}
+			}
+
+			if (apply_failed) break;
+
+			if (preview_refresh) reload_preview_indices = TRUE;
 
 			break;
    #endif

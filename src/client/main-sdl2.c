@@ -2086,17 +2086,6 @@ bool sdl2_tileset_preview_ready(void) {
 	return(TRUE);
 }
 
-int sdl2_tileset_preview_mask_count(void) {
-	term_data *td = sdl2_tileset_preview_term();
-
-	if (!td || td->nlayers <= 0) return(0);
-	return(td->nlayers);
-}
-
-int sdl2_tileset_preview_tiles_per_coord(void) {
-	return(graphics_image_tpc);
-}
-
 void sdl2_tileset_preview_fill_cell(int col, int row, int count, uint8_t background_value) {
 	term_data *td = sdl2_tileset_preview_term();
 
@@ -2888,6 +2877,21 @@ bool sdl2_set_graphics_mode(byte mode) {
 	use_graphics_err = init_graphics_sdl2();
 	if (use_graphics_err != 0) {
 		use_graphics = UG_NONE;
+		return(FALSE);
+	}
+
+	return(TRUE);
+}
+
+bool sdl2_reload_graphics_tileset(void) {
+	if (use_graphics == UG_NONE) return(TRUE);
+
+	nuke_graphics_sdl2();
+
+	WIPE(graphics_image_masks_colors, graphics_image_masks_colors);
+
+	use_graphics_err = init_graphics_sdl2();
+	if (use_graphics_err != 0) {
 		return(FALSE);
 	}
 
