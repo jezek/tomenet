@@ -1712,10 +1712,12 @@ int16_t graphics_image_tpr;
 uint8_t graphics_image_mpt;
 // Tiles per coordinate.
 uint8_t graphics_image_tpc;
-// Array of mask colors in RGBA format.
+/* Array of mask colors in RGBA format. The order is background, foreground, outline mask color. */
 uint32_t graphics_image_masks_colors[GRAPHICS_MAX_MPT];
 // Flag indicating that graphic tiles should be re/initialized for every window afrer 'sdl2_graphics_pref_file_processed' callback is called..
 bool graphics_reinitialize;
+/* If there is an color set for outline in pref file. */
+bool graphics_image_has_outline = false;
 
 static void term_data_init_graphics(term_data *td);
 static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, char32_t c_back);
@@ -1725,10 +1727,12 @@ static errr Term_rawpict_sdl2(int x, int y, int c);
 #endif
 static uint32_t graphics_default_mask(uint8_t n);
 
-// Gets called after graphics image pref file is loaded.
+/* Gets called after graphics image pref file is loaded. */
 void sdl2_graphics_pref_file_processed() {
 	fprintf(stderr, "jezek - Loaded graphics pref file\n");
 	if (use_graphics && graphics_reinitialize) {
+		graphics_image_has_outline = graphics_image_masks_colors[2] != 0;
+		fprintf(stderr, "jezek - graphics_image_has_outline: %b\n", graphics_image_has_outline);
 
 		// Check if masks colors are filled. Use default values if not.
 		for (uint8_t i = 0; i < graphics_image_mpt; ++i) {
@@ -1737,7 +1741,6 @@ void sdl2_graphics_pref_file_processed() {
 				fprintf(stderr, "Warning: Mask color for mask no %d is not set in pref file. Using default value #%06x.\n", i, graphics_image_masks_colors[i]);
 			}
 		}
-		//TODO jezek - If UG_2MASK and (only 2 mask colors or empty outline mask or forced outline creatio), create outline mask from background.
 
 		// Initialize graphics for each initialized term.
 		for (int i = 0; i < ANGBAND_TERM_MAX; i++) {
@@ -2258,15 +2261,17 @@ SDL_Surface *ScaleSurface(SDL_Surface *src, uint16_t src_tile_wdt, uint16_t src_
 static uint32_t graphics_default_mask(uint8_t n) {
 	if (graphics_image_mpt == 2) {
 		switch (n) {
-			case 0: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
-			case 1: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
+			case 0: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
+			case 1: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
 		}
 	}
 	else if (graphics_image_mpt == 3) {
 		switch (n) {
-			case 0: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
-			case 1: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
-			case 2: return (GFXMASK_BG2_R << 24) | (GFXMASK_BG2_G << 16) | (GFXMASK_BG2_B << 8) | 0xFF;
+			/* Background (BG) and outline (BG2) mask colors are switched here for compatibility reasons. */
+			/* Well behaved images have their masks colors defined in .prefs file in proper order (bg, fg, bg2). */
+			case 0: return (GFXMASK_BG2_R << 24) | (GFXMASK_BG2_G << 16) | (GFXMASK_BG2_B << 8) | 0xFF;
+			case 1: return (GFXMASK_FG_R << 24) | (GFXMASK_FG_G << 16) | (GFXMASK_FG_B << 8) | 0xFF;
+			case 2: return (GFXMASK_BG_R << 24) | (GFXMASK_BG_G << 16) | (GFXMASK_BG_B << 8) | 0xFF;
 		}
 	}
 	fprintf(stderr, "Warning: Color for mask no %d, when there are %d masks per tile is undefined!\n", n, graphics_image_mpt);
@@ -2337,13 +2342,13 @@ static void term_data_init_graphics(term_data *td) {
 	for (int i = 0; i < td->nlayers; i++) {
 		td->tiles_layers[i] = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
 		// The transparent color has to be different from mask color (color key is only RGB, alpha is not considered).
-		SDL_FillRect(td->tiles_layers[i], NULL, SDL_MapRGBA(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[i] >> 8) & 0xFF) ^ 0xFF, 0x00));
-		SDL_SetColorKey(td->tiles_layers[i], SDL_TRUE, SDL_MapRGB(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF), ((graphics_image_masks_colors[i] >> 16) & 0xFF), ((graphics_image_masks_colors[i] >> 8) & 0xFF)));
+		SDL_FillRect(td->tiles_layers[i], NULL, SDL_MapRGBA(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
+		SDL_SetColorKey(td->tiles_layers[i], SDL_TRUE, SDL_MapRGB(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF)));
 		SDL_SetSurfaceBlendMode(td->tiles_layers[i], SDL_BLENDMODE_NONE);
 	}
 
 	// Create first layer by making background color fully transparent black.
-	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[td->nlayers] >> 24) & 0xFF), ((graphics_image_masks_colors[td->nlayers] >> 16) & 0xFF), ((graphics_image_masks_colors[td->nlayers] >> 8) & 0xFF)));
+	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
 	SDL_BlitSurface(scaled_image, NULL, td->tiles_layers[0], NULL);
 
 	// The scaled image is not needed anymore.
@@ -2355,10 +2360,19 @@ static void term_data_init_graphics(term_data *td) {
 		for (int y = 0; y < td->tiles_layers[0]->h; y++) {
 			for (int x = 0; x < td->tiles_layers[0]->w; x++) {
 				uint32_t pos = (y * td->tiles_layers[0]->w) + x;
+
 				for (int i = 1; i < td->nlayers; i++) {
-					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[i] >> 24) & 0xFF), ((graphics_image_masks_colors[i] >> 16) & 0xFF), ((graphics_image_masks_colors[i] >> 8) & 0xFF), 0xFF)) {
+					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF), 0xFF)) {
 						uint32_t* dstPixels = (uint32_t*)td->tiles_layers[i]->pixels;
 						dstPixels[pos] = srcPixels[pos];
+						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
+					}
+				}
+				/* When there is only one layer, that means outline is not used.
+				 * But if the image contains an outline mask, make it transparent.
+				 */
+				if (td->nlayers == 1 && graphics_image_has_outline) {
+					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[2] >> 24) & 0xFF), ((graphics_image_masks_colors[2] >> 16) & 0xFF), ((graphics_image_masks_colors[2] >> 8) & 0xFF), 0xFF)) {
 						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
 					}
 				}
