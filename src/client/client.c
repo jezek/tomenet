@@ -1005,9 +1005,9 @@ bool write_mangrc(bool creds_only, bool update_creds, bool audiopacks_only) {
 			fputs(format("audioChannels\t\t%d\n", cfg_max_channels), config2);
 			fputs(format("audioBuffer\t\t%d\n", cfg_audio_buffer), config2);
 			fputs(format("soundpackFolder\t\t%s\n", cfg_soundpackfolder), config2);
-			fputs(format("soundpackSubset\t\t%s\n", cfg_soundpack_subset), config2);
+			fputs(format("soundpackSubset\t\t%d\n", (int)cfg_soundpack_subset), config2);
 			fputs(format("musicpackFolder\t\t%s\n", cfg_musicpackfolder), config2);
-			fputs(format("musicpackSubset\t\t%s\n", cfg_musicpack_subset), config2);
+			fputs(format("musicpackSubset\t\t%d\n", (int)cfg_musicpack_subset), config2);
 			fputs(format("audioMaster\t\t%s\n", cfg_audio_master ? "1" : "0"), config2);
 			fputs(format("audioMusic\t\t%s\n", cfg_audio_music ? "1" : "0"), config2);
 			fputs(format("audioSound\t\t%s\n", cfg_audio_sound ? "1" : "0"), config2);

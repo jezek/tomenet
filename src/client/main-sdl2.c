@@ -30,6 +30,7 @@
 #ifdef REGEX_SEARCH
  #include <regex.h>
 #endif
+#include <dirent.h>
 
 /**** Available Types ****/
 
@@ -907,11 +908,15 @@ struct term_data {
 
 #ifdef USE_GRAPHICS
 	SDL_Surface **tiles_layers;
+	SDL_Surface **tiles_layers_sub[MAX_SUBFONTS];
 	SDL_Surface *tilePreparation;
 	uint8_t nlayers;
 	SDL_Surface *tiles_surface;
+	SDL_Surface *tiles_surface_sub[MAX_SUBFONTS];
 	rawpict_tile tiles_rawpict[MAX_TILES_RAWPICT + 1];
+	rawpict_tile tiles_rawpict_sub[MAX_SUBFONTS][MAX_TILES_RAWPICT + 1];
 	int rawpict_scale_wid_org, rawpict_scale_hgt_org, rawpict_scale_wid_use, rawpict_scale_hgt_use;
+	int rawpict_scale_wid_org_sub[MAX_SUBFONTS], rawpict_scale_hgt_org_sub[MAX_SUBFONTS], rawpict_scale_wid_use_sub[MAX_SUBFONTS], rawpict_scale_hgt_use_sub[MAX_SUBFONTS];
 
  #ifdef TILE_CACHE_SIZE
 	struct tile_cache_entry tile_cache[TILE_CACHE_SIZE];
@@ -1335,13 +1340,15 @@ static int CheckEvent(bool wait) {
 /* Frees all graphics structures in provided term_data and sets them to zero values. */
 static void free_graphics(term_data *td) {
 	int i;
+	/* Preserve layer count for sub-tileset cleanup. */
+	int layers = td->nlayers;
 
-	if (td->nlayers > 0 && td->tiles_layers != NULL) {
-		for (i = 0; i < td->nlayers; i++) {
+	if (layers > 0 && td->tiles_layers != NULL) {
+		for (i = 0; i < layers; i++) {
 			if (td->tiles_layers[i] != NULL) SDL_FreeSurface(td->tiles_layers[i]);
 		}
 
-		C_FREE(td->tiles_layers, td->nlayers, SDL_Surface*);
+		C_FREE(td->tiles_layers, layers, SDL_Surface*);
 	}
 	td->tiles_layers = NULL;
 	td->nlayers = 0;
@@ -1356,6 +1363,24 @@ static void free_graphics(term_data *td) {
 	td->rawpict_scale_wid_org = td->rawpict_scale_hgt_org = 0;
 	td->rawpict_scale_wid_use = td->rawpict_scale_hgt_use = 0;
 	C_WIPE(td->tiles_rawpict, MAX_TILES_RAWPICT + 1, rawpict_tile);
+
+	/* Sub-tilesets */
+	for (int s = 0; s < MAX_SUBFONTS; s++) {
+		if (td->tiles_layers_sub[s]) {
+			for (i = 0; i < layers; i++) {
+				if (td->tiles_layers_sub[s][i]) SDL_FreeSurface(td->tiles_layers_sub[s][i]);
+			}
+			C_FREE(td->tiles_layers_sub[s], layers, SDL_Surface*);
+		}
+		td->tiles_layers_sub[s] = NULL;
+		if (td->tiles_surface_sub[s]) {
+			SDL_FreeSurface(td->tiles_surface_sub[s]);
+			td->tiles_surface_sub[s] = NULL;
+		}
+		td->rawpict_scale_wid_org_sub[s] = td->rawpict_scale_hgt_org_sub[s] = 0;
+		td->rawpict_scale_wid_use_sub[s] = td->rawpict_scale_hgt_use_sub[s] = 0;
+		C_WIPE(td->tiles_rawpict_sub[s], MAX_TILES_RAWPICT + 1, rawpict_tile);
+	}
 
  #ifdef TILE_CACHE_SIZE
 	td->cache_position = 0;
@@ -1702,11 +1727,13 @@ static cptr ANGBAND_DIR_XTRA_GRAPHICS = NULL;
 
 // Loaded tiles image.
 SDL_Surface *graphics_image = NULL;
+SDL_Surface *graphics_image_sub[MAX_SUBFONTS] = { NULL };
 
 /* These variables are computed at image load (in 'init_sdl2'). */
 uint16_t graphics_tile_wid, graphics_tile_hgt;
 // Tiles per row.
 int16_t graphics_image_tpr;
+int16_t graphics_image_tpr_sub[MAX_SUBFONTS] = { 0 };
 // Masks per tile.
 uint8_t graphics_image_mpt;
 // Tiles per coordinate.
@@ -1862,33 +1889,42 @@ static void draw_colored_layers_to_surface(SDL_Rect dst_rect, SDL_Surface *dst, 
 		SDL_BlitSurface(preparation, NULL, dst, &dst_rect);
 	}
 }
-static void term_data_draw_graphics_tile(term_data *td, int x, int y, char32_t index, Pixel colors[]) {
+static void term_data_draw_graphics_tile(term_data *td, int x, int y, char32_t index, Pixel colors[], int subset) {
 	//fprintf(stderr, "jezek - draw tile(x: %d, y: %d, index: %d)\n", x, y, index);
 	SDL_Rect dst_rect;
 	SDL_Surface *dst_surface;
 
+	if (subset < 0 || subset >= MAX_SUBFONTS || !td->tiles_layers_sub[subset]) subset = -1;
  #ifdef TILE_CACHE_SIZE
 	//fprintf(stderr, "jezek - try cache\n");
 	dst_rect = (SDL_Rect){0, 0, td->fnt->wid, td->fnt->hgt};
-	dst_surface = graphics_tile_cache_search(td, index, colors);
-	if ( dst_surface != NULL) {
-		//fprintf(stderr, "jezek - found cache\n");
-		SDL_BlitSurface(dst_surface, NULL, td->win->surface, &(SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt});
-		return;
-	}
-	//fprintf(stderr, "jezek - add cache\n");
-	dst_surface = graphics_tile_cache_new(td, index, colors);
+	if (subset == -1) {
+		dst_surface = graphics_tile_cache_search(td, index, colors);
+		if ( dst_surface != NULL) {
+			//fprintf(stderr, "jezek - found cache\n");
+			SDL_BlitSurface(dst_surface, NULL, td->win->surface, &(SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt});
+			return;
+		}
+		//fprintf(stderr, "jezek - add cache\n");
+		//TODO jezek - Also cache subset tiles (store subset value).
+		dst_surface = graphics_tile_cache_new(td, index, colors);
+	} else dst_surface = NULL;
  #else
 	//fprintf(stderr, "jezek - no cache\n");
 	dst_rect = (SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt};
 	dst_surface = td->win->surface;
  #endif
-	uint32_t srcX = (index % graphics_image_tpr) * td->fnt->wid;
-	uint32_t srcY = (index / graphics_image_tpr) * td->fnt->hgt;
 
-	draw_colored_layers_to_surface(dst_rect, dst_surface, td->nlayers, (SDL_Rect){srcX, srcY, td->fnt->wid, td->fnt->hgt}, td->tiles_layers, &colors[1], td->tilePreparation);
+	SDL_Surface **layers = (subset >= 0 ? td->tiles_layers_sub[subset] : td->tiles_layers);
+	int tpr = (subset >= 0 && graphics_image_tpr_sub[subset] > 0 ? graphics_image_tpr_sub[subset] : graphics_image_tpr);
+	uint32_t srcX = (index % tpr) * td->fnt->wid;
+	uint32_t srcY = (index / tpr) * td->fnt->hgt;
+
+	//TODO jezek - Can I really have the same dst_surface and preparation surface?
+	draw_colored_layers_to_surface(dst_rect, dst_surface ? dst_surface : td->tilePreparation, td->nlayers, (SDL_Rect){srcX, srcY, td->fnt->wid, td->fnt->hgt}, layers ? layers : td->tiles_layers, &colors[1], td->tilePreparation);
  #ifdef TILE_CACHE_SIZE
-	SDL_BlitSurface(dst_surface, NULL, td->win->surface, &(SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt});
+	if (dst_surface) SDL_BlitSurface(dst_surface, NULL, td->win->surface, &(SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt});
+	else SDL_BlitSurface(td->tilePreparation, NULL, td->win->surface, &(SDL_Rect){x, y, td->fnt->wid, td->fnt->hgt});
  #endif
 }
 // Draws a tile constructed from indexes using colors onto terminal surface coordinates.
@@ -1896,7 +1932,8 @@ static void term_data_draw_graphics_tile(term_data *td, int x, int y, char32_t i
 // Assumes that colors are made for the 'td->win->surface->format' using SDL_MapRGBA function.
 // The colors array contains colors that replaces mask for every index. Tho only background color is used is the background color for index 0. The background colors for every other index are ignored.
 // Tiles with index 0xFFFFFFFF are skipped and not drawn.
-static errr term_data_draw_graphics_tiles(term_data *td, int x, int y, char32_t *indexes, Pixel colors[]) {
+// The subset array defines if a subset is used for index. Assumes that the length is the same as length of indexes.
+static errr term_data_draw_graphics_tiles(term_data *td, int x, int y, char32_t *indexes, Pixel colors[], int *subsets) {
 	//fprintf(stderr, "jezek - draw tiles(x: %d, y: %d, indexes[0]: %d, indexes[1] %d)\n", x, y, indexes[0], indexes[1]);
 
 	// Draw rectangle filled with the background color of the bottom tile onto the window.
@@ -1904,8 +1941,7 @@ static errr term_data_draw_graphics_tiles(term_data *td, int x, int y, char32_t 
 
 	for (uint32_t i = 0; i < graphics_image_tpc; i++) {
 		if (indexes[i] == 0xFFFFFFFF) continue;
-		if (y == 1 && indexes[0] == 50 && indexes[1] == 307 && i == 1) continue;
-		term_data_draw_graphics_tile(td, x, y, indexes[i], &colors[i * graphics_image_mpt]);
+		term_data_draw_graphics_tile(td, x, y, indexes[i], &colors[i * graphics_image_mpt], subsets ? subsets[i] : -1);
 	}
 	return(0);
 }
@@ -1960,7 +1996,7 @@ static errr Term_pict_sdl2(int x, int y, byte a, char32_t c) {
 	x *= Infofnt->wid;
 	y *= Infofnt->hgt;
 
-	term_data_draw_graphics_tiles(td, td->win->bw + x, td->win->bh + y, (char32_t[]){c - MAX_FONT_CHAR - 1}, (Pixel[]){Infoclr->bg, Infoclr->fg});
+	term_data_draw_graphics_tiles(td, td->win->bw + x, td->win->bh + y, (char32_t[]){c - MAX_FONT_CHAR - 1}, (Pixel[]){Infoclr->bg, Infoclr->fg}, (int[]){ ((c >= 0 && c < MAX_GFX_TILES) ? c_subtileset[c] : -1) });
 	return(0);
 }
 
@@ -1978,6 +2014,7 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
 	term_data *td;
 	char32_t indexes[GRAPHICS_MAX_TPC] = {0};
 	Pixel colors[GRAPHICS_MAX_MPT * GRAPHICS_MAX_TPC] = {0};
+	int subsets[GRAPHICS_MAX_TPC] = {-1};
 
 	// Catch use in chat instead of as feat attr, or we crash. :-s
 	// (term-idx 0 is the main window; screen-pad-left check: In case it is used in the status bar for some reason; screen-pad-top checks: main screen top chat line or status line).
@@ -2027,6 +2064,8 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
 	// Outline color. Set to background color.
 	colors[2] = Infoclr->bg;
 
+	if (c_back >= 0 && c_back < MAX_GFX_TILES) subsets[0] = c_subtileset[c_back];
+
 	a = term2attr(a);
  #ifndef EXTENDED_COLOURS_PALANIM
   #ifndef EXTENDED_BG_COLOURS
@@ -2050,6 +2089,8 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
 	// Outline color. Use semi-transparent black.
 	colors[graphics_image_mpt + 2] = (Pixel){0, 0, 0, OUTLINE_ALPHA};
 
+	if (c >= 0 && c < MAX_GFX_TILES) subsets[1] = c_subtileset[c];
+
 	if (Pixel_equal(Infoclr->fg, Infoclr->bg)) {
 		// Foreground color is the same as background color. If this was text, the tile would be rendered as solid block of color.
 		// But an image tile could contain some other color pixels and could result in no solid color tile. That's why paint a solid block as intended.
@@ -2060,28 +2101,42 @@ static errr Term_pict_sdl2_2mask(int x, int y, byte a, char32_t c, byte a_back, 
 	x *= Infofnt->wid;
 	y *= Infofnt->hgt;
 
-	return term_data_draw_graphics_tiles(td, td->win->bw + x, td->win->bh + y, indexes, colors);
+	return term_data_draw_graphics_tiles(td, td->win->bw + x, td->win->bh + y, indexes, colors, subsets);
 }
 #endif /* GRAPHICS_BG_MASK */
 
 static errr Term_rawpict_sdl2(int x, int y, int c) {
 	term_data *td = (term_data*)(Term->data);
 
-	if (!td || !td->tiles_surface) return(0);
+	if (!td) return(0);
 	if (c < 0 || c > MAX_TILES_RAWPICT) return(0);
-	if (!td->tiles_rawpict[c].defined) {
+
+	int subset = tiles_rawpict_subtileset[c];
+	rawpict_tile trp;
+	SDL_Surface *surface = NULL;
+
+	if (subset >= 0 && subset < MAX_SUBFONTS && td->tiles_surface_sub[subset]) {
+		trp = td->tiles_rawpict_sub[subset][c];
+		surface = td->tiles_surface_sub[subset];
+	} else if (td->tiles_surface) {
+		trp = td->tiles_rawpict[c];
+		surface = td->tiles_surface;
+	}
+
+	if (!surface) return(0);
+
+	if (!trp.defined) {
 		return(Infofnt_text_std(x, y, " ", 1));
 	}
-	if (td->tiles_rawpict[c].w <= 0 || td->tiles_rawpict[c].h <= 0) return(0);
+	if (trp.w <= 0 || trp.h <= 0) return(0);
 
 	int px = td->win->bw + x * Infofnt->wid;
 	int py = td->win->bh + y * Infofnt->hgt;
 
-	SDL_Rect src = { td->tiles_rawpict[c].x, td->tiles_rawpict[c].y,
-			 td->tiles_rawpict[c].w, td->tiles_rawpict[c].h };
+	SDL_Rect src = { trp.x, trp.y, trp.w, trp.h };
 	SDL_Rect dst = { px, py, src.w, src.h };
 
-	SDL_BlitSurface(td->tiles_surface, &src, td->win->surface, &dst);
+	SDL_BlitSurface(surface, &src, td->win->surface, &dst);
 
 	return(0);
 }
@@ -2166,7 +2221,8 @@ void sdl2_tileset_preview_draw_tile(int col, int row, int type, char32_t tile_ch
 		int px = td->win->bw + (col + i) * td->fnt->wid;
 		int py = td->win->bh + row * td->fnt->hgt;
 		SDL_FillRect(td->win->surface, &(SDL_Rect){px, py, td->fnt->wid, td->fnt->hgt}, SDL_MapRGBA(td->win->surface->format, Pixel_quadruplet(colors[0])));
-		term_data_draw_graphics_tile(td, px, py, tile_index, colors);
+		//TODO jezek - Use subtiles in preview.
+		term_data_draw_graphics_tile(td, px, py, tile_index, colors, -1);
 	}
 
 	uint32_t srcX = (tile_index % graphics_image_tpr) * td->fnt->wid;
@@ -2186,7 +2242,12 @@ void sdl2_tileset_preview_draw_tile(int col, int row, int type, char32_t tile_ch
 	
 	WIPE(colors, colors);
 	char32_t indexes[GRAPHICS_MAX_TPC];
-	for (int i = 0; i < GRAPHICS_MAX_TPC; i++) indexes[i] = 0xFFFFFFFF;
+	int subtiles[GRAPHICS_MAX_TPC];
+	for (int i = 0; i < GRAPHICS_MAX_TPC; i++) {
+		indexes[i] = 0xFFFFFFFF;
+		//TODO jezek - Use subtiles in preview.
+		subtiles[i] = -1;
+	}
 
 	indexes[0] = background_char - MAX_FONT_CHAR - 1;
 	indexes[1] = tile_index;
@@ -2213,7 +2274,7 @@ void sdl2_tileset_preview_draw_tile(int col, int row, int type, char32_t tile_ch
 
 		int px = td->win->bw + (col + i) * td->fnt->wid;
 		int py = td->win->bh + (row + 1) * td->fnt->hgt;
-		term_data_draw_graphics_tiles(td, px, py, indexes, colors);
+		term_data_draw_graphics_tiles(td, px, py, indexes, colors, subtiles);
 	}
 }
 
@@ -2225,17 +2286,41 @@ void tiles_rawpict_scale(void) {
 		int width2 = td->rawpict_scale_wid_use;
 		int height2 = td->rawpict_scale_hgt_use;
 
-		for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
-			if (!tiles_rawpict_org[i].defined || !width1 || !height1) {
-				td->tiles_rawpict[i].defined = FALSE;
-				continue;
+		if (width1 && height1) {
+			for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
+				if (!tiles_rawpict_org[i].defined) {
+					td->tiles_rawpict[i].defined = FALSE;
+					continue;
+				}
+				td->tiles_rawpict[i].defined = TRUE;
+				td->tiles_rawpict[i].x = (tiles_rawpict_org[i].x * width2) / width1;
+				td->tiles_rawpict[i].y = (tiles_rawpict_org[i].y * height2) / height1;
+				td->tiles_rawpict[i].w = (tiles_rawpict_org[i].w * width2) / width1;
+				td->tiles_rawpict[i].h = (tiles_rawpict_org[i].h * height2) / height1;
 			}
+		}
 
-			td->tiles_rawpict[i].defined = TRUE;
-			td->tiles_rawpict[i].x = (tiles_rawpict_org[i].x * width2) / width1;
-			td->tiles_rawpict[i].y = (tiles_rawpict_org[i].y * height2) / height1;
-			td->tiles_rawpict[i].w = (tiles_rawpict_org[i].w * width2) / width1;
-			td->tiles_rawpict[i].h = (tiles_rawpict_org[i].h * height2) / height1;
+		for (int sub = 0; sub < MAX_SUBFONTS; sub++) {
+			if (!td->tiles_surface_sub[sub]) continue;
+
+			width1 = td->rawpict_scale_wid_org_sub[sub];
+			height1 = td->rawpict_scale_hgt_org_sub[sub];
+			width2 = td->rawpict_scale_wid_use_sub[sub];
+			height2 = td->rawpict_scale_hgt_use_sub[sub];
+
+			if (!width1 || !height1) continue;
+
+			for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
+				if (!tiles_rawpict_org_sub[sub][i].defined) {
+					td->tiles_rawpict_sub[sub][i].defined = FALSE;
+					continue;
+				}
+				td->tiles_rawpict_sub[sub][i].defined = TRUE;
+				td->tiles_rawpict_sub[sub][i].x = (tiles_rawpict_org_sub[sub][i].x * width2) / width1;
+				td->tiles_rawpict_sub[sub][i].y = (tiles_rawpict_org_sub[sub][i].y * height2) / height1;
+				td->tiles_rawpict_sub[sub][i].w = (tiles_rawpict_org_sub[sub][i].w * width2) / width1;
+				td->tiles_rawpict_sub[sub][i].h = (tiles_rawpict_org_sub[sub][i].h * height2) / height1;
+			}
 		}
 	}
 }
@@ -2532,6 +2617,86 @@ static void term_data_init_graphics(term_data *td) {
 	// The scaled image is not needed anymore.
 	SDL_FreeSurface(scaled_image);
 
+	/* Prepare (partial) sub-tilesets */
+	for (int s = 0; s < MAX_SUBFONTS; s++) {
+		if (!graphic_subtiles[s]) continue;
+		if (!graphics_image_sub[s]) continue;
+
+		SDL_Surface *scaled_sub = ScaleSurface(graphics_image_sub[s], graphics_tile_wid, graphics_tile_hgt, td->fnt->wid, td->fnt->hgt);
+		if (!scaled_sub) {
+			//TODO jezek - Print warning.
+			graphic_subtiles[s] = FALSE;
+			continue;
+		}
+
+		//TODO jezek - Refactor layer initialization above into standalone function and reuse here.
+		uint8_t nlayers_sub = graphics_image_mpt - 1;
+		C_MAKE(td->tiles_layers_sub[s], nlayers_sub, SDL_Surface*);
+		for (int l = 0; l < nlayers_sub; l++) {
+			td->tiles_layers_sub[s][l] = SDL_CreateRGBSurfaceWithFormat(0, scaled_sub->w, scaled_sub->h, 32, SDL_PIXELFORMAT_RGBA32);
+			SDL_FillRect(td->tiles_layers_sub[s][l], NULL, SDL_MapRGBA(td->tiles_layers_sub[s][l]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[l + 1] >> 16) & 0XFF) ^ 0XFF, ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF) ^ 0XFF, 0x00));
+			SDL_SetColorKey(td->tiles_layers_sub[s][l], SDL_TRUE, SDL_MapRGB(td->tiles_layers_sub[s][l]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 16) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF)));
+			SDL_SetSurfaceBlendMode(td->tiles_layers_sub[s][l], SDL_BLENDMODE_NONE);
+		}
+
+		/* background is colour #0 (masked) which is the mask colour of tileset #1 */
+		SDL_SetColorKey(scaled_sub, SDL_TRUE, SDL_MapRGB(scaled_sub->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
+		SDL_BlitSurface(scaled_sub, NULL, td->tiles_layers_sub[s][0], NULL);
+
+		/* separate the mask colours into each layer */
+		if (nlayers_sub > 1) {
+			uint32_t *srcPixels = (uint32_t*)td->tiles_layers_sub[s][0]->pixels;
+			for (int y = 0; y < td->tiles_layers_sub[s][0]->h; y++) {
+				for (int x = 0; x < td->tiles_layers_sub[s][0]->w; x++) {
+					uint32_t pos = (y * td->tiles_layers_sub[s][0]->w) + x;
+					for (int l = 1; l < nlayers_sub; l++) {
+						if (graphics_image_masks_colors[l + 1] == 0) continue;
+						if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers_sub[s][0]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 16) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF), 0xFF)) {
+							uint32_t *dstPixels = (uint32_t*)td->tiles_layers_sub[s][l]->pixels;
+							dstPixels[pos] = srcPixels[pos];
+							srcPixels[pos] = SDL_MapRGBA(td->tiles_layers_sub[s][0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
+						}
+					}
+				}
+			}
+		}
+
+		//TODO jezek - Generate outline for subtiles. (Refactor outline generation above to standalone function and reuse here.)
+
+		//TODO jezek - Refactor scaled rawpict above into standalone function and reuse here.
+		/* Keep a copy of the scaled sheet for rawpict drawing. */
+		td->tiles_surface_sub[s] = SDL_CreateRGBSurfaceWithFormat(0, scaled_sub->w, scaled_sub->h, 32, SDL_PIXELFORMAT_RGBA32);
+		if (td->tiles_surface_sub[s]) {
+			SDL_SetSurfaceBlendMode(td->tiles_surface_sub[s], SDL_BLENDMODE_BLEND);
+			SDL_BlitSurface(scaled_sub, NULL, td->tiles_surface_sub[s], NULL);
+		}
+
+		int w1 = (graphics_image_sub[s]) ? graphics_image_sub[s]->w : 0;
+		int h1 = (graphics_image_sub[s]) ? graphics_image_sub[s]->h : 0;
+		int w2 = scaled_sub->w;
+		int h2 = scaled_sub->h;
+
+		td->rawpict_scale_wid_org_sub[s] = w1;
+		td->rawpict_scale_hgt_org_sub[s] = h1;
+		td->rawpict_scale_wid_use_sub[s] = w2;
+		td->rawpict_scale_hgt_use_sub[s] = h2;
+
+		for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
+			if (!tiles_rawpict_org_sub[s][i].defined || !w1 || !h1) {
+				td->tiles_rawpict_sub[s][i].defined = FALSE;
+				continue;
+			}
+
+			td->tiles_rawpict_sub[s][i].defined = TRUE;
+			td->tiles_rawpict_sub[s][i].x = (tiles_rawpict_org_sub[s][i].x * w2) / w1;
+			td->tiles_rawpict_sub[s][i].y = (tiles_rawpict_org_sub[s][i].y * h2) / h1;
+			td->tiles_rawpict_sub[s][i].w = (tiles_rawpict_org_sub[s][i].w * w2) / w1;
+			td->tiles_rawpict_sub[s][i].h = (tiles_rawpict_org_sub[s][i].h * h2) / h1;
+		}
+
+		SDL_FreeSurface(scaled_sub);
+	}
+
 	// Initialize preparation surface.
 	td->tilePreparation = SDL_CreateRGBSurfaceWithFormat(0, td->fnt->wid, td->fnt->hgt, 32, SDL_PIXELFORMAT_RGBA32);
 	SDL_SetSurfaceBlendMode(td->tilePreparation, SDL_BLENDMODE_BLEND);
@@ -2587,6 +2752,18 @@ static errr term_data_init(int index, term_data *td, bool fixed, cptr name, cptr
 		}
 	}
 	//fprintf(stderr, "jezek -  term_data_init: font initialized\n");
+
+#ifdef USE_GRAPHICS
+	td->tiles_layers = NULL;
+	td->tiles_surface = NULL;
+	for (int s = 0; s < MAX_SUBFONTS; s++) {
+		td->tiles_layers_sub[s] = NULL;
+		td->tiles_surface_sub[s] = NULL;
+		td->rawpict_scale_wid_org_sub[s] = td->rawpict_scale_hgt_org_sub[s] = 0;
+		td->rawpict_scale_wid_use_sub[s] = td->rawpict_scale_hgt_use_sub[s] = 0;
+		C_WIPE(td->tiles_rawpict_sub[s], MAX_TILES_RAWPICT + 1, rawpict_tile);
+	}
+#endif
 
 
 
@@ -2945,15 +3122,51 @@ errr init_graphics_sdl2(void) {
 		return(102);
 	}
 
+	for (int i = 0; i < MAX_GFX_TILES; i++) c_subtileset[i] = -1;
+
 	if (ANGBAND_DIR_XTRA_GRAPHICS == NULL) {
 		/* Build & allocate the graphics path. */
 		path_build(path, 1024, ANGBAND_DIR_XTRA, "graphics");
 		ANGBAND_DIR_XTRA_GRAPHICS = string_make(path);
 	}
 
+	//TODO jezek - Define ANGBAND_USER_DIR_XTRA_GRAPHICS and first search there for the bitmaps.
 	/* Build the name of the graphics file. */
 	path_build(filename, 1024, ANGBAND_DIR_XTRA_GRAPHICS, graphic_tiles);
 	strcat(filename, ".bmp");
+
+	/* Discover (partial) subtile files matching selected tileset */
+	//TODO jezek - Also search in ANGBAND_USER_DIR_XTRA_GRAPHICS, file in user space gets priority.
+	DIR *dir = opendir(ANGBAND_DIR_XTRA_GRAPHICS);
+	if (dir) {
+		struct dirent *ent;
+		while ((ent = readdir(dir))) {
+			char tmp_name[256], *csub, *csub_end;
+			int len;
+
+			len = strlen(ent->d_name);
+			if (len < 5) continue; /* need at least ".bmp" */
+			if (strcmp(ent->d_name + len - 4, ".bmp")) continue;
+
+			strcpy(tmp_name, ent->d_name);
+			tmp_name[len - 4] = '\0'; /* strip extension */
+
+			if (!(csub = strchr(tmp_name, '#'))) continue; /* valid sub index marker */
+			*csub = 0;
+			if (strcmp(tmp_name, graphic_tiles)) continue; /* base filename must match main tileset */
+			if (!(csub_end = strchr(csub + 1, '_'))) continue; /* valid sub index terminator */
+			*csub_end = 0;
+
+			int idx = atoi(csub + 1);
+			if (idx < 0 || idx >= MAX_SUBFONTS) continue;
+
+			/* Accept if enabled */
+			graphic_subtiles_file[idx][0] = 0;
+			if (!graphic_subtiles[idx]) continue;
+			strcpy(graphic_subtiles_file[idx], ent->d_name);
+		}
+		closedir(dir);
+	}
 
 	/* Load .bmp image. */
 	graphics_image = SDL_LoadBMP(filename);
@@ -2999,6 +3212,55 @@ errr init_graphics_sdl2(void) {
  #endif
 	fprintf(stderr, "jezek - masks per tile: %u\n", graphics_image_mpt);
 
+	/* Load (partial) subtile images */
+	for (int i = 0; i < MAX_SUBFONTS; i++) {
+		if (!graphic_subtiles[i]) continue; /* subset is disabled */
+		if (!graphic_subtiles_file[i][0]) continue; /* file not present */
+
+		//TODO jezek - Look in ANGBAND_USER_DIR_XTRA_GRAPHICS first.
+		path_build(filename, 1024, ANGBAND_DIR_XTRA_GRAPHICS, graphic_subtiles_file[i]);
+		//TODO jezek - Comment blocks.
+		SDL_Surface *img = SDL_LoadBMP(filename);
+		if (!img) {
+			sprintf(use_graphics_errstr, "Graphics subfile \"%s\" SDL_LoadBMP error: %s\n", filename, SDL_GetError());
+			logprint(format("%s\n", use_graphics_errstr));
+			graphic_subtiles[i] = FALSE;
+			continue;
+		}
+
+		if (img->format->format != SDL_PIXELFORMAT_RGBA32) {
+			SDL_Surface* convertedSurface = SDL_ConvertSurfaceFormat(img, SDL_PIXELFORMAT_RGBA32, 0);
+			if (!convertedSurface) {
+				sprintf(use_graphics_errstr, "Error converting subimage into RGBA32 format: %s\n", SDL_GetError());
+				SDL_FreeSurface(img);
+				logprint(format("%s\n", use_graphics_errstr));
+				graphic_subtiles[i] = FALSE;
+				continue;
+			}
+			SDL_FreeSurface(img);
+			img = convertedSurface;
+		}
+
+		if (img->w < graphics_tile_wid || img->h < graphics_tile_hgt) {
+			sprintf(use_graphics_errstr, "Invalid subimage dimensions (width x height): %dx%d", img->w, img->h);
+			logprint(format("%s\n", use_graphics_errstr));
+			SDL_FreeSurface(img);
+			graphic_subtiles[i] = FALSE;
+			continue;
+		}
+
+		graphics_image_tpr_sub[i] = img->w / graphics_tile_wid;
+		if (graphics_image_tpr_sub[i] <= 0) {
+			sprintf(use_graphics_errstr, "Invalid subimage tiles per row count: %d", graphics_image_tpr_sub[i]);
+			logprint(format("%s\n", use_graphics_errstr));
+			SDL_FreeSurface(img);
+			graphic_subtiles[i] = FALSE;
+			continue;
+		}
+
+		graphics_image_sub[i] = img;
+	}
+
 	graphics_reinitialize = true;
 
 	return(0);
@@ -3019,6 +3281,13 @@ static void nuke_graphics_sdl2(void) {
 		if (graphics_image) {
 			SDL_FreeSurface(graphics_image);
 			graphics_image = NULL;
+		}
+		for (int s = 0; s < MAX_SUBFONTS; s++) {
+			if (graphics_image_sub[s]) {
+				SDL_FreeSurface(graphics_image_sub[s]);
+				graphics_image_sub[s] = NULL;
+			}
+			graphics_image_tpr_sub[s] = 0;
 		}
 		graphics_image_tpr = 0;
 		graphics_image_mpt = 0;

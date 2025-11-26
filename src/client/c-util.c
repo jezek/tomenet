@@ -11300,9 +11300,9 @@ static void do_cmd_options_win(void) {
 #ifdef ENABLE_SUBWINDOW_MENU
  #if defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2)
 static int font_name_cmp(const void *a, const void *b) {
-   #if 0 /* simple way */
+  #if 0 /* simple way */
 	return(strcmp((const char*)a, (const char*)b));
-   #elif 0 /* sort in single-digit numbers before double-digit ones */
+  #elif 0 /* sort in single-digit numbers before double-digit ones */
 	char at[256], bt[256];
 
 	at[0] = '0';
@@ -11312,7 +11312,7 @@ static int font_name_cmp(const void *a, const void *b) {
 	if (atoi((char*)b) < 10) strcpy(bt + 1, (char *)b);
 	else strcpy(bt, (char *)b);
 	return(strcmp(at, bt));
-   #else /* Sort by width, then height */
+  #else /* Sort by width, then height */
 	/* Let's sort the array by font size actually */
 	int fwid1, fhgt1, fwid2, fhgt2;
 	char *fmatch;
@@ -11330,9 +11330,8 @@ static int font_name_cmp(const void *a, const void *b) {
 	if (fwid1 != fwid2) return(fwid1 > fwid2) ? 1 : -1;
 	else if (fhgt1 != fhgt2) return(fhgt1 > fhgt2) ? 1 : -1;
 	else return(0);
-   #endif
+  #endif
 }
-//  #endif
 
 static void do_cmd_options_fonts(void) {
 	int j, d, vertical_offset = 6;
@@ -11346,10 +11345,10 @@ static void do_cmd_options_fonts(void) {
 	char graphic_font_name[MAX_FONTS][256];
 	int graphic_fonts = 0;
 
-   #ifdef USE_X11
+  #ifdef USE_X11
 	int x11_refresh = 50;
 	FILE *fff;
-   #elif defined(USE_SDL2)
+  #elif defined(USE_SDL2)
 	DIR *dir;
 	struct dirent *ent;
 	char base_name[256];
@@ -11358,11 +11357,11 @@ static void do_cmd_options_fonts(void) {
 	char font_base[256];
 	int8_t size = 0;
 	char new_fnt[256];
-   #elif defined(WINDOWS)
+  #elif defined(WINDOWS)
 	char *cp, *cpp;
-   #endif
+  #endif
 
-   #ifdef WINDOWS /* Windows uses the .FON files */
+  #ifdef WINDOWS /* Windows uses the .FON files */
 	DIR *dir;
 	struct dirent *ent;
 
@@ -11395,7 +11394,7 @@ static void do_cmd_options_fonts(void) {
 		}
 	}
 	closedir(dir);
-   #elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
+  #elif defined(USE_SDL2) /* SDL2 uses .pcf or .ttf fonts */
   //TODO jezek - Test loading fonts from user & game dir.
 
 	/* Prepare font arrays. */
@@ -11471,7 +11470,7 @@ static void do_cmd_options_fonts(void) {
 		}
 		closedir(dir);
 	}
-   #elif defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
+  #elif defined(USE_X11) /* Linux/OSX use at least the basic system fonts (/usr/share/fonts/misc) - C. Blue */
 	int misc_fonts = 0;
 
 	if (fonts < MAX_FONTS) {
@@ -11521,23 +11520,23 @@ static void do_cmd_options_fonts(void) {
 		}
 		fclose(fff);
 	}
-   #endif
+  #endif
 
 	if (!fonts && !graphic_fonts) {
-   #ifdef USE_SDL2
+  #ifdef USE_SDL2
 		c_msg_format("No .pcf or .ttf font files found in user (%s%sfont) nor in game (%s%sfont) font directory.", ANGBAND_USER_DIR_XTRA, SDL2_PATH_SEP, ANGBAND_DIR_XTRA, SDL2_PATH_SEP);
-   #else
+  #else
 		c_msg_format("No font files found in directory (%s).", path);
-   #endif
+  #endif
 		return;
 	}
 
 	qsort(font_name, fonts, sizeof(char[256]), font_name_cmp);
-   #if defined(WINDOWS) || defined(USE_SDL2)
+  #if defined(WINDOWS) || defined(USE_SDL2)
 	qsort(graphic_font_name, graphic_fonts, sizeof(char[256]), font_name_cmp);
-   #endif
+  #endif
 
-   #ifdef WINDOWS /* windows client currently saves full paths (todo: just change to filename only) */
+  #ifdef WINDOWS /* windows client currently saves full paths (todo: just change to filename only) */
 	for (j = 0; j < fonts; j++) {
 		strcpy(tmp_name, font_name[j]);
 		//path_build(font_name[j], 1024, path, font_name[j]);
@@ -11567,21 +11566,21 @@ static void do_cmd_options_fonts(void) {
 	/* Interact */
 	while (go) {
 		/* Prompt XXX XXX XXX */
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 		if (use_logfont)
 			Term_putstr(0, 0, -1, TERM_WHITE, "  <\377yup\377w/\377ydown\377w> select window, \377yv\377w visibility, \377y-\377w,\377y+\377w/\377y,\377w,\377y.\377w height/width, \377ya\377w antialiasing");
 		else
-   #endif
+  #endif
 		Term_putstr(0, 0, -1, TERM_WHITE, "  <\377yup\377w/\377ydown\377w> to select window, \377yv\377w toggle visibility, \377y-\377w/\377y+\377w,\377y=\377w smaller/bigger font");
 		Term_putstr(0, 1, -1, TERM_WHITE, "  \377ySPACE\377w enter new window title, \377yr\377w reset window title to default, \377yR\377w reset all");
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 		if (use_logfont)
 			Term_putstr(0, 2, -1, TERM_WHITE, format("  \377yENTER\377w enter new logfont size, \377yL\377w %s logfont, \377yESC\377w keep changes and exit", use_logfont_ini ? "disable" : "enable"));
 		else
 			Term_putstr(0, 2, -1, TERM_WHITE, format("  \377yENTER\377w enter a specific font name, \377yL\377w %s logfont, \377yESC\377w keep changes and exit", use_logfont_ini ? "disable" : "enable"));
-   #else
+  #else
 		Term_putstr(0, 2, -1, TERM_WHITE, "  \377yENTER\377w enter a specific font name, \377yESC\377w keep changes and exit");
-   #endif
+  #endif
 		Term_putstr(0, 4, -1, TERM_WHITE, format("  %d font%s and %d graphic font%s available, \377yl\377w to list in message window", fonts, fonts == 1 ? "" : "s", graphic_fonts, graphic_fonts == 1 ? "" : "s"));
 
 		/* Display the windows */
@@ -11600,10 +11599,10 @@ static void do_cmd_options_fonts(void) {
 
 			/* Display the font of this window */
 			if (c_cfg.use_color && !term_get_visibility(j)) a = TERM_L_DARK;
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont && win_logfont_get_aa(j)) sprintf(buf, "%-19s (antialiased)", get_font_name(j));
 			else
-   #endif
+  #endif
 			strcpy(buf, get_font_name(j));
 			buf[59] = 0;
 			while (strlen(buf) < 59) strcat(buf, " ");
@@ -11662,13 +11661,13 @@ static void do_cmd_options_fonts(void) {
 			strcpy(ang_term_name[y], tmp_name);
 
 			/* Immediately change live window title */
-   #ifdef WINDOWS
+  #ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
-   #elif defined(USE_SDL2)
+  #elif defined(USE_SDL2)
 			set_window_title_sdl2(y, ang_term_name[y]);
-   #else /* assume POSIX */
+  #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
-   #endif
+  #endif
 			break;
 
 		case 'r':
@@ -11689,13 +11688,13 @@ static void do_cmd_options_fonts(void) {
 			}
 
 			/* Immediately change live window title */
-   #ifdef WINDOWS
+  #ifdef WINDOWS
 			set_window_title_win(y, ang_term_name[y]);
-   #elif defined(USE_SDL2)
+  #elif defined(USE_SDL2)
 			set_window_title_sdl2(y, ang_term_name[y]);
-   #else /* assume POSIX */
+  #else /* assume POSIX */
 			set_window_title_x11(y, ang_term_name[y]);
-   #endif
+  #endif
 			break;
 
 		case 'R':
@@ -11714,25 +11713,25 @@ static void do_cmd_options_fonts(void) {
 			/* Immediately change live window title */
 			for (j = 0; j < ANGBAND_TERM_MAX; j++) {
 				Term_putstr(1, vertical_offset + j, -1, TERM_DARK, "                                       ");
-   #ifdef WINDOWS
+  #ifdef WINDOWS
 				set_window_title_win(j, ang_term_name[j]);
-   #elif defined(USE_SDL2)
+  #elif defined(USE_SDL2)
 				set_window_title_sdl2(j, ang_term_name[j]);
-   #else /* assume POSIX */
+  #else /* assume POSIX */
 				set_window_title_x11(j, ang_term_name[j]);
-   #endif
+  #endif
 			}
 			break;
 
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case '.':
 			if (use_logfont) win_logfont_inc(y, FALSE);
 			else bell();
 			break;
-   #endif
+  #endif
 		case '=':
 		case '+':
-   #ifdef USE_SDL2
+  #ifdef USE_SDL2
 			{
 				cur = get_font_name(y);
 				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
@@ -11751,22 +11750,22 @@ static void do_cmd_options_fonts(void) {
 				}
 			}
 			break;
-   #endif
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #endif
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_inc(y, TRUE);
 				break;
 			}
-   #endif
+  #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
 				/* Include the graphic fonts, because we are cycling the clone-map */
 				for (j = 0; j < graphic_fonts - 1; j++) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 						set_font_name(y, graphic_font_name[j + 1]);
-   #ifdef USE_X11
+  #ifdef USE_X11
 						sync_sleep(x11_refresh);
-   #endif
+  #endif
 						break;
 					}
 				}
@@ -11775,23 +11774,23 @@ static void do_cmd_options_fonts(void) {
 					if (!strcasecmp(font_name[j], get_font_name(y))) {
 						/* advance to next font file in lib/xtra/font */
 						set_font_name(y, font_name[j + 1]);
-   #ifdef USE_X11
+  #ifdef USE_X11
 						sync_sleep(x11_refresh);
-   #endif
+  #endif
 						break;
 					}
 				}
 			}
 			break;
 
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case ',':
 			if (use_logfont) win_logfont_dec(y, FALSE);
 			else bell();
 			break;
-   #endif
+  #endif
 		case '-':
-   #ifdef USE_SDL2
+  #ifdef USE_SDL2
 			{
 				cur = get_font_name(y);
 				if (is_ttf_font(cur, font_base, sizeof(font_base), &size)) {
@@ -11810,13 +11809,13 @@ static void do_cmd_options_fonts(void) {
 				}
 			}
 			break;
-   #endif
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #endif
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				win_logfont_dec(y, TRUE);
 				break;
 			}
-   #endif
+  #endif
 			/* find out which of the fonts in lib/xtra/fonts we're currently using */
 			if ((window_flag[y] & PW_CLONEMAP) && graphic_fonts > 0) {
 				/* Include the graphic fonts, because we are cycling the clone-map. */
@@ -11824,9 +11823,9 @@ static void do_cmd_options_fonts(void) {
 					if (!strcasecmp(graphic_font_name[j], get_font_name(y))) {
 						/* retreat to previous font file in lib/xtra/font */
 						set_font_name(y, graphic_font_name[j - 1]);
-   #ifdef USE_X11
+  #ifdef USE_X11
 						sync_sleep(x11_refresh);
-   #endif
+  #endif
 						break;
 					}
 				}
@@ -11834,9 +11833,9 @@ static void do_cmd_options_fonts(void) {
 				for (j = 1; j < fonts; j++) {
 					if (!strcasecmp(font_name[j], get_font_name(y))) {
 						set_font_name(y, font_name[j - 1]);
-   #ifdef USE_X11
+  #ifdef USE_X11
 						sync_sleep(x11_refresh);
-   #endif
+  #endif
 						break;
 					}
 				}
@@ -11844,7 +11843,7 @@ static void do_cmd_options_fonts(void) {
 			break;
 
 		case '\r':
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 			if (use_logfont) {
 				Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter new size in format '<width>x<height>' (eg \"9x15\"):");
 				Term_gotoxy(0, 21);
@@ -11858,7 +11857,7 @@ static void do_cmd_options_fonts(void) {
 				win_logfont_set(y, tmp_name);
 				break;
 			}
-   #endif
+  #endif
 			Term_putstr(0, 20, -1, TERM_L_GREEN, "Enter a font name:");
 			Term_gotoxy(0, 21);
 			strcpy(tmp_name, "");
@@ -11869,9 +11868,9 @@ static void do_cmd_options_fonts(void) {
 			clear_from(20);
 			if (!tmp_name[0]) break;
 			set_font_name(y, tmp_name);
-   #ifdef USE_X11
+  #ifdef USE_X11
 			sync_sleep(x11_refresh);
-   #endif
+  #endif
 			break;
 
 		case 'l':
@@ -11886,14 +11885,14 @@ static void do_cmd_options_fonts(void) {
 				c_message_add(format("-- Fonts (%d): --", fonts));
 				tmp_name2[0] = 0;
 				for (j = 0; j < fonts; j++) {
-   #ifdef WINDOWS
+  #ifdef WINDOWS
 					/* Windows font names contain the whole .\lib\xtra\fonts\xxx, crop that */
 					cpp = font_name[j];
 					while ((cp = strchr(cpp, '\\'))) cpp = cp + 1;
 					sprintf(tmp_name, "%-18s", cpp);
-   #else
+  #else
 					sprintf(tmp_name, "%-18s", font_name[j]);
-   #endif
+  #endif
 
 					/* print up to 4 font names per line */
 					c++;
@@ -11915,7 +11914,7 @@ static void do_cmd_options_fonts(void) {
 			c_message_add(""); //linefeed
 			break;
 
-   #if defined(WINDOWS) && defined(USE_LOGFONT)
+  #if defined(WINDOWS) && defined(USE_LOGFONT)
 		case 'L':
 			/* We cannot live-change 'use_logfont' itself, as that'd render the client effectively frozen, just toggle the ini setting for next startup: */
 			use_logfont_ini = !use_logfont_ini;
@@ -11931,7 +11930,7 @@ static void do_cmd_options_fonts(void) {
 			/* if (win_logfont_get_aa(y)) c_msg_format("\377yLogfont-antialiasing is now on for window #%d.", y);
 			else c_msg_format("\377yLogfont-antialiasing is now off for window #%d", y); */
 			break;
-   #endif
+  #endif
 
 		default:
 			d = keymap_dirs[ch & 0x7F];
@@ -11945,7 +11944,8 @@ static void do_cmd_options_fonts(void) {
 
 	check_for_playerlist();
 }
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+  #ifdef USE_GRAPHICS
+   #if defined(USE_SDL2)
 
     #ifdef GRAPHICS_BG_MASK
 static int sdl2_graphics_image_force_outline_new = -1;
@@ -12308,7 +12308,7 @@ static void discard_pending_graphics_changes(const char *previous_tileset, const
 	}
     #endif
 }
-   #endif /* defined(USE_SDL2) && defined(USE_GRAPHICS) */
+   #endif /* defined(USE_SDL2) */
 
 /* These are .bmp files in xtra/graphics, on all systems. - C. Blue
    The global vars are use_graphics (TRUE/FALSE) and graphic_tiles (string of filename, without path, without '.bmp' extension, gets inserted to "graphics-%s.prf").
@@ -12318,7 +12318,7 @@ static void do_cmd_options_tilesets(void) {
 	int j, l, l2, cur_set = -1, found_subset, t;
 	char ch, old_tileset[MAX_CHARS];
 	bool go = TRUE, inkey_msg_old, subset_enabled[MAX_FONTS][MAX_SUBFONTS];
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 	bool old_subtiles[MAX_SUBFONTS];
    #endif
 
@@ -12326,10 +12326,6 @@ static void do_cmd_options_tilesets(void) {
 	char tileset_subname[MAX_FONTS][MAX_SUBFONTS][256] = { 0 };
 	int filenames_tmp = 0, tilesets = 0;
 	char tmp_name[256], tmp_name2[256], *csub, *csub_end;
-
-   #ifdef WINDOWS
-	char *cp, *cpp;
-   #endif
 
 	DIR *dir;
 	struct dirent *ent;
@@ -12462,14 +12458,12 @@ static void do_cmd_options_tilesets(void) {
 	Term_clear();
 
 	strcpy(old_tileset, graphic_tiles);
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 	tileset_copy_subtiles(old_subtiles, graphic_subtiles);
     #ifdef GRAPHICS_BG_MASK
 	outline_reset_pending();
     #endif
-   #endif
 
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
 	/* SDL preview state: track candidates, selections, and drawing hints */
 	int preview_feat_indices[MAX_F_IDX];
 	int preview_item_indices[MAX_K_IDX];
@@ -12489,7 +12483,7 @@ static void do_cmd_options_tilesets(void) {
 		clear_from(0);
 		l = 0;
 
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 		/* For visualising pending changes. */
 		bool mode_pending = graphics_changes_pending();
 		bool tileset_pending = tileset_changes_pending(old_tileset, old_subtiles);
@@ -12570,26 +12564,26 @@ static void do_cmd_options_tilesets(void) {
    #endif
 
 /* Prompt XXX XXX XXX */
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset, \377yENTER\377w enter a specific tileset name,");
    #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y-\377w/\377y+\377w,\377y=\377w switch tileset (requires restart), \377yENTER\377w enter a specific tileset name,");
    #endif
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377y0\377w...\377y9\377w to enable/disable subset of currently selected tileset, if available,");
    #ifdef GRAPHICS_BG_MASK
-    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+    #if defined(USE_SDL2)
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode, \377yESC\377w exit).");
     #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w cycle graphics mode - requires client restart! \377yESC\377w keep changes and exit.");
     #endif
    #else
-    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+    #if defined(USE_SDL2)
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off, \377yESC\377w exit).");
     #else
 		Term_putstr(0, l++, -1, TERM_WHITE, " \377yv\377w toggle graphics on/off - requires client restart! \377yESC\377w keep changes and exit.");
     #endif
    #endif
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 		if (pending_graphics_changes)
 			Term_putstr(0, l++, -1, TERM_ORANGE, "    Pending graphics settings change. Press \377yp\377w to apply or \377yESC\377w to review.");
 		else
@@ -12609,7 +12603,7 @@ static void do_cmd_options_tilesets(void) {
 		Term_putstr(1, l++, -1, mode_color, format("Graphical tileset mode is %s\377w ('\377yv\377w' %s).",
 					use_graphics_new == UG_2MASK ? "\377Genabled (dual-mask mode)" : (use_graphics_new ? "\377Genabled (standard)\377-" : "\377sdisabled\377-"),
 					use_graphics_new == UG_2MASK ? "to disable" : (use_graphics_new ? "to enable 2-mask mode" : "to enable standard graphics mode")));
-    #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+    #if defined(USE_SDL2)
 		{
 			char outline_text[64];
 			outline_format_value(outline_text, sizeof(outline_text), sdl2_graphics_image_force_outline_new);
@@ -12631,7 +12625,7 @@ static void do_cmd_options_tilesets(void) {
 		Term_putstr(1, l++, -1, tileset_color, format("  '\377Bgraphics-%s.bmp\377-'", graphic_tiles));
 		l += 2;
 
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 		int preview_col = 32;
 		/* Draw preview panes and navigation hints when data is ready */
 		if (preview_ready) {
@@ -12748,11 +12742,12 @@ static void do_cmd_options_tilesets(void) {
 
 				graphic_subtiles[sub] = !graphic_subtiles[sub];
 				subset_enabled[cur_set][sub] = graphic_subtiles[sub];
+				//TODO jezek - Make tilesubset change without restart.
 				c_msg_print("\377yGraphical tilesubset was changed. Requires client restart (use CTRL+Q).");
 				break;
 			}
 		} else switch (ch) {
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
     #ifdef GRAPHICS_BG_MASK
 		case 'i': {
 			sdl2_graphics_image_force_outline_new--;
@@ -12836,7 +12831,7 @@ static void do_cmd_options_tilesets(void) {
 			break;
    #endif
 		case ESCAPE:
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 			if (pending_graphics_changes) {
 				if (get_check2("Apply pending graphics settings changes?", TRUE)) {
 					if (!apply_pending_graphics_changes(old_tileset, sizeof(old_tileset), old_subtiles, &cur_set, subset_enabled, tilesets, tileset_name)) {
@@ -12877,7 +12872,7 @@ static void do_cmd_options_tilesets(void) {
 			do_cmd_options_fonts();
 			break;
 
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
 		case 'p':
 		case 'P':
 			if (!pending_graphics_changes) {
@@ -12891,7 +12886,7 @@ static void do_cmd_options_tilesets(void) {
    #endif
 
 		case 'v':
-   #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+   #if defined(USE_SDL2)
     #ifdef GRAPHICS_BG_MASK
 			use_graphics_new = (use_graphics_new + 1) % 3;
     #else
@@ -13020,6 +13015,7 @@ static void do_cmd_options_tilesets(void) {
 
 	check_for_playerlist();
 }
+  #endif /* USE_GRAPHICS */
  #endif /* defined(WINDOWS) || defined(USE_X11) || defined(USE_SDL2) */
 #endif /* ENABLE_SUBWINDOW_MENU */
 

@@ -1456,6 +1456,7 @@ errr process_pref_file_aux_aux(char *buf, byte fmt, signed char subtileset) {
 		break;
 
 #if defined(USE_SDL2) && defined(USE_GRAPHICS)
+	//TODO jezek - Use mask colors for each subtileset too.
 	/* Process "m:<num>:<hexRGB>" -- specify mask color for SDL2 graphic tiles. */
 	case 'm':
 		if (tokenize(buf + 2, 2, zz) == 2) {
@@ -1517,6 +1518,8 @@ errr process_pref_file_aux(char *buf, cptr name, bool quiet) {
 	c = buf + strlen(buf);
 #ifdef WINDOWS
 	while (c >= buf && *c != '\\') c--;
+#elif defined(USE_SDL2)
+	while (c >= buf && *c != SDL2_PATH_SEP[0]) c--;
 #else
 	while (c >= buf && *c != '/') c--;
 #endif

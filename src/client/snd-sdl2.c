@@ -89,9 +89,13 @@ int sdl_samples_loaded = 0; /* Count of cached Mix_Chunk handles (keeps sample i
 #ifndef SEGFAULT_HACK
 static const char *ANGBAND_DIR_XTRA_SOUND;
 static const char *ANGBAND_DIR_XTRA_MUSIC; //<-this one in particular segfaults!
+static const char *ANGBAND_USER_DIR_XTRA_SOUND;
+static const char *ANGBAND_USER_DIR_XTRA_MUSIC;
 #else
 char ANGBAND_DIR_XTRA_SOUND[1024];
 char ANGBAND_DIR_XTRA_MUSIC[1024];
+char ANGBAND_USER_DIR_XTRA_SOUND[1024];
+char ANGBAND_USER_DIR_XTRA_MUSIC[1024];
 #endif
 
 /* for threaded caching of audio files */
@@ -131,9 +135,19 @@ static void free_pack_paths(void) {
 		string_free(ANGBAND_DIR_XTRA_MUSIC);
 		ANGBAND_DIR_XTRA_MUSIC = NULL;
 	}
+	if (ANGBAND_USER_DIR_XTRA_SOUND) {
+		string_free(ANGBAND_USER_DIR_XTRA_SOUND);
+		ANGBAND_USER_DIR_XTRA_SOUND = NULL;
+	}
+	if (ANGBAND_USER_DIR_XTRA_MUSIC) {
+		string_free(ANGBAND_USER_DIR_XTRA_MUSIC);
+		ANGBAND_USER_DIR_XTRA_MUSIC = NULL;
+	}
 #else
 	ANGBAND_DIR_XTRA_SOUND[0] = '\0';
 	ANGBAND_DIR_XTRA_MUSIC[0] = '\0';
+	ANGBAND_USER_DIR_XTRA_SOUND[0] = '\0';
+	ANGBAND_USER_DIR_XTRA_MUSIC[0] = '\0';
 #endif
 }
 
@@ -820,6 +834,7 @@ typedef struct {
 	char *line;
 	bool disabled;
 	int line_no;
+	int set; /* 0 = no subset marker, otherwise the leading '<n>|' value */
 } config_line;
 
 /* Skip leading spaces and tabs in-place. */
@@ -942,12 +957,22 @@ static bool config_reader_next(config_reader *reader, config_line *out_line) {
 			line_ptr = trim_leading_whitespace(line_ptr + 1);
 		}
 
+		/* Optional subset marker in form "<n>|key = value" */
+		int set_no = 0;
+		char *pipe = strchr(line_ptr, '|');
+		char *eq = strchr(line_ptr, '=');
+		if (pipe && eq && eq > pipe) {
+			set_no = atoi(line_ptr);
+			line_ptr = trim_leading_whitespace(pipe + 1);
+		}
+
 		/* Skip anything not beginning with an alphabetic character. */
 		if (!*line_ptr || !isalpha((unsigned char)*line_ptr)) continue;
 
 		out_line->line = line_ptr;
 		out_line->disabled = disabled;
 		out_line->line_no = reader->line_no;
+		out_line->set = set_no;
 		return(TRUE);
 	}
 
@@ -1021,6 +1046,7 @@ static bool load_sound_config(void) {
 	FILE *fff;
 	config_reader reader;
 	config_line line;
+	int sets = 0;
 
 	fff = open_config_with_default(ANGBAND_DIR_XTRA_SOUND, "sound", "sound.cfg", "sound.cfg.default");
 	if (!fff) return(FALSE);
@@ -1045,6 +1071,9 @@ static bool load_sound_config(void) {
 #endif
 
 		if (!sample_list || !sample_list[0]) continue;
+
+		if (line.set > sets) sets = line.set;
+		if (line.set && line.set != cfg_soundpack_subset) continue;
 
 		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+ */
 		if (!strncmp(event_name, "packname", 8) || !strncmp(event_name, "author", 6) || !strncmp(event_name, "description", 11) || !strncmp(event_name, "version", 7)) {
@@ -1107,6 +1136,8 @@ static bool load_sound_config(void) {
 #ifdef DEBUG_SOUND
 	log_fd_usage();
 #endif
+
+	soundpack_subsets = sets;
 
 	return(TRUE);
 }
@@ -1184,6 +1215,7 @@ static bool load_music_config(void) {
 	char path[2048];
 	char buffer0[BUFFERSIZE] = { 0 };
 	int buffer_size = sizeof(buffer0);
+	int sets = 0;
 	typedef struct {
 		int event;
 		bool initial;
@@ -1221,12 +1253,22 @@ static bool load_music_config(void) {
 		if (!song_list || !song_list[0]) continue;
 
 
+		if (line.set > AUDIO_SUBSETS_MAX) continue;
+		if (line.set > sets) sets = line.set;
+		if (line.set && line.set != cfg_musicpack_subset) continue;
+
 		/* Skip meta data that we don't need here -- this is for [title] tag introduced in 4.7.1b+. */
 		if (!strncmp(event_name, "packname", 8) || !strncmp(event_name, "author", 6) || !strncmp(event_name, "description", 11) || !strncmp(event_name, "version", 7)) {
 			if (!strncmp(event_name, "packname", 8)) strncpy(cfg_musicpack_name, song_list, MAX_CHARS);
 			//if (!strncmp(event_name, "author", 6)) ;
 			//if (!strncmp(event_name, "description", 11)) ;
 			if (!strncmp(event_name, "version", 7)) strncpy(cfg_musicpack_version, song_list, MAX_CHARS);
+
+			/* Remember all relevant [title] info at least, for subset selection menu */
+			if (line.set) {
+				if (!strncmp(event_name, "packname", 8)) strcpy(musicpack_packname[line.set], cfg_musicpack_name);
+				if (!strncmp(event_name, "description", 11)) strncpy(musicpack_description[line.set], song_list, MAX_CHARS * 3);
+			}
 			continue;
 		}
 
@@ -1307,6 +1349,8 @@ static bool load_music_config(void) {
 #ifdef DEBUG_SOUND
 	log_fd_usage();
 #endif
+
+	musicpack_subsets = sets;
 
 	return(TRUE);
 }
@@ -1405,6 +1449,18 @@ static bool audio_and_config_init(void) {
 #else
 	strcpy(ANGBAND_DIR_XTRA_SOUND, path);
 #endif
+	/* Build the user "sound" path. */
+	path_build(path, sizeof(path), ANGBAND_USER_DIR_XTRA, cfg_soundpackfolder);
+#ifndef SEGFAULT_HACK
+	tmp = string_make(path);
+	if (!tmp) {
+		plog("Failed to allocate sound pack path.");
+		return(audio_init_fail());
+	}
+	ANGBAND_USER_DIR_XTRA_SOUND = tmp;
+#else
+	strcpy(ANGBAND_USER_DIR_XTRA_SOUND, path);
+#endif
 	/* Load sound configuration. */
 	if (!load_sound_config()) return(audio_init_fail());
 
@@ -1421,6 +1477,18 @@ static bool audio_and_config_init(void) {
 	ANGBAND_DIR_XTRA_MUSIC = tmp;
 #else
 	strcpy(ANGBAND_DIR_XTRA_MUSIC, path);
+#endif
+	/* Build the user "music" path. */
+	path_build(path, sizeof(path), ANGBAND_USER_DIR_XTRA, cfg_musicpackfolder);
+#ifndef SEGFAULT_HACK
+	tmp = string_make(path);
+	if (!tmp) {
+		plog("Failed to allocate music pack path.");
+		return(audio_init_fail());
+	}
+	ANGBAND_USER_DIR_XTRA_MUSIC = tmp;
+#else
+	strcpy(ANGBAND_USER_DIR_XTRA_MUSIC, path);
 #endif
 	/* Load music configuration. */
 	if (!load_music_config()) return(audio_init_fail());
@@ -2773,7 +2841,7 @@ static bool play_music_vol(int event, char vol) {
 static void fadein_next_music(void) {
 	Mix_Music *wave = NULL;
 #ifdef WILDERNESS_MUSIC_RESUME
-	bool prev_wilderness;
+	bool prev_wilderness, was_resumed = FALSE;
 	cptr pmn, mn;
 #endif
 
@@ -2903,6 +2971,17 @@ static void fadein_next_music(void) {
 #ifdef ENABLE_JUKEBOX
 		if (jukebox_screen) jukebox_update_songlength();
 #endif
+
+		/* If music was game-initiated, ie not from the jukebox, log it if desired */
+		if (!jukebox_screen && c_cfg.log_music) {
+			const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
+
+			while (*c != SDL2_PATH_SEP[0] && c >= songs[music_cur].paths[music_cur_song]) c--;
+			c++;
+			while (*c2 != '.' && c2 > c) c2--;
+			if (c2 == c) c_msg_format("\377WMusic <%s> started.", c);
+			else c_msg_format("\377WMusic <%.*s> started.", (int)(c2 - c), c);
+		}
 		return;
 	}
 
@@ -3022,12 +3101,35 @@ static void fadein_next_music(void) {
 		    ) {
 			music_cur_song = songs[music_cur].bak_song;
 			Mix_SetMusicPosition(songs[music_cur].bak_pos / 1000);
+			if (songs[music_cur].bak_pos) was_resumed = TRUE;
 		}
 	}
 #endif
 #ifdef ENABLE_JUKEBOX
 	if (jukebox_screen) jukebox_update_songlength();
 #endif
+
+	/* If music was game-initiated, ie not from the jukebox, log it if desired */
+#ifdef WILDERNESS_MUSIC_RESUME
+	if (!jukebox_screen && c_cfg.log_music) {
+		const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
+
+		while (*c != SDL2_PATH_SEP[0] && c >= songs[music_cur].paths[music_cur_song]) c--;
+		c++;
+		while (*c2 != '.' && c2 > c) c2--;
+		if (c2 == c) c_msg_format("\377WMusic <%s> %s.", c, was_resumed ? "resumed" : "started");
+		else c_msg_format("\377WMusic <%.*s> %s.", (int)(c2 - c), c, was_resumed ? "resumed" : "started");
+#else
+	if (!jukebox_screen && c_cfg.log_music) {
+		const char *c = songs[music_cur].paths[music_cur_song] + strlen(songs[music_cur].paths[music_cur_song]), *c2 = c;
+
+		while (*c != SDL2_PATH_SEP[0] && c >= songs[music_cur].paths[music_cur_song]) c--;
+		c++;
+		while (*c2 != '.' && c2 > c) c2--;
+		if (c2 == c) c_msg_format("\377WMusic <%s> started.", c);
+		else c_msg_format("\377WMusic <%.*s> started.", (int)(c2 - c), c);
+#endif
+	}
 }
 
 //#ifdef JUKEBOX_INSTANT_PLAY
@@ -3641,7 +3743,7 @@ void do_cmd_options_sfx_sdl(void) {
 	byte a, a2;
 	cptr lua_name;
 	bool go = TRUE, dis;
-	char buf[1024], buf2[1024], out_val[4096], out_val2[4096], *p, evname[4096];
+	char buf[1024], buf_user[1024], buf2[1024], out_val[4096], out_val2[4096], *p, evname[4096];
 	FILE *fff, *fff2;
 	bool cfg_audio_master_org = cfg_audio_master, cfg_audio_sound_org = cfg_audio_sound;
 	bool cfg_audio_music_org = cfg_audio_music, cfg_audio_weather_org = cfg_audio_weather;
@@ -3664,12 +3766,10 @@ void do_cmd_options_sfx_sdl(void) {
 	path_build(buf, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
 
 	/* Check if the file exists */
-	fff = my_fopen(buf, "r");
-	if (!fff) {
+	if (!my_fexists(buf)) {
 		c_msg_format("\377oError: Cannot read sound config file '%s'.", buf);
 		return;
 	}
-	fclose(fff);
 
 	/* Clear screen */
 	Term_clear();
@@ -3825,7 +3925,9 @@ void do_cmd_options_sfx_sdl(void) {
 			/* -- save disabled info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.cfg");
-			path_build(buf2, 1024, ANGBAND_DIR_XTRA_SOUND, "sound.$$$");
+			path_build(buf_user, 1024, ANGBAND_USER_DIR_XTRA_SOUND, "sound.cfg");
+			/* Write changes to a temp file in user-writable temp dir. */
+			path_build(buf2, 1024, os_temp_path, "tomenet-sound-disabled.tmp");
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -3879,10 +3981,13 @@ void do_cmd_options_sfx_sdl(void) {
 			fclose(fff);
 			fclose(fff2);
 
-			rename(buf, format("%s.bak", buf));
-			//fd_kill(file_name);
-			remove(buf);
-			rename(buf2, buf);
+			/* Backup previous user copy. */
+			if (my_fexists(buf_user)) my_fcopy(buf_user, format("%s.bak", buf_user));
+			else my_fcopy(buf, format("%s.bak", buf_user));
+
+			/* Replace user copy with temp file. */
+			my_fcopy(buf2, buf_user);
+			remove(buf2);
 
 			/* -- save volume info -- */
 
@@ -4218,7 +4323,7 @@ void do_cmd_options_mus_sdl(void) {
 	byte a, a2;
 	cptr lua_name;
 	bool go = TRUE, play, jukebox_used = FALSE;
-	char buf[1024], buf2[1024], out_val[4096], out_val2[4096], *p, evname[4096];
+	char buf[1024], buf_user[1024], buf2[1024], out_val[4096], out_val2[4096], *p, evname[4096];
 	FILE *fff, *fff2;
 #ifdef ENABLE_JUKEBOX
 	bool cfg_audio_master_org = cfg_audio_master, cfg_audio_sound_org = cfg_audio_sound;
@@ -4246,12 +4351,10 @@ void do_cmd_options_mus_sdl(void) {
 	path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
 
 	/* Check if the file exists */
-	fff = my_fopen(buf, "r");
-	if (!fff) {
+	if (!my_fexists(buf)) {
 		c_msg_format("\377oError: Cannot read music config file '%s'.", buf);
 		return;
 	}
-	fclose(fff);
 
 #ifdef ENABLE_JUKEBOX
 	if (jukebox_playing == -1) { /* <- check for jukebox_play_all hack that allows leaving the jukebox yet continuing to play-all */
@@ -4611,7 +4714,8 @@ void do_cmd_options_mus_sdl(void) {
 			/* -- save disabled info -- */
 
 			path_build(buf, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.cfg");
-			path_build(buf2, 1024, ANGBAND_DIR_XTRA_MUSIC, "music.$$$");
+			path_build(buf_user, 1024, ANGBAND_USER_DIR_XTRA_MUSIC, "music.cfg");
+			path_build(buf2, 1024, os_temp_path, "tomenet-music-disabled.tmp");
 			fff = my_fopen(buf, "r");
 			fff2 = my_fopen(buf2, "w");
 			if (!fff) {
@@ -4664,6 +4768,15 @@ void do_cmd_options_mus_sdl(void) {
 			}
 			fclose(fff);
 			fclose(fff2);
+
+			/* Backup previous user copy. */
+			if (my_fexists(buf_user)) my_fcopy(buf_user, format("%s.bak", buf_user));
+			else my_fcopy(buf, format("%s.bak", buf_user));
+
+
+			/* Replace user copy with temp file. */
+			my_fcopy(buf2, buf_user);
+			remove(buf2);
 
 
 			/* -- save volume info -- */
