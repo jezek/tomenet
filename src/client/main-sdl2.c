@@ -2391,15 +2391,291 @@ static uint32_t graphics_default_mask(uint8_t n) {
 	return(0);
 };
 
-// Initializes graphics stuff and prepare surfaces for a terminal's term_data from graphics_image.
-// Frees all graphics resources allocated before and then makes the initialization.
-static void term_data_init_graphics(term_data *td) {
-	// Resize tiles and separate into layers by mask colors.
-	// First layer is the image with all other mask colors, except foreground color, made fully transparent black.
-	// Other layers are just the other mask color pixels on transparent background.
-	// The background mask color does not need to be extracted to a layer.
+/* Allocate and initialize empty layer surfaces for a scaled tileset. */
+static bool init_tile_layers(SDL_Surface *scaled_image, uint8_t nlayers, SDL_Surface ***layers_out) {
+	if (!scaled_image || nlayers == 0 || !layers_out) return(FALSE);
 
-	// Free old tiles.
+	C_MAKE(*layers_out, nlayers, SDL_Surface*);
+	for (int i = 0; i < nlayers; i++) {
+		(*layers_out)[i] = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
+		if (!(*layers_out)[i]) {
+			//TODO jezek - Print error to stderr.
+			for (int j = 0; j < i; j++) SDL_FreeSurface((*layers_out)[j]);
+			C_FREE(*layers_out, nlayers, SDL_Surface*);
+			*layers_out = NULL;
+			return(FALSE);
+		}
+
+		/* The transparent color has to be different from mask color (color key is only RGB, alpha is not considered). */
+		SDL_FillRect((*layers_out)[i], NULL, SDL_MapRGBA((*layers_out)[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 16) & 0XFF) ^ 0XFF, ((graphics_image_masks_colors[i+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
+		SDL_SetColorKey((*layers_out)[i], SDL_TRUE, SDL_MapRGB((*layers_out)[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF)));
+		SDL_SetSurfaceBlendMode((*layers_out)[i], SDL_BLENDMODE_NONE);
+	}
+
+	return(TRUE);
+}
+
+/* Copy background layer and split mask colors into individual layers. */
+static void split_mask_colors(SDL_Surface *scaled_image, uint8_t nlayers, SDL_Surface **layers) {
+	if (!scaled_image || !layers) return;
+
+	/* Create first layer by making background color fully transparent black. */
+	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
+	SDL_BlitSurface(scaled_image, NULL, layers[0], NULL);
+
+	/* Separate the mask colours into each layer. */
+	if (nlayers > 1) {
+		uint32_t *srcPixels = (uint32_t*)layers[0]->pixels;
+		for (int y = 0; y < layers[0]->h; y++) {
+			for (int x = 0; x < layers[0]->w; x++) {
+				uint32_t pos = (y * layers[0]->w) + x;
+				for (int l = 1; l < nlayers; l++) {
+					/* Skip layers with zeroed colors and alpha. */
+					if (graphics_image_masks_colors[l + 1] == 0) continue;
+
+					if (srcPixels[pos] == SDL_MapRGBA(layers[0]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 16) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF), 0xFF)) {
+						uint32_t *dstPixels = (uint32_t*)layers[l]->pixels;
+						dstPixels[pos] = srcPixels[pos];
+						srcPixels[pos] = SDL_MapRGBA(layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
+					}
+				}
+			}
+		}
+	}
+}
+
+#ifdef GRAPHICS_BG_MASK
+/* Generate forced outline into the last layer (nlayers-1) for a scaled tileset. */
+static void generate_outline(SDL_Surface *scaled_image, SDL_Surface **layers, uint8_t nlayers, int tile_w, int tile_h) {
+	if (!scaled_image || !layers) return;
+	if (nlayers <= 1) return;
+	if (sdl2_graphics_image_force_outline < 0) return;
+
+	int ol = nlayers - 1;
+	SDL_FillRect(layers[ol], NULL, SDL_MapRGBA(layers[ol]->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[ol+1] >> 16) & 0XFF) ^ 0XFF, ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
+
+	if (sdl2_graphics_image_force_outline == 0) return;
+
+	uint8_t *hpass = NULL;
+	uint8_t *vpass = NULL;
+	C_MAKE(hpass, scaled_image->w * scaled_image->h, uint8_t);
+	C_MAKE(vpass, scaled_image->w * scaled_image->h, uint8_t);
+
+	int tiles_per_row = tile_w > 0 ? scaled_image->w / tile_w : 0;
+	int tiles_per_col = tile_h > 0 ? scaled_image->h / tile_h : 0;
+
+	int outline_radius_x = sdl2_graphics_image_force_outline;
+	int outline_radius_y = sdl2_graphics_image_force_outline;
+
+	if (graphics_tile_wid > 0) {
+		outline_radius_x = (sdl2_graphics_image_force_outline * tile_w + graphics_tile_wid / 2) / graphics_tile_wid;
+	}
+	if (graphics_tile_hgt > 0) {
+		outline_radius_y = (sdl2_graphics_image_force_outline * tile_h + graphics_tile_hgt / 2) / graphics_tile_hgt;
+	}
+
+	if (outline_radius_x < 1) outline_radius_x = 1;
+	if (outline_radius_y < 1) outline_radius_y = 1;
+
+	uint32_t bg_mask_color = SDL_MapRGBA(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF), 0xFF);
+	uint32_t ol_mask_color = SDL_MapRGBA(scaled_image->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 16) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF), 0xFF);
+
+	/* Horizontal dilation with radius r using sliding-window, limited to individual tiles to not bleed outline to adjacent tiles. */
+	uint32_t* srcPixels = (uint32_t*)scaled_image->pixels;
+	for (int y = 0; y < scaled_image->h; y++) {
+		for (int col = 0; col < tiles_per_row; col++) {
+			int x_start = col * tile_w;
+			int x_end = x_start + tile_w;
+			int cnt = 0;
+			int left = x_start;
+			int right = x_start - 1;
+			for (int x = x_start; x < x_end; x++) {
+				uint32_t pos = (y * scaled_image->w);
+				/* Expand right to min(end-1, x+r). */
+				int bound = x_end - 1 < x + outline_radius_x ? x_end - 1 : x + outline_radius_x;
+				while (right < bound) {
+					right++;
+					bool found_bg = FALSE;
+					if (srcPixels[pos+right] == bg_mask_color) found_bg = TRUE;
+					if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos+right] == ol_mask_color) found_bg = TRUE;
+					if (!found_bg) {
+						cnt++;
+					}
+				}
+				/* Shrink left to max(x_start, x-r). */
+				bound = x_start > x - outline_radius_x ? x_start : x - outline_radius_x;
+				while (left < bound) {
+					bool found_bg = FALSE;
+					if (srcPixels[pos+left] == bg_mask_color) found_bg = TRUE;
+					if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos+left] == ol_mask_color) found_bg = TRUE;
+					if (!found_bg) {
+						cnt--;
+					}
+					left++;
+				}
+
+				hpass[pos+x] = (cnt > 0) ? 1 : 0;
+			}
+		}
+	}
+
+	/* Vertical dilation with radius r using sliding-window, limited to individual tile to not bleed outline to adjacent tiles. */
+	for (int x = 0; x < scaled_image->w; x++) {
+		for (int row = 0; row < tiles_per_col; row++) {
+			int y_start = row * tile_h;
+			int y_end = y_start + tile_h;
+			int cnt = 0;
+			int top = y_start;
+			int bottom = y_start - 1;
+			for (int y = y_start; y < y_end; y++) {
+				/* Expand bottom to min(end-1, y+r). */
+				int bound = y_end - 1 < y + outline_radius_y ? y_end - 1 : y + outline_radius_y;
+				while (bottom < bound) {
+					bottom += 1;
+					cnt += hpass[bottom * scaled_image->w + x];
+				}
+				/* Shrink top to max(y_start, y-r). */
+				bound = y_start > y - outline_radius_y ? y_start : y - outline_radius_y;
+				while (top < bound) {
+					cnt -= hpass[top * scaled_image->w + x];
+					top += 1;
+				}
+				vpass[y * scaled_image->w + x] = (cnt > 0) ? 1 : 0;
+			}
+		}
+	}
+
+	/* Outline = dilated (vpass) minus original. */
+	for (int y = 0; y < scaled_image->h; y++) {
+		for (int x = 0; x < scaled_image->w; x++) {
+			int pos = y * scaled_image->w + x;
+			bool found_bg = FALSE;
+			if (srcPixels[pos] == bg_mask_color) found_bg = TRUE;
+			if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos] == ol_mask_color) found_bg = TRUE;
+			if(vpass[pos] == 1 && found_bg) {
+				uint32_t* dstPixels = (uint32_t*)layers[ol]->pixels;
+				dstPixels[pos] = SDL_MapRGBA(layers[ol]->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 16) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF), 0xFF);
+			}
+		}
+	}
+
+	C_FREE(hpass, scaled_image->w * scaled_image->h, uint8_t);
+	C_FREE(vpass, scaled_image->w * scaled_image->h, uint8_t);
+}
+#endif
+
+/* Prepare scaled rawpict surfaces and coordinate maps. Returns TRUE on success. */
+static bool init_scaled_rawpict(SDL_Surface *scaled_image, SDL_Surface *orig_image, SDL_Surface **out_surface, int *wid_org, int *hgt_org, int *wid_use, int *hgt_use, rawpict_tile *rawpict_org, rawpict_tile *rawpict_dst) {
+	if (!scaled_image || !out_surface || !wid_org || !hgt_org || !wid_use || !hgt_use || !rawpict_org || !rawpict_dst) return(FALSE);
+
+	/* Keep a copy of the scaled sheet for rawpict drawing. */
+	*out_surface = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
+	if (!*out_surface) return(FALSE);
+
+	SDL_SetSurfaceBlendMode(*out_surface, SDL_BLENDMODE_BLEND);
+	if (SDL_BlitSurface(scaled_image, NULL, *out_surface, NULL) != 0) {
+		SDL_FreeSurface(*out_surface);
+		*out_surface = NULL;
+		return(FALSE);
+	}
+
+	int width1 = (orig_image) ? orig_image->w : 0;
+	int height1 = (orig_image) ? orig_image->h : 0;
+	int width2 = scaled_image->w;
+	int height2 = scaled_image->h;
+
+	*wid_org = width1;
+	*hgt_org = height1;
+	*wid_use = width2;
+	*hgt_use = height2;
+
+	for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
+		if (!rawpict_org[i].defined || !width1 || !height1) {
+			rawpict_dst[i].defined = FALSE;
+			continue;
+		}
+
+		rawpict_dst[i].defined = TRUE;
+		rawpict_dst[i].x = (rawpict_org[i].x * width2) / width1;
+		rawpict_dst[i].y = (rawpict_org[i].y * height2) / height1;
+		rawpict_dst[i].w = (rawpict_org[i].w * width2) / width1;
+		rawpict_dst[i].h = (rawpict_org[i].h * height2) / height1;
+	}
+
+	return(TRUE);
+}
+
+/* When there is only one layer, that means outline is not used.
+ * But if the image contains an outline mask, make it transparent.
+ */
+static void clear_outline_mask_single_layer(uint8_t nlayers, SDL_Surface **layers) {
+	if (nlayers != 1) return;
+	if (!graphics_image_prefs_has_outline) return;
+	if (!layers || !layers[0]) return;
+
+	uint32_t* srcPixels = (uint32_t*)layers[0]->pixels;
+	for (int y = 0; y < layers[0]->h; y++) {
+		for (int x = 0; x < layers[0]->w; x++) {
+			uint32_t pos = (y * layers[0]->w) + x;
+			if (srcPixels[pos] == SDL_MapRGBA(layers[0]->format, ((graphics_image_masks_colors[2] >> 24) & 0xFF), ((graphics_image_masks_colors[2] >> 16) & 0xFF), ((graphics_image_masks_colors[2] >> 8) & 0xFF), 0xFF)) {
+				srcPixels[pos] = SDL_MapRGBA(layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
+			}
+		}
+	}
+}
+
+enum term_data_init_graphics_tileset_err {
+	TDGTS_ERR_NONE = 0,
+	TDGTS_ERR_SCALE,
+	TDGTS_ERR_LAYERS,
+	TDGTS_ERR_RAWPICT,
+};
+
+/* Initialize the scaled layers and rawpict data for a single tileset sheet. */
+static int term_data_init_graphics_tileset(term_data *td, SDL_Surface *src_image, SDL_Surface ***layers_out, SDL_Surface **tiles_surface_out, int *wid_org, int *hgt_org, int *wid_use, int *hgt_use, rawpict_tile *rawpict_org, rawpict_tile *rawpict_dst) {
+	if (!td || !td->fnt || !src_image || !layers_out || !tiles_surface_out || !wid_org || !hgt_org || !wid_use || !hgt_use || !rawpict_org || !rawpict_dst) return(TDGTS_ERR_RAWPICT);
+
+	/* Resize the loaded graphics image, so tile size match font size. */
+	SDL_Surface *scaled_image = ScaleSurface(src_image, graphics_tile_wid, graphics_tile_hgt, td->fnt->wid, td->fnt->hgt);
+	if (!scaled_image) return(TDGTS_ERR_SCALE);
+
+	/* Keep a copy of the scaled sheet for rawpict drawing. */
+	if (!init_scaled_rawpict(scaled_image, src_image, tiles_surface_out, wid_org, hgt_org, wid_use, hgt_use, rawpict_org, rawpict_dst)) {
+		SDL_FreeSurface(scaled_image);
+		return(TDGTS_ERR_RAWPICT);
+	}
+
+	/* Initialize surfaces for all layers. */
+	if (!init_tile_layers(scaled_image, td->nlayers, layers_out)) {
+		SDL_FreeSurface(scaled_image);
+		return(TDGTS_ERR_LAYERS);
+	}
+	/* Split the resized image into mask layers. */
+	split_mask_colors(scaled_image, td->nlayers, *layers_out);
+
+ #ifdef GRAPHICS_BG_MASK
+	/* If needed, (re)generate outline for tiles. */
+	generate_outline(scaled_image, *layers_out, td->nlayers, td->fnt->wid, td->fnt->hgt);
+ #endif
+	/* Make outline mask transparent when only one layer is available. */
+	clear_outline_mask_single_layer(td->nlayers, *layers_out);
+
+	/* The scaled image is not needed anymore. */
+	SDL_FreeSurface(scaled_image);
+
+	return(TDGTS_ERR_NONE);
+}
+
+/* Initializes graphics stuff and prepare surfaces for a terminal's term_data from graphics_image.
+ * Frees all graphics resources allocated before and then makes the initialization.
+ *
+ * Resize tiles and separate into layers by mask colors.
+ * First layer is the image with all other mask colors, except foreground color, made fully transparent black.
+ * Other layers are just the other mask color pixels on transparent background.
+ * The background mask color does not need to be extracted to a layer.
+ */
+static void term_data_init_graphics(term_data *td) {
+	/* Free old tiles. */
 	free_graphics(td);
 
 	if (!graphics_image) {
@@ -2407,302 +2683,43 @@ static void term_data_init_graphics(term_data *td) {
 		return;
 	}
 
-	// Resize the loaded graphics image, so tile size match font size.
-	SDL_Surface *scaled_image;
+	/* Initialize surfaces for all layers. */
+	td->nlayers = graphics_image_mpt - 1;
 
-	scaled_image = ScaleSurface(graphics_image, graphics_tile_wid, graphics_tile_hgt, td->fnt->wid, td->fnt->hgt);
-	if (!scaled_image) {
-		fprintf(stderr, "Failed to scale graphics surface for SDL2 term.\n");
+	int err = term_data_init_graphics_tileset(td, graphics_image, &td->tiles_layers, &td->tiles_surface, &td->rawpict_scale_wid_org, &td->rawpict_scale_hgt_org, &td->rawpict_scale_wid_use, &td->rawpict_scale_hgt_use, tiles_rawpict_org, td->tiles_rawpict);
+	if (err != TDGTS_ERR_NONE) {
+		if (err == TDGTS_ERR_SCALE) fprintf(stderr, "Failed to scale graphics surface for SDL2 term.\n");
+		if (err == TDGTS_ERR_LAYERS) fprintf(stderr, "Failed to initialize graphics layers for SDL2 term.\n");
+		if (err == TDGTS_ERR_RAWPICT) fprintf(stderr, "Failed to initialize SDL2 term rawpict surface.\n");
+		free_graphics(td);
 		return;
 	}
-
-	// Initialize surfaces for all layers.
-	td->nlayers = graphics_image_mpt - 1;
-	C_MAKE(td->tiles_layers, td->nlayers, SDL_Surface*);
-	for (int i = 0; i < td->nlayers; i++) {
-		td->tiles_layers[i] = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
-		// The transparent color has to be different from mask color (color key is only RGB, alpha is not considered).
-		SDL_FillRect(td->tiles_layers[i], NULL, SDL_MapRGBA(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[i+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
-		SDL_SetColorKey(td->tiles_layers[i], SDL_TRUE, SDL_MapRGB(td->tiles_layers[i]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF)));
-		SDL_SetSurfaceBlendMode(td->tiles_layers[i], SDL_BLENDMODE_NONE);
-	}
-
-	// Create first layer by making background color fully transparent black.
-	SDL_SetColorKey(scaled_image, SDL_TRUE, SDL_MapRGB(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
-	SDL_BlitSurface(scaled_image, NULL, td->tiles_layers[0], NULL);
-
-	// If there are more layers, separate each mask color to it's own layer surface.
-	if (td->nlayers > 1) {
-		uint32_t* srcPixels = (uint32_t*)td->tiles_layers[0]->pixels;
-		for (int y = 0; y < td->tiles_layers[0]->h; y++) {
-			for (int x = 0; x < td->tiles_layers[0]->w; x++) {
-				uint32_t pos = (y * td->tiles_layers[0]->w) + x;
-				for (int i = 1; i < td->nlayers; i++) {
-					/* Skip layers with zeroed colors and alpha. */
-					if (graphics_image_masks_colors[i+1] == 0) continue;
-
-					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[i+1] >> 24) & 0xFF), ((graphics_image_masks_colors[i+1] >> 16) & 0xFF), ((graphics_image_masks_colors[i+1] >> 8) & 0xFF), 0xFF)) {
-						uint32_t* dstPixels = (uint32_t*)td->tiles_layers[i]->pixels;
-						dstPixels[pos] = srcPixels[pos];
-						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
-					}
-				}
-			}
-		}
-
-#ifdef GRAPHICS_BG_MASK
-		if (sdl2_graphics_image_force_outline > -1) {
-			int ol = td->nlayers - 1;
-			SDL_FillRect(td->tiles_layers[ol], NULL, SDL_MapRGBA(td->tiles_layers[ol]->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[ol+1] >> 16) & 0XFF) ^ 0xFF, ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF) ^ 0xFF, 0x00));
-
-			if (sdl2_graphics_image_force_outline > 0) {
-				uint8_t *hpass = NULL;
-				uint8_t *vpass = NULL;
-				C_MAKE(hpass, scaled_image->w * scaled_image->h, uint8_t);
-				C_MAKE(vpass, scaled_image->w * scaled_image->h, uint8_t);
-				int tile_w = td->fnt->wid;
-				int tile_h = td->fnt->hgt;
-				int tiles_per_row = tile_w > 0 ? scaled_image->w / tile_w : 0;
-				int tiles_per_col = tile_h > 0 ? scaled_image->h / tile_h : 0;
-
-				int outline_radius_x = sdl2_graphics_image_force_outline;
-				int outline_radius_y = sdl2_graphics_image_force_outline;
-
-				if (graphics_tile_wid > 0) {
-					outline_radius_x = (sdl2_graphics_image_force_outline * tile_w + graphics_tile_wid / 2) / graphics_tile_wid;
-				}
-				if (graphics_tile_hgt > 0) {
-					outline_radius_y = (sdl2_graphics_image_force_outline * tile_h + graphics_tile_hgt / 2) / graphics_tile_hgt;
-				}
-
-				if (outline_radius_x < 1) outline_radius_x = 1;
-				if (outline_radius_y < 1) outline_radius_y = 1;
-
-				uint32_t bg_mask_color = SDL_MapRGBA(scaled_image->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF), 0xFF);
-				uint32_t ol_mask_color = SDL_MapRGBA(scaled_image->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 16) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF), 0xFF);
-
-				/* Horizontal dilation with radius r using sliding-window, limited to individual tiles to not bleed outline to adjacent tiles. */
-				uint32_t* srcPixels = (uint32_t*)scaled_image->pixels;
-				for (int y = 0; y < scaled_image->h; y++) {
-					for (int col = 0; col < tiles_per_row; col++) {
-						int x_start = col * tile_w;
-						int x_end = x_start + tile_w;
-						int cnt = 0;
-						int left = x_start;
-						int right = x_start - 1;
-						for (int x = x_start; x < x_end; x++) {
-							uint32_t pos = (y * scaled_image->w);
-							/* Expand right to min(end-1, x+r). */
-							int bound = x_end - 1 < x + outline_radius_x ? x_end - 1 : x + outline_radius_x;
-							while (right < bound) {
-								right++;
-								bool found_bg = FALSE;
-								if (srcPixels[pos+right] == bg_mask_color) found_bg = TRUE;
-								if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos+right] == ol_mask_color) found_bg = TRUE;
-								if (!found_bg) {
-									cnt++;
-								}
-							}
-							/* Shrink left to max(x_start, x-r). */
-							bound = x_start > x - outline_radius_x ? x_start : x - outline_radius_x;
-							while (left < bound) {
-								bool found_bg = FALSE;
-								if (srcPixels[pos+left] == bg_mask_color) found_bg = TRUE;
-								if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos+left] == ol_mask_color) found_bg = TRUE;
-								if (!found_bg) {
-									cnt--;
-								}
-								left++;
-							}
-
-							hpass[pos+x] = (cnt > 0) ? 1 : 0;
-						}
-					}
-				}
-
-				/* Vertical dilation with radius r using sliding-window, limited to individual tile to not bleed outline to adjacent tiles. */
-				for (int x = 0; x < scaled_image->w; x++) {
-					for (int row = 0; row < tiles_per_col; row++) {
-						int y_start = row * tile_h;
-						int y_end = y_start + tile_h;
-						int cnt = 0;
-						int top = y_start;
-						int bottom = y_start - 1;
-						for (int y = y_start; y < y_end; y++) {
-							/* Expand bottom to min(end-1, y+r). */
-							int bound = y_end - 1 < y + outline_radius_y ? y_end - 1 : y + outline_radius_y;
-							while (bottom < bound) {
-								bottom += 1;
-								cnt += hpass[bottom * scaled_image->w + x];
-							}
-							/* Shrink top to max(y_start, y-r). */
-							bound = y_start > y - outline_radius_y ? y_start : y - outline_radius_y;
-							while (top < bound) {
-								cnt -= hpass[top * scaled_image->w + x];
-								top += 1;
-							}
-							vpass[y * scaled_image->w + x] = (cnt > 0) ? 1 : 0;
-						}
-					}
-				}
-
-				/* Outline = dilated (vpass) minus original. */
-				for (int y = 0; y < scaled_image->h; y++) {
-					for (int x = 0; x < scaled_image->w; x++) {
-						int pos = y * scaled_image->w + x;
-						bool found_bg = FALSE;
-						if (srcPixels[pos] == bg_mask_color) found_bg = TRUE; 
-						if (graphics_image_masks_colors[ol+1] != 0 && srcPixels[pos] == ol_mask_color) found_bg = TRUE; 
-						if(vpass[pos] == 1 && found_bg) {
-							uint32_t* dstPixels = (uint32_t*)td->tiles_layers[ol]->pixels;
-							dstPixels[pos] = SDL_MapRGBA(td->tiles_layers[ol]->format, ((graphics_image_masks_colors[ol+1] >> 24) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 16) & 0xFF), ((graphics_image_masks_colors[ol+1] >> 8) & 0xFF), 0xFF);
-						}
-					}
-				}
-
-				C_FREE(hpass, scaled_image->w * scaled_image->h, uint8_t);
-				C_FREE(vpass, scaled_image->w * scaled_image->h, uint8_t);
-			}
-		}
-#endif
-	} else if (td->nlayers == 1) {
-		/* When there is only one layer, that means outline is not used.
-		 * But if the image contains an outline mask, make it transparent.
-		 */
-		if (graphics_image_prefs_has_outline) {
-			uint32_t* srcPixels = (uint32_t*)td->tiles_layers[0]->pixels;
-			for (int y = 0; y < td->tiles_layers[0]->h; y++) {
-				for (int x = 0; x < td->tiles_layers[0]->w; x++) {
-					uint32_t pos = (y * td->tiles_layers[0]->w) + x;
-					if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[2] >> 24) & 0xFF), ((graphics_image_masks_colors[2] >> 16) & 0xFF), ((graphics_image_masks_colors[2] >> 8) & 0xFF), 0xFF)) {
-						srcPixels[pos] = SDL_MapRGBA(td->tiles_layers[0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
-					}
-				}
-			}
-		}
-	}
-
-	/* Keep a copy of the scaled sheet for rawpict drawing. */
-	td->tiles_surface = SDL_CreateRGBSurfaceWithFormat(0, scaled_image->w, scaled_image->h, 32, SDL_PIXELFORMAT_RGBA32);
-	if (td->tiles_surface) {
-		SDL_SetSurfaceBlendMode(td->tiles_surface, SDL_BLENDMODE_BLEND);
-		SDL_BlitSurface(scaled_image, NULL, td->tiles_surface, NULL);
-	} else {
-		fprintf(stderr, "Failed to allocate tiles surface for SDL2 rawpict.\n");
-	}
-
-	int width1 = (graphics_image) ? graphics_image->w : 0;
-	int height1 = (graphics_image) ? graphics_image->h : 0;
-	int width2 = scaled_image->w;
-	int height2 = scaled_image->h;
-
-	td->rawpict_scale_wid_org = width1;
-	td->rawpict_scale_hgt_org = height1;
-	td->rawpict_scale_wid_use = width2;
-	td->rawpict_scale_hgt_use = height2;
-
-	for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
-		if (!tiles_rawpict_org[i].defined || !width1 || !height1) {
-			td->tiles_rawpict[i].defined = FALSE;
-			continue;
-		}
-
-		td->tiles_rawpict[i].defined = TRUE;
-		td->tiles_rawpict[i].x = (tiles_rawpict_org[i].x * width2) / width1;
-		td->tiles_rawpict[i].y = (tiles_rawpict_org[i].y * height2) / height1;
-		td->tiles_rawpict[i].w = (tiles_rawpict_org[i].w * width2) / width1;
-		td->tiles_rawpict[i].h = (tiles_rawpict_org[i].h * height2) / height1;
-	}
-
-	// The scaled image is not needed anymore.
-	SDL_FreeSurface(scaled_image);
 
 	/* Prepare (partial) sub-tilesets */
 	for (int s = 0; s < MAX_SUBFONTS; s++) {
 		if (!graphic_subtiles[s]) continue;
-		if (!graphics_image_sub[s]) continue;
-
-		SDL_Surface *scaled_sub = ScaleSurface(graphics_image_sub[s], graphics_tile_wid, graphics_tile_hgt, td->fnt->wid, td->fnt->hgt);
-		if (!scaled_sub) {
-			//TODO jezek - Print warning.
+		if (!graphics_image_sub[s]) {
+			fprintf(stderr, "Warning: Graphics sub-tileset %d has no loaded image; disabling.\n", s);
 			graphic_subtiles[s] = FALSE;
 			continue;
 		}
 
-		//TODO jezek - Refactor layer initialization above into standalone function and reuse here.
-		uint8_t nlayers_sub = graphics_image_mpt - 1;
-		C_MAKE(td->tiles_layers_sub[s], nlayers_sub, SDL_Surface*);
-		for (int l = 0; l < nlayers_sub; l++) {
-			td->tiles_layers_sub[s][l] = SDL_CreateRGBSurfaceWithFormat(0, scaled_sub->w, scaled_sub->h, 32, SDL_PIXELFORMAT_RGBA32);
-			SDL_FillRect(td->tiles_layers_sub[s][l], NULL, SDL_MapRGBA(td->tiles_layers_sub[s][l]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[l + 1] >> 16) & 0XFF) ^ 0XFF, ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF) ^ 0XFF, 0x00));
-			SDL_SetColorKey(td->tiles_layers_sub[s][l], SDL_TRUE, SDL_MapRGB(td->tiles_layers_sub[s][l]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 16) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF)));
-			SDL_SetSurfaceBlendMode(td->tiles_layers_sub[s][l], SDL_BLENDMODE_NONE);
+		err = term_data_init_graphics_tileset(td, graphics_image_sub[s], &td->tiles_layers_sub[s], &td->tiles_surface_sub[s], &td->rawpict_scale_wid_org_sub[s], &td->rawpict_scale_hgt_org_sub[s], &td->rawpict_scale_wid_use_sub[s], &td->rawpict_scale_hgt_use_sub[s], tiles_rawpict_org_sub[s], td->tiles_rawpict_sub[s]);
+		if (err != TDGTS_ERR_NONE) {
+			if (err == TDGTS_ERR_SCALE) fprintf(stderr, "Warning: Failed to scale graphics sub-tileset %d; disabling.\n", s);
+			if (err == TDGTS_ERR_LAYERS) fprintf(stderr, "Warning: Failed to initialize graphics layers for SDL2 sub-tileset %d; disabling.\n", s);
+			if (err == TDGTS_ERR_RAWPICT) fprintf(stderr, "Warning: Failed to initialize rawpict surface for SDL2 sub-tileset %d; disabling.\n", s);
+			graphic_subtiles[s] = FALSE;
+			continue;
 		}
-
-		/* background is colour #0 (masked) which is the mask colour of tileset #1 */
-		SDL_SetColorKey(scaled_sub, SDL_TRUE, SDL_MapRGB(scaled_sub->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF), ((graphics_image_masks_colors[0] >> 16) & 0xFF), ((graphics_image_masks_colors[0] >> 8) & 0xFF)));
-		SDL_BlitSurface(scaled_sub, NULL, td->tiles_layers_sub[s][0], NULL);
-
-		/* separate the mask colours into each layer */
-		if (nlayers_sub > 1) {
-			uint32_t *srcPixels = (uint32_t*)td->tiles_layers_sub[s][0]->pixels;
-			for (int y = 0; y < td->tiles_layers_sub[s][0]->h; y++) {
-				for (int x = 0; x < td->tiles_layers_sub[s][0]->w; x++) {
-					uint32_t pos = (y * td->tiles_layers_sub[s][0]->w) + x;
-					for (int l = 1; l < nlayers_sub; l++) {
-						if (graphics_image_masks_colors[l + 1] == 0) continue;
-						if (srcPixels[pos] == SDL_MapRGBA(td->tiles_layers_sub[s][0]->format, ((graphics_image_masks_colors[l + 1] >> 24) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 16) & 0xFF), ((graphics_image_masks_colors[l + 1] >> 8) & 0xFF), 0xFF)) {
-							uint32_t *dstPixels = (uint32_t*)td->tiles_layers_sub[s][l]->pixels;
-							dstPixels[pos] = srcPixels[pos];
-							srcPixels[pos] = SDL_MapRGBA(td->tiles_layers_sub[s][0]->format, ((graphics_image_masks_colors[0] >> 24) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 16) & 0xFF) ^ 0xFF, ((graphics_image_masks_colors[0] >> 8) & 0xFF) ^ 0xFF, 0);
-						}
-					}
-				}
-			}
-		}
-
-		//TODO jezek - Generate outline for subtiles. (Refactor outline generation above to standalone function and reuse here.)
-
-		//TODO jezek - Refactor scaled rawpict above into standalone function and reuse here.
-		/* Keep a copy of the scaled sheet for rawpict drawing. */
-		td->tiles_surface_sub[s] = SDL_CreateRGBSurfaceWithFormat(0, scaled_sub->w, scaled_sub->h, 32, SDL_PIXELFORMAT_RGBA32);
-		if (td->tiles_surface_sub[s]) {
-			SDL_SetSurfaceBlendMode(td->tiles_surface_sub[s], SDL_BLENDMODE_BLEND);
-			SDL_BlitSurface(scaled_sub, NULL, td->tiles_surface_sub[s], NULL);
-		}
-
-		int w1 = (graphics_image_sub[s]) ? graphics_image_sub[s]->w : 0;
-		int h1 = (graphics_image_sub[s]) ? graphics_image_sub[s]->h : 0;
-		int w2 = scaled_sub->w;
-		int h2 = scaled_sub->h;
-
-		td->rawpict_scale_wid_org_sub[s] = w1;
-		td->rawpict_scale_hgt_org_sub[s] = h1;
-		td->rawpict_scale_wid_use_sub[s] = w2;
-		td->rawpict_scale_hgt_use_sub[s] = h2;
-
-		for (int i = 0; i <= MAX_TILES_RAWPICT; i++) {
-			if (!tiles_rawpict_org_sub[s][i].defined || !w1 || !h1) {
-				td->tiles_rawpict_sub[s][i].defined = FALSE;
-				continue;
-			}
-
-			td->tiles_rawpict_sub[s][i].defined = TRUE;
-			td->tiles_rawpict_sub[s][i].x = (tiles_rawpict_org_sub[s][i].x * w2) / w1;
-			td->tiles_rawpict_sub[s][i].y = (tiles_rawpict_org_sub[s][i].y * h2) / h1;
-			td->tiles_rawpict_sub[s][i].w = (tiles_rawpict_org_sub[s][i].w * w2) / w1;
-			td->tiles_rawpict_sub[s][i].h = (tiles_rawpict_org_sub[s][i].h * h2) / h1;
-		}
-
-		SDL_FreeSurface(scaled_sub);
 	}
 
-	// Initialize preparation surface.
+	/* Initialize preparation surface. */
 	td->tilePreparation = SDL_CreateRGBSurfaceWithFormat(0, td->fnt->wid, td->fnt->hgt, 32, SDL_PIXELFORMAT_RGBA32);
 	SDL_SetSurfaceBlendMode(td->tilePreparation, SDL_BLENDMODE_BLEND);
 
-	// Note: If we want to cache even more graphics for faster drawing, we could initialize 16 copies of the graphics image with all possible mask colors already applied.
-	// Memory cost could become "large" quickly though (eg 5MB bitmap -> 80MB). Not a real issue probably.
+	/* Note: If we want to cache even more graphics for faster drawing, we could initialize 16 copies of the graphics image with all possible mask colors already applied. */
+	/* Memory cost could become "large" quickly though (eg 5MB bitmap -> 80MB). Not a real issue probably. */
 #ifdef TILE_CACHE_SIZE
 	for (int i = 0; i < TILE_CACHE_SIZE; i++) {
 		td->tile_cache[i].tile = SDL_CreateRGBSurfaceWithFormat(0, td->fnt->wid, td->fnt->hgt, 32, SDL_PIXELFORMAT_RGBA32);
